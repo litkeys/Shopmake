@@ -16,7 +16,6 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 
 interface DashboardLayoutProps {
 	children: React.ReactNode;
@@ -142,63 +141,74 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
 	return (
 		<div className="min-h-screen bg-gray-50">
-			{/* Mobile sidebar dialog */}
-			<Dialog open={sidebarOpen} onOpenChange={setSidebarOpen}>
-				<DialogContent className="fixed inset-y-0 left-0 z-50 w-64 p-0 sm:hidden">
-					<div className="flex h-full flex-col bg-white">
-						<div className="flex h-16 shrink-0 items-center justify-between px-4 border-b">
-							<span className="text-xl font-semibold text-gray-900">
-								Genesis
-							</span>
-							<Button
-								variant="ghost"
-								size="icon"
-								onClick={() => setSidebarOpen(false)}
-							>
-								<X className="h-6 w-6" />
-							</Button>
-						</div>
-						<nav className="flex-1 space-y-1 px-2 py-4">
-							{navigationItems.map((item) => {
-								const isActive = pathname === item.href;
-								return (
-									<Link
-										key={item.name}
-										href={item.href}
-										onClick={() => setSidebarOpen(false)}
-										className={cn(
-											isActive
-												? "bg-gray-100 text-gray-900"
-												: "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
-											"group flex items-center px-2 py-2 text-sm font-medium rounded-md"
-										)}
-									>
-										<item.icon
+			{/* Mobile sidebar overlay and panel */}
+			{sidebarOpen && (
+				<div className="relative z-50 lg:hidden">
+					{/* Overlay */}
+					<div
+						className="fixed inset-0 bg-gray-900/80 backdrop-blur-sm"
+						onClick={() => setSidebarOpen(false)}
+					/>
+
+					{/* Sidebar panel */}
+					<div className="fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-xl">
+						<div className="flex h-full flex-col">
+							<div className="flex h-16 shrink-0 items-center justify-between px-4 border-b">
+								<span className="text-xl font-semibold text-gray-900">
+									Genesis
+								</span>
+								<Button
+									variant="ghost"
+									size="icon"
+									onClick={() => setSidebarOpen(false)}
+								>
+									<X className="h-6 w-6" />
+								</Button>
+							</div>
+							<nav className="flex-1 space-y-1 px-2 py-4">
+								{navigationItems.map((item) => {
+									const isActive = pathname === item.href;
+									return (
+										<Link
+											key={item.name}
+											href={item.href}
+											onClick={() =>
+												setSidebarOpen(false)
+											}
 											className={cn(
 												isActive
-													? "text-gray-500"
-													: "text-gray-400 group-hover:text-gray-500",
-												"mr-3 h-6 w-6 shrink-0"
+													? "bg-gray-100 text-gray-900"
+													: "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+												"group flex items-center px-2 py-2 text-sm font-medium rounded-md"
 											)}
-										/>
-										{item.name}
-									</Link>
-								);
-							})}
-						</nav>
-						<div className="border-t p-4">
-							<Button
-								variant="ghost"
-								onClick={handleSignOut}
-								className="flex w-full items-center justify-start px-2 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-							>
-								<LogOut className="mr-3 h-5 w-5" />
-								Sign Out
-							</Button>
+										>
+											<item.icon
+												className={cn(
+													isActive
+														? "text-gray-500"
+														: "text-gray-400 group-hover:text-gray-500",
+													"mr-3 h-6 w-6 shrink-0"
+												)}
+											/>
+											{item.name}
+										</Link>
+									);
+								})}
+							</nav>
+							<div className="border-t p-4">
+								<Button
+									variant="ghost"
+									onClick={handleSignOut}
+									className="flex w-full items-center justify-start px-2 py-2 text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+								>
+									<LogOut className="mr-3 h-5 w-5" />
+									Sign Out
+								</Button>
+							</div>
 						</div>
 					</div>
-				</DialogContent>
-			</Dialog>
+				</div>
+			)}
 
 			{/* Desktop sidebar */}
 			<div className="hidden lg:fixed lg:inset-y-0 lg:z-50 lg:flex lg:w-64 lg:flex-col">
