@@ -3,12 +3,22 @@ import { Store, StoreData, Upload } from "@/types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
+// Client for anon operations
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Admin client for server-side operations (bypasses RLS)
+export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+	auth: {
+		autoRefreshToken: false,
+		persistSession: false,
+	},
+});
 
 // Store operations
 export async function getStores(userId: string): Promise<Store[]> {
-	const { data, error } = await supabase
+	const { data, error } = await supabaseAdmin
 		.from("stores")
 		.select("*")
 		.eq("created_by", userId)
@@ -22,7 +32,7 @@ export async function getStores(userId: string): Promise<Store[]> {
 }
 
 export async function getStore(storeId: string): Promise<Store | null> {
-	const { data, error } = await supabase
+	const { data, error } = await supabaseAdmin
 		.from("stores")
 		.select("*")
 		.eq("id", storeId)
@@ -42,7 +52,7 @@ export async function createStore(
 	name: string,
 	userId: string
 ): Promise<Store> {
-	const { data, error } = await supabase
+	const { data, error } = await supabaseAdmin
 		.from("stores")
 		.insert([
 			{
@@ -64,7 +74,7 @@ export async function updateStore(
 	storeId: string,
 	updates: Partial<Store>
 ): Promise<Store> {
-	const { data, error } = await supabase
+	const { data, error } = await supabaseAdmin
 		.from("stores")
 		.update(updates)
 		.eq("id", storeId)
@@ -80,7 +90,7 @@ export async function updateStore(
 
 // Store data operations
 export async function getStoreData(storeId: string): Promise<StoreData | null> {
-	const { data, error } = await supabase
+	const { data, error } = await supabaseAdmin
 		.from("store_data")
 		.select("*")
 		.eq("store_id", storeId)
@@ -100,15 +110,20 @@ export async function upsertStoreData(
 	storeId: string,
 	storeData: Partial<StoreData>
 ): Promise<StoreData> {
-	const { data, error } = await supabase
+	const { data, error } = await supabaseAdmin
 		.from("store_data")
-		.upsert([
+		.upsert(
+			[
+				{
+					store_id: storeId,
+					...storeData,
+					updated_at: new Date().toISOString(),
+				},
+			],
 			{
-				store_id: storeId,
-				...storeData,
-				updated_at: new Date().toISOString(),
-			},
-		])
+				onConflict: "store_id",
+			}
+		)
 		.select()
 		.single();
 
@@ -129,7 +144,7 @@ export async function uploadFile(
 	const fileName = `${Date.now()}.${fileExt}`;
 	const filePath = `${storeId}/${fileType}/${fileName}`;
 
-	const { error: uploadError } = await supabase.storage
+	const { error: uploadError } = await supabaseAdmin.storage
 		.from("store-files")
 		.upload(filePath, file);
 
@@ -137,12 +152,12 @@ export async function uploadFile(
 		throw new Error(`Failed to upload file: ${uploadError.message}`);
 	}
 
-	const { data } = supabase.storage
+	const { data } = supabaseAdmin.storage
 		.from("store-files")
 		.getPublicUrl(filePath);
 
 	// Record the upload in the database
-	const { error: dbError } = await supabase.from("uploads").insert([
+	const { error: dbError } = await supabaseAdmin.from("uploads").insert([
 		{
 			store_id: storeId,
 			file_path: filePath,
@@ -168,7 +183,7 @@ export async function getStoreUploads(
 	storeId: string,
 	fileType?: string
 ): Promise<Upload[]> {
-	let query = supabase
+	let query = supabaseAdmin
 		.from("uploads")
 		.select("*")
 		.eq("store_id", storeId)
@@ -188,7 +203,7 @@ export async function getStoreUploads(
 }
 
 export async function deleteFile(filePath: string): Promise<void> {
-	const { error } = await supabase.storage
+	const { error } = await supabaseAdmin.storage
 		.from("store-files")
 		.remove([filePath]);
 
@@ -197,5 +212,5 @@ export async function deleteFile(filePath: string): Promise<void> {
 	}
 
 	// Also remove from uploads table
-	await supabase.from("uploads").delete().eq("file_path", filePath);
+	await supabaseAdmin.from("uploads").delete().eq("file_path", filePath);
 }

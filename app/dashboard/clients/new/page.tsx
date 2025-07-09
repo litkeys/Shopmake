@@ -15,8 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Save, Upload, Image as ImageIcon } from "lucide-react";
-import { createStore, upsertStoreData, uploadFile } from "@/lib/supabase";
-import { useSupabaseClient } from "@/lib/supabase-client";
+import { createStoreAPI, updateStoreDataAPI, uploadFileAPI } from "@/lib/api";
 import { StoreFormData } from "@/types";
 import Link from "next/link";
 
@@ -40,7 +39,6 @@ function useDebounce<T>(value: T, delay: number): T {
 export default function NewClientPage() {
 	const router = useRouter();
 	const { userId } = useAuth();
-	const supabase = useSupabaseClient();
 	const [isLoading, setIsLoading] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
 	const [storeId, setStoreId] = useState<string | null>(null);
@@ -70,7 +68,7 @@ export default function NewClientPage() {
 
 		setIsSaving(true);
 		try {
-			await upsertStoreData(storeId, {
+			await updateStoreDataAPI(storeId, {
 				brand_name: debouncedFormData.brand_name,
 				description: debouncedFormData.description,
 				main_product_category: debouncedFormData.main_product_category,
@@ -122,10 +120,10 @@ export default function NewClientPage() {
 			reader.readAsDataURL(file);
 
 			// Upload to Supabase
-			const { url } = await uploadFile(storeId, file, "logo");
+			const { url } = await uploadFileAPI(storeId, file, "logo");
 
 			// Update store data with logo URL
-			await upsertStoreData(storeId, {
+			await updateStoreDataAPI(storeId, {
 				logo_url: url,
 			});
 
@@ -157,7 +155,7 @@ export default function NewClientPage() {
 			setIsLoading(true);
 			setError(null);
 
-			await uploadFile(storeId, file, `csv_${type}`);
+			await uploadFileAPI(storeId, file, `csv_${type}`);
 
 			setSuccess(`${type} CSV uploaded successfully`);
 			setTimeout(() => setSuccess(null), 2000);
@@ -191,13 +189,13 @@ export default function NewClientPage() {
 
 			// Create store if it doesn't exist
 			if (!currentStoreId) {
-				const newStore = await createStore(formData.brand_name, userId);
+				const newStore = await createStoreAPI(formData.brand_name);
 				currentStoreId = newStore.id;
 				setStoreId(currentStoreId);
 			}
 
 			// Save store data
-			await upsertStoreData(currentStoreId, {
+			await updateStoreDataAPI(currentStoreId, {
 				brand_name: formData.brand_name,
 				description: formData.description,
 				main_product_category: formData.main_product_category,

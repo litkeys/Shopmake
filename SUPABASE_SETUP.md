@@ -41,7 +41,7 @@ CREATE POLICY "Users can delete their own stores" ON stores
 ```sql
 CREATE TABLE store_data (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    store_id UUID REFERENCES stores(id) ON DELETE CASCADE,
+    store_id UUID REFERENCES stores(id) ON DELETE CASCADE UNIQUE,
     brand_name TEXT,
     description TEXT,
     main_product_category TEXT,

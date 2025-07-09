@@ -16,13 +16,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Save, Upload, Trash2, ExternalLink } from "lucide-react";
 import {
-	getStore,
-	getStoreData,
-	upsertStoreData,
-	uploadFile,
-	getStoreUploads,
-	deleteFile,
-} from "@/lib/supabase";
+	getStoreAPI,
+	updateStoreDataAPI,
+	uploadFileAPI,
+	getStoreUploadsAPI,
+	deleteFileAPI,
+} from "@/lib/api";
 import { Store, StoreData, StoreFormData, Upload as UploadType } from "@/types";
 import Link from "next/link";
 
@@ -88,12 +87,9 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			setIsLoading(true);
 			setError(null);
 
-			// Load store
-			const storeResult = await getStore(params.clientId);
-			if (!storeResult) {
-				setError("Store not found");
-				return;
-			}
+			// Load store and store data
+			const { store: storeResult, storeData: storeDataResult } =
+				await getStoreAPI(params.clientId);
 
 			// Check ownership
 			if (storeResult.created_by !== userId) {
@@ -103,14 +99,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 			setStore(storeResult);
 
-			// Update store name in form data
-			setFormData((prev) => ({
-				...prev,
-				brand_name: storeResult.name,
-			}));
-
-			// Load store data
-			const storeDataResult = await getStoreData(params.clientId);
+			// Set form data
 			if (storeDataResult) {
 				setStoreData(storeDataResult);
 				setFormData({
@@ -125,10 +114,16 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				if (storeDataResult.logo_url) {
 					setLogoPreview(storeDataResult.logo_url);
 				}
+			} else {
+				// No store data yet, use store name
+				setFormData((prev) => ({
+					...prev,
+					brand_name: storeResult.name,
+				}));
 			}
 
 			// Load uploads
-			const uploadsResult = await getStoreUploads(params.clientId);
+			const uploadsResult = await getStoreUploadsAPI(params.clientId);
 			setUploads(uploadsResult);
 		} catch (err) {
 			setError(
@@ -144,7 +139,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 		setIsSaving(true);
 		try {
-			await upsertStoreData(store.id, {
+			await updateStoreDataAPI(store.id, {
 				brand_name: debouncedFormData.brand_name,
 				description: debouncedFormData.description,
 				main_product_category: debouncedFormData.main_product_category,
@@ -196,15 +191,15 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			reader.readAsDataURL(file);
 
 			// Upload to Supabase
-			const { url } = await uploadFile(store.id, file, "logo");
+			const { url } = await uploadFileAPI(store.id, file, "logo");
 
 			// Update store data with logo URL
-			await upsertStoreData(store.id, {
+			await updateStoreDataAPI(store.id, {
 				logo_url: url,
 			});
 
 			// Refresh uploads
-			const uploadsResult = await getStoreUploads(store.id);
+			const uploadsResult = await getStoreUploadsAPI(store.id);
 			setUploads(uploadsResult);
 
 			setSuccess("Logo uploaded successfully");
@@ -235,10 +230,10 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			setIsLoading(true);
 			setError(null);
 
-			await uploadFile(store.id, file, `csv_${type}`);
+			await uploadFileAPI(store.id, file, `csv_${type}`);
 
 			// Refresh uploads
-			const uploadsResult = await getStoreUploads(store.id);
+			const uploadsResult = await getStoreUploadsAPI(store.id);
 			setUploads(uploadsResult);
 
 			setSuccess(`${type} CSV uploaded successfully`);
@@ -259,18 +254,18 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			setIsLoading(true);
 			setError(null);
 
-			await deleteFile(upload.file_path);
+			await deleteFileAPI(upload.file_path);
 
 			// If it's a logo, clear the preview
 			if (upload.file_type === "logo") {
 				setLogoPreview(null);
-				await upsertStoreData(store.id, {
-					logo_url: null,
+				await updateStoreDataAPI(store.id, {
+					logo_url: undefined,
 				});
 			}
 
 			// Refresh uploads
-			const uploadsResult = await getStoreUploads(store.id);
+			const uploadsResult = await getStoreUploadsAPI(store.id);
 			setUploads(uploadsResult);
 
 			setSuccess("File deleted successfully");
@@ -299,7 +294,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			setError(null);
 
 			// Save store data
-			await upsertStoreData(store.id, {
+			await updateStoreDataAPI(store.id, {
 				brand_name: formData.brand_name,
 				description: formData.description,
 				main_product_category: formData.main_product_category,
