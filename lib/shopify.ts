@@ -512,7 +512,7 @@ export class ShopifyClient {
 				body: JSON.stringify({
 					asset: {
 						key: assetKey,
-						value: `data:image/${extension};base64,${logoBase64}`,
+						value: logoBase64,
 					},
 				}),
 			});
@@ -639,6 +639,7 @@ export class ShopifyClient {
 
 		// Parse headers using proper CSV parsing (handle quoted fields)
 		const headers = this.parseCSVLine(lines[0]);
+		console.log("Headers found:", headers.slice(0, 30)); // Show first 30 headers for debugging
 
 		const products = [];
 
@@ -651,11 +652,29 @@ export class ShopifyClient {
 
 			const product: any = {};
 
+			// Debug first product only
+			if (i === 1) {
+				console.log(
+					`\nFirst product values (first 30):`,
+					values.slice(0, 30)
+				);
+			}
+
 			headers.forEach((header, index) => {
 				const value = values[index]?.trim();
 				if (!value) return;
 
 				const headerLower = header.toLowerCase().trim();
+
+				// Debug title and price mapping for first product
+				if (
+					i === 1 &&
+					(headerLower === "title" || headerLower === "variant price")
+				) {
+					console.log(
+						`Mapping "${header}" (${headerLower}) = "${value}"`
+					);
+				}
 
 				// Map common CSV headers to product fields
 				switch (headerLower) {
@@ -668,6 +687,7 @@ export class ShopifyClient {
 					case "description":
 					case "body":
 					case "body_html":
+					case "body (html)":
 					case "product description":
 						product.description = value;
 						break;
@@ -756,6 +776,20 @@ export class ShopifyClient {
 					product.description = `${product.title} - No description provided`;
 				}
 				products.push(product);
+
+				// Debug first 3 products
+				if (i <= 3) {
+					console.log(
+						`✓ Product ${i} added: "${product.title}" - $${product.price}`
+					);
+				}
+			} else {
+				// Debug first 3 products that fail
+				if (i <= 3) {
+					console.log(
+						`✗ Product ${i} failed: title="${product.title}", price="${product.price}"`
+					);
+				}
 			}
 		}
 
