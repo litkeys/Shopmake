@@ -194,49 +194,6 @@ export class ShopifyClient {
 		return data;
 	}
 
-	private async makeGraphQLRequest<T>(
-		query: string,
-		variables: any = {}
-	): Promise<T> {
-		const url = `https://${this.shop}.myshopify.com/admin/api/2025-01/graphql.json`;
-
-		console.log("Making Shopify GraphQL request");
-		console.log("Variables:", JSON.stringify(variables, null, 2));
-
-		const response = await fetch(url, {
-			method: "POST",
-			headers: {
-				"X-Shopify-Access-Token": this.accessToken,
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify({
-				query,
-				variables,
-			}),
-		});
-
-		console.log("GraphQL response status:", response.status);
-		console.log("GraphQL response ok:", response.ok);
-
-		if (!response.ok) {
-			const errorText = await response.text();
-			console.error("Shopify GraphQL error response:", errorText);
-			throw new Error(
-				`Shopify GraphQL error: ${response.status} ${response.statusText} - ${errorText}`
-			);
-		}
-
-		const data = await response.json();
-		console.log("GraphQL response data:", JSON.stringify(data, null, 2));
-
-		if (data.errors) {
-			console.error("GraphQL errors:", data.errors);
-			throw new Error(`GraphQL error: ${data.errors[0].message}`);
-		}
-
-		return data;
-	}
-
 	// Upload and install theme using direct URL (most reliable method)
 	async uploadTheme(themeName: string): Promise<{ theme_id: number }> {
 		try {
@@ -496,581 +453,72 @@ export class ShopifyClient {
 		barcode?: string;
 		images?: string[];
 	}): Promise<{ product_id: number }> {
-		try {
-			console.log(`🛍️ Creating product: ${product.title}`);
+		const variants = [
+			{
+				price: product.price,
+				compare_at_price: product.compare_at_price,
+				inventory_quantity: product.inventory_quantity || 0,
+				weight: product.weight,
+				requires_shipping: product.requires_shipping !== false,
+				taxable: product.taxable !== false,
+				sku: product.sku,
+				barcode: product.barcode,
+			},
+		];
 
-			// Use REST API for simplicity and compatibility - 2025 version still supports it
-			const variants = [
-				{
-					price: product.price,
-					compare_at_price: product.compare_at_price,
-					inventory_quantity: product.inventory_quantity || 0,
-					weight: product.weight,
-					requires_shipping: product.requires_shipping !== false,
-					taxable: product.taxable !== false,
-					sku: product.sku,
-					barcode: product.barcode,
-				},
-			];
+		const images = product.images?.map((src) => ({ src })) || [];
 
-			// Don't include images directly in REST API - they cause corruption
-			// Create product first, then add images separately
-			const result = await this.makeRequest<{ product: { id: number } }>(
-				"/products.json",
-				{
-					method: "POST",
-					body: JSON.stringify({
-						product: {
-							title: product.title,
-							body_html: product.description,
-							vendor: product.vendor || "",
-							product_type: product.product_type || "",
-							variants: variants,
-							published: true,
-						},
-					}),
-				}
-			);
-
-			const productId = result.product.id;
-			console.log(
-				`✅ Product created: ${product.title} (ID: ${productId})`
-			);
-
-			// Add images using separate API calls for better success rate
-			if (product.images && product.images.length > 0) {
-				await this.addProductImages(productId, product.images);
+		const result = await this.makeRequest<{ product: { id: number } }>(
+			"/products.json",
+			{
+				method: "POST",
+				body: JSON.stringify({
+					product: {
+						title: product.title,
+						body_html: product.description,
+						vendor: product.vendor || "",
+						product_type: product.product_type || "",
+						variants: variants,
+						images: images,
+						published: true,
+					},
+				}),
 			}
+		);
 
-			return { product_id: productId };
-		} catch (error) {
-			console.error(`❌ Error creating product ${product.title}:`, error);
-			throw error;
-		}
-	}
-
-	async addProductImages(
-		productId: number,
-		imageUrls: string[]
-	): Promise<void> {
-		try {
-			console.log(
-				`🖼️ Adding ${imageUrls.length} images to product ${productId}`
-			);
-
-			for (let i = 0; i < imageUrls.length; i++) {
-				const imageUrl = imageUrls[i].trim();
-				if (!imageUrl) continue;
-
-				try {
-					console.log(
-						`📸 Adding image ${i + 1}/${
-							imageUrls.length
-						}: ${imageUrl}`
-					);
-
-					// Use REST API to add image - more reliable than GraphQL for this
-					await this.makeRequest(
-						`/products/${productId}/images.json`,
-						{
-							method: "POST",
-							body: JSON.stringify({
-								image: {
-									src: imageUrl,
-									alt: `Product image ${i + 1}`,
-								},
-							}),
-						}
-					);
-
-					console.log(`✅ Image ${i + 1} added successfully`);
-				} catch (imageError) {
-					console.warn(`⚠️ Error adding image ${i + 1}:`, imageError);
-					// Continue with other images
-				}
-			}
-
-			console.log(`🖼️ Finished adding images to product ${productId}`);
-		} catch (error) {
-			console.error("❌ Error adding product images:", error);
-			// Don't throw - images are not critical for product creation
-		}
+		return { product_id: result.product.id };
 	}
 
 	// Set theme logo
-	async uploadLogoToFiles(logoUrl: string): Promise<string | null> {
+	async setThemeLogo(themeId: number, logoUrl: string): Promise<void> {
 		try {
-			console.log("🔄 Uploading logo using modern Shopify Files API...");
-
-			// Step 1: Download the logo file
+			// Download and upload logo as theme asset
 			const logoResponse = await fetch(logoUrl);
 			if (!logoResponse.ok) {
 				throw new Error(`Failed to fetch logo: ${logoResponse.status}`);
 			}
 
 			const logoBuffer = await logoResponse.arrayBuffer();
-			const logoSize = logoBuffer.byteLength;
-
-			// Get file extension and MIME type
-			const urlParts = logoUrl.split(".");
-			const extension = urlParts[urlParts.length - 1]
-				.split("?")[0]
-				.toLowerCase();
-			const mimeType = this.getMimeType(extension);
-			const filename = `store-logo.${extension}`;
-
-			console.log(
-				`📁 File details: ${filename}, size: ${logoSize} bytes, type: ${mimeType}`
-			);
-
-			// Step 2: Create staged upload using GraphQL
-			const stagedUploadMutation = `
-				mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
-					stagedUploadsCreate(input: $input) {
-						stagedTargets {
-							resourceUrl
-							url
-							parameters {
-								name
-								value
-							}
-						}
-						userErrors {
-							field
-							message
-						}
-					}
-				}
-			`;
-
-			const stagedUploadVariables = {
-				input: [
-					{
-						filename: filename,
-						httpMethod: "POST",
-						mimeType: mimeType,
-						resource: "FILE",
-						fileSize: logoSize.toString(),
-					},
-				],
-			};
-
-			console.log("🚀 Creating staged upload...");
-			const stagedResponse = await this.makeGraphQLRequest<{
-				data: {
-					stagedUploadsCreate: {
-						stagedTargets: Array<{
-							resourceUrl: string;
-							url: string;
-							parameters: Array<{ name: string; value: string }>;
-						}>;
-						userErrors: Array<{ field: string; message: string }>;
-					};
-				};
-			}>(stagedUploadMutation, stagedUploadVariables);
-
-			if (
-				stagedResponse.data.stagedUploadsCreate.userErrors?.length > 0
-			) {
-				throw new Error(
-					`Staged upload error: ${stagedResponse.data.stagedUploadsCreate.userErrors[0].message}`
-				);
-			}
-
-			const stagedTarget =
-				stagedResponse.data.stagedUploadsCreate.stagedTargets[0];
-			const { url, parameters, resourceUrl } = stagedTarget;
-
-			console.log("📤 Uploading file to staged target...");
-
-			// Step 3: Upload file to staged target using proper form data
-			const formData = new FormData();
-
-			// Add all parameters from Shopify
-			parameters.forEach((param: { name: string; value: string }) => {
-				formData.append(param.name, param.value);
-			});
-
-			// Add the file data as Blob
-			const fileBlob = new Blob([logoBuffer], { type: mimeType });
-			formData.append("file", fileBlob, filename);
-
-			const uploadResponse = await fetch(url, {
-				method: "POST",
-				body: formData,
-			});
-
-			if (!uploadResponse.ok) {
-				const errorText = await uploadResponse.text();
-				throw new Error(
-					`File upload failed: ${uploadResponse.status} - ${errorText}`
-				);
-			}
-
-			console.log("✅ File uploaded to staged target successfully");
-
-			// Step 4: Create file in Shopify Files
-			const createFileMutation = `
-				mutation fileCreate($files: [FileCreateInput!]!) {
-					fileCreate(files: $files) {
-						files {
-							id
-							alt
-							fileStatus
-							... on MediaImage {
-								id
-								alt
-								image {
-									id
-									url
-									width
-									height
-								}
-								preview {
-									image {
-										url
-									}
-								}
-							}
-							... on GenericFile {
-								id
-								alt
-								url
-							}
-						}
-						userErrors {
-							field
-							message
-						}
-					}
-				}
-			`;
-
-			const createFileVariables = {
-				files: [
-					{
-						alt: "Store Logo",
-						contentType: "IMAGE",
-						originalSource: resourceUrl,
-					},
-				],
-			};
-
-			console.log("📁 Creating file in Shopify Files...");
-			const fileResponse = await this.makeGraphQLRequest<{
-				data: {
-					fileCreate: {
-						files: Array<{
-							id: string;
-							alt: string;
-							fileStatus: string;
-							image?: {
-								id: string;
-								url: string;
-								width?: number;
-								height?: number;
-							};
-							preview?: {
-								image: {
-									url: string;
-								};
-							};
-							url?: string; // for GenericFile
-						}>;
-						userErrors: Array<{ field: string; message: string }>;
-					};
-				};
-			}>(createFileMutation, createFileVariables);
-
-			if (fileResponse.data.fileCreate.userErrors?.length > 0) {
-				throw new Error(
-					`File create error: ${fileResponse.data.fileCreate.userErrors[0].message}`
-				);
-			}
-
-			console.log(
-				"📋 File creation response:",
-				JSON.stringify(fileResponse.data.fileCreate, null, 2)
-			);
-
-			const createdFile = fileResponse.data.fileCreate.files[0];
-			console.log(
-				"📋 Created file structure:",
-				JSON.stringify(createdFile, null, 2)
-			);
-
-			// Try multiple possible URL locations
-			let imageUrl: string | undefined;
-
-			if (createdFile.image?.url) {
-				imageUrl = createdFile.image.url;
-				console.log("✅ Found URL in image.url:", imageUrl);
-			} else if (createdFile.preview?.image?.url) {
-				imageUrl = createdFile.preview.image.url;
-				console.log("✅ Found URL in preview.image.url:", imageUrl);
-			} else if (createdFile.url) {
-				imageUrl = createdFile.url;
-				console.log("✅ Found URL in direct url field:", imageUrl);
-			} else {
-				// Image processing might be happening asynchronously - poll for it
-				console.log(
-					"⏳ Image URL not available yet, polling for processing completion..."
-				);
-				const polledUrl = await this.pollForImageUrl(createdFile.id);
-				imageUrl = polledUrl || undefined;
-			}
-
-			if (!imageUrl) {
-				console.error(
-					"❌ No image URL found after polling. Full file object:",
-					createdFile
-				);
-				throw new Error(
-					"No image URL returned from file creation after polling"
-				);
-			}
-
-			console.log(
-				`✅ Logo uploaded to Shopify Files successfully: ${imageUrl}`
-			);
-
-			return imageUrl;
-		} catch (error) {
-			console.error("❌ Error uploading logo to Files:", error);
-			return null;
-		}
-	}
-
-	private async pollForImageUrl(fileId: string): Promise<string | null> {
-		const maxAttempts = 10;
-		const delayMs = 2000; // 2 seconds between attempts
-
-		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-			try {
-				console.log(
-					`⏳ Polling attempt ${attempt}/${maxAttempts} for file ${fileId}...`
-				);
-
-				const fileQuery = `
-					query getFile($id: ID!) {
-						file: node(id: $id) {
-							... on MediaImage {
-								id
-								alt
-								image {
-									id
-									url
-									width
-									height
-								}
-								preview {
-									image {
-										url
-									}
-								}
-							}
-							... on GenericFile {
-								id
-								alt
-								url
-							}
-						}
-					}
-				`;
-
-				const response = await this.makeGraphQLRequest<{
-					data: {
-						file: {
-							id: string;
-							alt: string;
-							image?: {
-								id: string;
-								url: string;
-								width?: number;
-								height?: number;
-							};
-							preview?: {
-								image: {
-									url: string;
-								};
-							};
-							url?: string;
-						};
-					};
-				}>(fileQuery, { id: fileId });
-
-				const file = response.data.file;
-
-				if (file.image?.url) {
-					console.log(
-						`✅ Found URL after ${attempt} attempts: ${file.image.url}`
-					);
-					return file.image.url;
-				} else if (file.preview?.image?.url) {
-					console.log(
-						`✅ Found preview URL after ${attempt} attempts: ${file.preview.image.url}`
-					);
-					return file.preview.image.url;
-				} else if (file.url) {
-					console.log(
-						`✅ Found direct URL after ${attempt} attempts: ${file.url}`
-					);
-					return file.url;
-				}
-
-				console.log(
-					`⏳ Attempt ${attempt}: Image still processing, waiting ${delayMs}ms...`
-				);
-				await new Promise((resolve) => setTimeout(resolve, delayMs));
-			} catch (error) {
-				console.error(
-					`❌ Error during polling attempt ${attempt}:`,
-					error
-				);
-				if (attempt === maxAttempts) {
-					return null;
-				}
-				await new Promise((resolve) => setTimeout(resolve, delayMs));
-			}
-		}
-
-		console.error(
-			`❌ Image URL not available after ${maxAttempts} attempts`
-		);
-		return null;
-	}
-
-	// Copy logo file into theme assets folder
-	private async copyLogoToThemeAssets(
-		themeId: number,
-		logoUrl: string
-	): Promise<string | null> {
-		try {
-			console.log(`📁 Copying logo to theme ${themeId} assets folder...`);
-
-			// Step 1: Download the logo file from the provided URL
-			const logoResponse = await fetch(logoUrl);
-			if (!logoResponse.ok) {
-				throw new Error(`Failed to fetch logo: ${logoResponse.status}`);
-			}
-
-			const logoBuffer = await logoResponse.arrayBuffer();
+			const logoBase64 = Buffer.from(logoBuffer).toString("base64");
 
 			// Get file extension from URL
 			const urlParts = logoUrl.split(".");
-			const extension = urlParts[urlParts.length - 1]
-				.split("?")[0]
-				.toLowerCase();
+			const extension = urlParts[urlParts.length - 1].split("?")[0];
+			const assetKey = `assets/logo.${extension}`;
 
-			const assetFileName = `logo.${extension}`;
-			const logoBase64 = Buffer.from(logoBuffer).toString("base64");
-
-			console.log(`📤 Uploading ${assetFileName} to theme assets...`);
-
-			// Step 2: Upload the logo directly to theme assets folder
+			// Upload logo as theme asset
 			await this.makeRequest(`/themes/${themeId}/assets.json`, {
 				method: "PUT",
 				body: JSON.stringify({
 					asset: {
-						key: `assets/${assetFileName}`,
-						value: logoBase64,
+						key: assetKey,
+						value: `data:image/${extension};base64,${logoBase64}`,
 					},
 				}),
 			});
-
-			console.log("✅ Logo successfully copied to theme assets");
-
-			// Step 3: Update theme settings to reference the asset
-			const assetReference = assetFileName; // Just the filename for theme settings
-			const settingsUpdated = await this.updateThemeSettingsWithLogo(
-				themeId,
-				assetReference
-			);
-
-			if (!settingsUpdated) {
-				console.log(
-					"⚠️ Logo uploaded but theme settings update failed"
-				);
-			}
-
-			return assetReference;
 		} catch (error) {
-			console.error("❌ Error copying logo to theme assets:", error);
-			return null;
-		}
-	}
-
-	// Update theme settings to reference the logo asset
-	private async updateThemeSettingsWithLogo(
-		themeId: number,
-		logoAssetName: string
-	): Promise<boolean> {
-		try {
-			console.log(
-				`🎨 Updating theme settings to reference ${logoAssetName}...`
-			);
-
-			// Get current theme settings
-			const currentSettings = await this.makeRequest<{
-				asset: { value: string };
-			}>(
-				`/themes/${themeId}/assets.json?asset[key]=config/settings_data.json`
-			);
-
-			let settingsData: any = {};
-			try {
-				settingsData = JSON.parse(currentSettings.asset.value);
-			} catch (parseError) {
-				console.log("Creating new settings data structure");
-				settingsData = {
-					current: {},
-					presets: {},
-				};
-			}
-
-			// Update the logo reference in theme settings
-			if (!settingsData.current) {
-				settingsData.current = {};
-			}
-
-			// Set logo reference using just the asset filename (not full URL)
-			settingsData.current.logo = logoAssetName;
-			settingsData.current.header_logo = logoAssetName;
-			settingsData.current.site_logo = logoAssetName;
-
-			// Update the theme settings
-			await this.makeRequest(`/themes/${themeId}/assets.json`, {
-				method: "PUT",
-				body: JSON.stringify({
-					asset: {
-						key: "config/settings_data.json",
-						value: JSON.stringify(settingsData),
-					},
-				}),
-			});
-
-			console.log("✅ Theme settings updated with logo reference");
-			return true;
-		} catch (error) {
-			console.error("❌ Error updating theme settings:", error);
-			return false;
-		}
-	}
-
-	private getMimeType(extension: string): string {
-		const ext = extension.toLowerCase();
-		switch (ext) {
-			case "jpg":
-			case "jpeg":
-				return "image/jpeg";
-			case "png":
-				return "image/png";
-			case "gif":
-				return "image/gif";
-			case "webp":
-				return "image/webp";
-			default:
-				return "image/jpeg";
+			console.error("Error setting theme logo:", error);
+			throw error;
 		}
 	}
 
@@ -1166,7 +614,7 @@ export class ShopifyClient {
 		}
 	}
 
-	// Parse product CSV data with enhanced debugging and field mapping
+	// Parse product CSV data
 	private parseProductCSV(csvText: string): Array<{
 		title: string;
 		description: string;
@@ -1182,43 +630,15 @@ export class ShopifyClient {
 		barcode?: string;
 		images?: string[];
 	}> {
-		console.log("🔍 Starting CSV parsing...");
-
 		// Split by newlines and filter empty lines
 		const lines = csvText.split(/\r?\n/).filter((line) => line.trim());
-		console.log(`📄 CSV has ${lines.length} lines (including header)`);
 
 		if (lines.length <= 1) {
-			console.log("❌ No data rows found in CSV");
 			return [];
 		}
 
 		// Parse headers using proper CSV parsing (handle quoted fields)
 		const headers = this.parseCSVLine(lines[0]);
-		console.log(
-			`📝 Found ${headers.length} headers:`,
-			headers.slice(0, 10),
-			"..."
-		); // Show first 10 headers
-
-		// Find key column indices for debugging
-		const titleIndex = headers.findIndex((h) => /^title$/i.test(h.trim()));
-		const priceIndex = headers.findIndex((h) =>
-			/^variant price$/i.test(h.trim())
-		);
-		const descriptionIndex = headers.findIndex((h) =>
-			/^body \(html\)$/i.test(h.trim())
-		);
-		const imageIndex = headers.findIndex((h) =>
-			/^image src$/i.test(h.trim())
-		);
-		const vendorIndex = headers.findIndex((h) =>
-			/^vendor$/i.test(h.trim())
-		);
-
-		console.log(
-			`🎯 Key column indices - Title: ${titleIndex}, Price: ${priceIndex}, Description: ${descriptionIndex}, Image: ${imageIndex}, Vendor: ${vendorIndex}`
-		);
 
 		const products = [];
 
@@ -1226,26 +646,18 @@ export class ShopifyClient {
 			const values = this.parseCSVLine(lines[i]);
 
 			if (values.length === 0) {
-				console.log(`⚠️ Skipping empty row ${i}`);
 				continue;
-			}
-
-			// Debug first few rows
-			if (i <= 3) {
-				console.log(
-					`🔍 Row ${i} has ${values.length} values - Title: "${values[titleIndex]}", Price: "${values[priceIndex]}", Vendor: "${values[vendorIndex]}"`
-				);
 			}
 
 			const product: any = {};
 
 			headers.forEach((header, index) => {
 				const value = values[index]?.trim();
-				if (!value || value === "") return;
+				if (!value) return;
 
 				const headerLower = header.toLowerCase().trim();
 
-				// Enhanced mapping with exact matches from the CSV
+				// Map common CSV headers to product fields
 				switch (headerLower) {
 					case "title":
 					case "name":
@@ -1253,7 +665,6 @@ export class ShopifyClient {
 					case "product name":
 						product.title = value;
 						break;
-					case "body (html)":
 					case "description":
 					case "body":
 					case "body_html":
@@ -1265,26 +676,23 @@ export class ShopifyClient {
 					case "manufacturer":
 						product.vendor = value;
 						break;
-					case "type":
 					case "product_type":
+					case "type":
 					case "category":
 					case "product type":
-					case "product category":
 						product.product_type = value;
 						break;
-					case "variant price":
 					case "price":
 					case "variant_price":
+					case "variant price":
 					case "unit price":
 					case "cost":
-						// Remove currency symbols and spaces, handle various formats
+						// Remove currency symbols and spaces
 						const cleanPrice = value.replace(/[$£€¥,\s]/g, "");
-						const numPrice = parseFloat(cleanPrice);
-						if (!isNaN(numPrice) && numPrice > 0) {
-							product.price = numPrice.toFixed(2);
+						if (!isNaN(parseFloat(cleanPrice))) {
+							product.price = cleanPrice;
 						}
 						break;
-					case "variant compare at price":
 					case "compare_at_price":
 					case "compare_price":
 					case "msrp":
@@ -1293,14 +701,12 @@ export class ShopifyClient {
 							/[$£€¥,\s]/g,
 							""
 						);
-						const numComparePrice = parseFloat(cleanComparePrice);
-						if (!isNaN(numComparePrice) && numComparePrice > 0) {
-							product.compare_at_price =
-								numComparePrice.toFixed(2);
+						if (!isNaN(parseFloat(cleanComparePrice))) {
+							product.compare_at_price = cleanComparePrice;
 						}
 						break;
-					case "variant inventory qty":
 					case "inventory_quantity":
+					case "variant inventory qty":
 					case "quantity":
 					case "stock":
 					case "inventory":
@@ -1309,103 +715,50 @@ export class ShopifyClient {
 							product.inventory_quantity = qty;
 						}
 						break;
-					case "variant grams":
 					case "weight":
-						// Convert grams to pounds for Shopify (if it's in grams)
-						let weight = parseFloat(value);
+						const weight = parseFloat(value);
 						if (!isNaN(weight)) {
-							// If value is very large, assume it's in grams and convert to pounds
-							if (weight > 1000) {
-								weight = weight / 453.592; // Convert grams to pounds
-							}
-							product.weight = Math.round(weight * 100) / 100; // Round to 2 decimal places
+							product.weight = weight;
 						}
 						break;
-					case "variant sku":
 					case "sku":
 					case "product code":
 						product.sku = value;
 						break;
-					case "variant barcode":
 					case "barcode":
 					case "upc":
 					case "ean":
 						product.barcode = value;
 						break;
-					case "image src":
 					case "image":
 					case "image_src":
+					case "image src":
 					case "images":
 					case "image url":
 					case "photo":
 						if (value.includes("http")) {
-							// Handle multiple images separated by commas or semicolons
+							// Handle multiple images separated by commas
 							const imageUrls = value
-								.split(/[,;]/)
+								.split(",")
 								.map((url) => url.trim())
-								.filter(
-									(url) =>
-										url.includes("http") && url.length > 10
-								);
+								.filter((url) => url.includes("http"));
 							if (imageUrls.length > 0) {
 								product.images = imageUrls;
 							}
 						}
 						break;
-					case "variant requires shipping":
-					case "requires_shipping":
-						product.requires_shipping =
-							value.toLowerCase() === "true" ||
-							value.toLowerCase() === "yes";
-						break;
-					case "variant taxable":
-					case "taxable":
-						product.taxable =
-							value.toLowerCase() === "true" ||
-							value.toLowerCase() === "yes";
-						break;
 				}
 			});
 
-			// Enhanced validation and debug logging
+			// Ensure required fields
 			if (product.title && product.price) {
 				if (!product.description) {
 					product.description = `${product.title} - No description provided`;
 				}
-
-				// Ensure required defaults
-				if (product.requires_shipping === undefined)
-					product.requires_shipping = true;
-				if (product.taxable === undefined) product.taxable = true;
-				if (!product.inventory_quantity) product.inventory_quantity = 0;
-
 				products.push(product);
-
-				// Log first few successful products
-				if (products.length <= 3) {
-					console.log(
-						`✅ Product ${products.length}: "${
-							product.title
-						}" - Price: $${product.price}, Images: ${
-							product.images?.length || 0
-						}`
-					);
-				}
-			} else {
-				if (i <= 5) {
-					// Debug first few failed rows
-					console.log(
-						`❌ Row ${i} missing required fields - Title: "${product.title}", Price: "${product.price}"`
-					);
-				}
 			}
 		}
 
-		console.log(
-			`🎉 Successfully parsed ${products.length} products from ${
-				lines.length - 1
-			} CSV rows`
-		);
 		return products;
 	}
 
@@ -1414,47 +767,32 @@ export class ShopifyClient {
 		const result = [];
 		let current = "";
 		let inQuotes = false;
-		let i = 0;
 
-		while (i < line.length) {
+		for (let i = 0; i < line.length; i++) {
 			const char = line[i];
 
 			if (char === '"') {
-				if (!inQuotes) {
-					// Starting a quoted field
-					inQuotes = true;
-				} else if (i + 1 < line.length && line[i + 1] === '"') {
-					// Escaped quote (double quote)
+				if (inQuotes && line[i + 1] === '"') {
+					// Escaped quote
 					current += '"';
-					i++; // Skip the next quote
+					i++; // Skip next quote
 				} else {
-					// Ending a quoted field
-					inQuotes = false;
+					// Toggle quote state
+					inQuotes = !inQuotes;
 				}
 			} else if (char === "," && !inQuotes) {
-				// Field separator (only when not in quotes)
-				result.push(current);
+				// End of field
+				result.push(current.trim());
 				current = "";
 			} else {
-				// Regular character
 				current += char;
 			}
-
-			i++;
 		}
 
 		// Add the last field
-		result.push(current);
+		result.push(current.trim());
 
-		// Clean up the results (remove surrounding quotes and trim)
-		return result.map((field) => {
-			let cleaned = field.trim();
-			// Remove surrounding quotes if present
-			if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
-				cleaned = cleaned.slice(1, -1);
-			}
-			return cleaned;
-		});
+		return result;
 	}
 
 	// Update store branding
@@ -1472,39 +810,14 @@ export class ShopifyClient {
 		try {
 			console.log("Updating store branding...");
 
-			// 1. Upload logo to Shopify Files if available
+			// 1. Upload logo to theme settings if available
 			if (storeData.logo_url) {
 				try {
-					const logoFileUrl = await this.uploadLogoToFiles(
-						storeData.logo_url
-					);
-
-					if (logoFileUrl) {
-						console.log(
-							"Logo successfully uploaded to Shopify Files"
-						);
-
-						// Copy logo to theme assets
-						const logoAssetName = await this.copyLogoToThemeAssets(
-							themeId,
-							logoFileUrl
-						);
-						logo_uploaded = !!logoAssetName;
-
-						if (logoAssetName) {
-							console.log(
-								"Logo successfully integrated into theme"
-							);
-						} else {
-							console.log(
-								"Logo uploaded but failed to integrate into theme"
-							);
-						}
-					} else {
-						console.log("Logo upload to Shopify Files failed");
-					}
+					await this.setThemeLogo(themeId, storeData.logo_url);
+					logo_uploaded = true;
+					console.log("Logo successfully uploaded to theme");
 				} catch (logoError) {
-					console.error("Error uploading logo to Files:", logoError);
+					console.error("Error uploading logo to theme:", logoError);
 				}
 			}
 
