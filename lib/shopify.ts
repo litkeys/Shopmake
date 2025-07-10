@@ -554,19 +554,35 @@ export class ShopifyClient {
 				}
 
 				// Update logo setting (Genesis theme uses "logo" as the main setting)
-				// For theme settings image_picker fields, use just the filename without any prefix
-				const logoFilename = assetKey.replace("assets/", "");
-				const logoSettings = {
-					logo: logoFilename, // Primary logo setting for Genesis theme
-					logo_image: logoFilename, // Fallback for other themes
-					header_logo: logoFilename, // Common alternative
-					site_logo: logoFilename, // Another common alternative
-					brand_logo: logoFilename,
-					main_logo: logoFilename,
-				};
+				// Debug: Log current settings structure
+				console.log(
+					"Current theme settings structure:",
+					JSON.stringify(settingsData, null, 2)
+				);
 
-				// Apply all possible logo setting names
-				Object.assign(settingsData.current, logoSettings);
+				// For theme settings image_picker fields, try different URL formats
+				const logoFilename = assetKey.replace("assets/", "");
+				console.log(
+					`Asset key: ${assetKey}, Logo filename: ${logoFilename}`
+				);
+
+				// Try different approaches based on Shopify documentation
+				const logoFormats = [
+					logoFilename, // Just filename: "logo.jpg"
+					`file://${assetKey}`, // File protocol with full path: "file://assets/logo.jpg"
+					`file://${logoFilename}`, // File protocol with filename: "file://logo.jpg"
+					`shopify://theme_asset/${logoFilename}`, // Shopify theme asset URL
+				];
+
+				console.log("Trying logo formats:", logoFormats);
+
+				// Try setting just the primary logo with the first format
+				settingsData.current.logo = logoFilename;
+
+				console.log(
+					"Updated settings data (logo only):",
+					JSON.stringify(settingsData.current, null, 2)
+				);
 
 				// Update the settings file
 				await this.makeRequest(`/themes/${themeId}/assets.json`, {
@@ -580,12 +596,20 @@ export class ShopifyClient {
 				});
 
 				console.log(
-					`Logo settings updated in theme settings with multiple setting names`
+					`Logo setting updated successfully with filename: ${logoFilename}`
 				);
 			} catch (settingsError) {
+				console.error("Detailed settings error:", settingsError);
+
+				// Don't throw error - logo asset was uploaded successfully
 				console.warn(
-					"Could not update theme settings, but logo asset was uploaded:",
-					settingsError
+					"Theme settings update failed, but logo asset was uploaded and can be used in templates"
+				);
+				console.log(
+					`Logo asset reference for templates: {{ '${assetKey.replace(
+						"assets/",
+						""
+					)}' | asset_url }}`
 				);
 			}
 		} catch (error) {
