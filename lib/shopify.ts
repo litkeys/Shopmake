@@ -149,6 +149,40 @@ export class ShopifyClient {
 					"Insufficient Shopify permissions. Please reconnect your store with the required permissions."
 				);
 			}
+
+			if (response.status === 422) {
+				// Parse the error response to get more specific information
+				try {
+					const errorData = JSON.parse(errorText);
+					if (errorData.errors) {
+						const errorMessages = Object.entries(errorData.errors)
+							.map(
+								([field, messages]) =>
+									`${field}: ${
+										Array.isArray(messages)
+											? messages.join(", ")
+											: messages
+									}`
+							)
+							.join("; ");
+						throw new Error(
+							`Shopify validation error: ${errorMessages}`
+						);
+					}
+				} catch (parseError) {
+					console.error(
+						"Could not parse 422 error response:",
+						parseError
+					);
+				}
+				throw new Error(
+					`Shopify validation error: ${errorText.substring(
+						0,
+						200
+					)}...`
+				);
+			}
+
 			throw new Error(
 				`Shopify API error: ${response.status} ${response.statusText} - ${errorText}`
 			);
@@ -162,10 +196,16 @@ export class ShopifyClient {
 	// Upload and install theme
 	async uploadTheme(themeName: string): Promise<{ theme_id: number }> {
 		try {
+			console.log(
+				"Starting theme upload. Theme URL:",
+				SHOPIFY_CONFIG.GENESIS_THEME_URL
+			);
+
 			let themeBuffer: ArrayBuffer;
 
 			// Check if Genesis theme URL is a Supabase storage URL
 			if (SHOPIFY_CONFIG.GENESIS_THEME_URL.includes("supabase")) {
+				console.log("Downloading theme from Supabase storage...");
 				// For Supabase storage, we need to handle authentication
 				const { supabaseAdmin } = await import("./supabase");
 
@@ -177,6 +217,13 @@ export class ShopifyClient {
 					pathParts.findIndex((part) => part === "public") + 1;
 				const bucketName = pathParts[bucketIndex];
 				const filePath = pathParts.slice(bucketIndex + 1).join("/");
+
+				console.log(
+					"Supabase bucket:",
+					bucketName,
+					"File path:",
+					filePath
+				);
 
 				// Download from Supabase storage
 				const { data, error } = await supabaseAdmin.storage
@@ -191,19 +238,39 @@ export class ShopifyClient {
 
 				themeBuffer = await data.arrayBuffer();
 			} else {
+				console.log("Downloading theme from external URL...");
 				// Download from external URL
 				const themeResponse = await fetch(
 					SHOPIFY_CONFIG.GENESIS_THEME_URL
 				);
+				console.log(
+					"Theme download response status:",
+					themeResponse.status
+				);
 				if (!themeResponse.ok) {
 					throw new Error(
-						`Failed to download Genesis theme: ${themeResponse.statusText}`
+						`Failed to download Genesis theme: ${themeResponse.status} ${themeResponse.statusText}`
 					);
 				}
 				themeBuffer = await themeResponse.arrayBuffer();
 			}
 
 			const themeBase64 = Buffer.from(themeBuffer).toString("base64");
+
+			console.log("Theme file size:", themeBuffer.byteLength, "bytes");
+			console.log("Base64 size:", themeBase64.length, "characters");
+
+			// Shopify has a limit on theme upload size - typically around 10MB
+			const maxSizeBytes = 10 * 1024 * 1024; // 10MB
+			if (themeBuffer.byteLength > maxSizeBytes) {
+				throw new Error(
+					`Theme file too large: ${(
+						themeBuffer.byteLength /
+						1024 /
+						1024
+					).toFixed(2)}MB. Maximum allowed is 10MB.`
+				);
+			}
 
 			// Create theme via Shopify API
 			const result = await this.makeRequest<{ theme: { id: number } }>(
