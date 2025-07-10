@@ -123,7 +123,8 @@ export async function POST(request: NextRequest) {
 
 		return NextResponse.json({
 			success: true,
-			message: "Store generated successfully!",
+			message:
+				"Store generated successfully! Theme installation and publishing completed.",
 			data: {
 				store_domain: shopifyToken.shopify_store_domain,
 				theme_id: result.theme_id,

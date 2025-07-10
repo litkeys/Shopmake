@@ -221,6 +221,9 @@ export class ShopifyClient {
 			const themeId = result.theme.id;
 			console.log("Successfully created theme with ID:", themeId);
 
+			// Wait for theme installation to complete
+			await this.waitForThemeInstallation(themeId);
+
 			return { theme_id: themeId };
 		} catch (error) {
 			console.error("Error uploading theme:", error);
@@ -229,6 +232,67 @@ export class ShopifyClient {
 			console.log("Direct URL upload failed, trying base64 method...");
 			return this.uploadThemeBase64(themeName);
 		}
+	}
+
+	// Wait for theme installation to complete
+	private async waitForThemeInstallation(themeId: number): Promise<void> {
+		console.log("Waiting for theme installation to complete...");
+		const maxWaitTime = 180000; // 3 minutes max
+		const pollInterval = 5000; // Check every 5 seconds
+		const startTime = Date.now();
+
+		while (Date.now() - startTime < maxWaitTime) {
+			try {
+				// Get theme status
+				const theme = await this.makeRequest<{
+					theme: {
+						id: number;
+						processing?: boolean;
+						created_at: string;
+						updated_at: string;
+					};
+				}>(`/themes/${themeId}.json`);
+
+				console.log("Theme status check:", {
+					id: theme.theme.id,
+					processing: theme.theme.processing,
+					created_at: theme.theme.created_at,
+					updated_at: theme.theme.updated_at,
+				});
+
+				// If theme is not processing and has been updated since creation, it's ready
+				if (!theme.theme.processing) {
+					const createdTime = new Date(
+						theme.theme.created_at
+					).getTime();
+					const updatedTime = new Date(
+						theme.theme.updated_at
+					).getTime();
+
+					// If updated time is significantly after created time, installation is complete
+					if (updatedTime > createdTime + 10000) {
+						// 10 second buffer
+						console.log("Theme installation completed!");
+						return;
+					}
+				}
+
+				console.log("Theme still installing, waiting 5 seconds...");
+				await new Promise((resolve) =>
+					setTimeout(resolve, pollInterval)
+				);
+			} catch (error) {
+				console.error("Error checking theme status:", error);
+				// Continue waiting, might be a temporary issue
+				await new Promise((resolve) =>
+					setTimeout(resolve, pollInterval)
+				);
+			}
+		}
+
+		console.warn(
+			"Theme installation wait timeout reached, proceeding anyway..."
+		);
 	}
 
 	// Fallback base64 method (original approach)
@@ -303,15 +367,53 @@ export class ShopifyClient {
 
 	// Publish theme
 	async publishTheme(themeId: number): Promise<void> {
-		await this.makeRequest(`/themes/${themeId}.json`, {
-			method: "PUT",
-			body: JSON.stringify({
-				theme: {
-					id: themeId,
-					role: "main",
-				},
-			}),
-		});
+		const maxRetries = 3;
+		const retryDelay = 10000; // 10 seconds between retries
+
+		for (let attempt = 1; attempt <= maxRetries; attempt++) {
+			try {
+				console.log(
+					`Publishing theme (attempt ${attempt}/${maxRetries})...`
+				);
+
+				await this.makeRequest(`/themes/${themeId}.json`, {
+					method: "PUT",
+					body: JSON.stringify({
+						theme: {
+							id: themeId,
+							role: "main",
+						},
+					}),
+				});
+
+				console.log("Theme successfully published!");
+				return;
+			} catch (error: any) {
+				console.error(`Publish attempt ${attempt} failed:`, error);
+
+				// Check if error is about incomplete installation
+				const errorMessage = error.message?.toLowerCase() || "";
+				const isInstallationError =
+					errorMessage.includes("installation") ||
+					errorMessage.includes("complete") ||
+					errorMessage.includes("publish");
+
+				if (isInstallationError && attempt < maxRetries) {
+					console.log(
+						`Theme installation may still be in progress. Waiting ${
+							retryDelay / 1000
+						} seconds before retry...`
+					);
+					await new Promise((resolve) =>
+						setTimeout(resolve, retryDelay)
+					);
+					continue;
+				}
+
+				// If it's the last attempt or not an installation error, throw
+				throw error;
+			}
+		}
 	}
 
 	// Create collection
