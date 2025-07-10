@@ -554,21 +554,15 @@ export class ShopifyClient {
 				}
 
 				// Update logo setting (Genesis theme uses "logo" as the main setting)
-				// Shopify expects asset URLs in the format: "file://[asset_key]"
-				const shopifyAssetUrl = `file://${assetKey}`;
+				// For theme settings image_picker fields, use just the filename without any prefix
+				const logoFilename = assetKey.replace("assets/", "");
 				const logoSettings = {
-					logo: shopifyAssetUrl, // Primary logo setting for Genesis theme
-					logo_image: shopifyAssetUrl, // Fallback for other themes
-					header_logo: shopifyAssetUrl, // Common alternative
-					site_logo: shopifyAssetUrl, // Another common alternative
-					brand_logo: shopifyAssetUrl,
-					main_logo: shopifyAssetUrl,
-					// Also try without the assets/ prefix for some themes
-					logo_url: `file://${assetKey.replace("assets/", "")}`,
-					header_logo_url: `file://${assetKey.replace(
-						"assets/",
-						""
-					)}`,
+					logo: logoFilename, // Primary logo setting for Genesis theme
+					logo_image: logoFilename, // Fallback for other themes
+					header_logo: logoFilename, // Common alternative
+					site_logo: logoFilename, // Another common alternative
+					brand_logo: logoFilename,
+					main_logo: logoFilename,
 				};
 
 				// Apply all possible logo setting names
@@ -777,6 +771,7 @@ export class ShopifyClient {
 						break;
 					case "price":
 					case "variant_price":
+					case "variant price":
 					case "unit price":
 					case "cost":
 						// Remove currency symbols and spaces
@@ -798,6 +793,7 @@ export class ShopifyClient {
 						}
 						break;
 					case "inventory_quantity":
+					case "variant inventory qty":
 					case "quantity":
 					case "stock":
 					case "inventory":
@@ -823,11 +819,19 @@ export class ShopifyClient {
 						break;
 					case "image":
 					case "image_src":
+					case "image src":
 					case "images":
 					case "image url":
 					case "photo":
 						if (value.includes("http")) {
-							product.images = [value];
+							// Handle multiple images separated by commas
+							const imageUrls = value
+								.split(",")
+								.map((url) => url.trim())
+								.filter((url) => url.includes("http"));
+							if (imageUrls.length > 0) {
+								product.images = imageUrls;
+							}
 						}
 						break;
 				}
