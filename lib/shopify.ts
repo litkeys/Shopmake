@@ -11,7 +11,7 @@ export async function testShopifyConnection(
 		console.log("Token length:", adminToken?.length || 0);
 
 		const response = await fetch(
-			`https://${shop}.myshopify.com/admin/api/2025-01/shop.json`,
+			`https://${shop}.myshopify.com/admin/api/2025-07/shop.json`,
 			{
 				headers: {
 					"X-Shopify-Access-Token": adminToken,
@@ -51,7 +51,7 @@ export async function testShopifyPermissions(
 		collections: false,
 	};
 
-	const baseUrl = `https://${shop}.myshopify.com/admin/api/2025-01`;
+	const baseUrl = `https://${shop}.myshopify.com/admin/api/2025-07`;
 	const headers = {
 		"X-Shopify-Access-Token": adminToken,
 		"Content-Type": "application/json",
@@ -118,7 +118,7 @@ export class ShopifyClient {
 		endpoint: string,
 		options: RequestInit = {}
 	): Promise<T> {
-		const url = `https://${this.shop}.myshopify.com/admin/api/2025-01${endpoint}`;
+		const url = `https://${this.shop}.myshopify.com/admin/api/2025-07${endpoint}`;
 
 		console.log("Making Shopify API request to:", url);
 		console.log("Request method:", options.method || "GET");
@@ -192,6 +192,61 @@ export class ShopifyClient {
 		const data = await response.json();
 		console.log("API response data:", data);
 		return data;
+	}
+
+	// GraphQL request method for Admin API 2025-07
+	private async makeGraphQLRequest<T>(
+		query: string,
+		variables?: Record<string, any>
+	): Promise<T> {
+		const url = `https://${this.shop}.myshopify.com/admin/api/2025-07/graphql.json`;
+
+		console.log("Making GraphQL request to:", url);
+		console.log("Query:", query.substring(0, 200) + "...");
+		console.log("Variables:", variables);
+
+		const response = await fetch(url, {
+			method: "POST",
+			headers: {
+				"X-Shopify-Access-Token": this.accessToken,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				query,
+				variables,
+			}),
+		});
+
+		console.log("GraphQL response status:", response.status);
+		console.log("GraphQL response ok:", response.ok);
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			console.error("GraphQL API error response:", errorText);
+
+			if (response.status === 401 || response.status === 403) {
+				throw new Error(
+					"Insufficient Shopify permissions. Please reconnect your store with the required permissions."
+				);
+			}
+
+			throw new Error(
+				`GraphQL API error: ${response.status} ${response.statusText} - ${errorText}`
+			);
+		}
+
+		const result = await response.json();
+		console.log("GraphQL response data:", result);
+
+		// Check for GraphQL errors
+		if (result.errors && result.errors.length > 0) {
+			const errorMessages = result.errors
+				.map((error: any) => error.message)
+				.join("; ");
+			throw new Error(`GraphQL errors: ${errorMessages}`);
+		}
+
+		return result.data;
 	}
 
 	// Upload and install theme using direct URL (most reliable method)
@@ -489,10 +544,10 @@ export class ShopifyClient {
 		return { product_id: result.product.id };
 	}
 
-	// Set theme logo
+	// Set theme logo using GraphQL themeFilesUpsert mutation
 	async setThemeLogo(themeId: number, logoUrl: string): Promise<void> {
 		try {
-			// Upload logo as an asset to the theme
+			// Download the logo file
 			const logoResponse = await fetch(logoUrl);
 			if (!logoResponse.ok) {
 				throw new Error(`Failed to fetch logo: ${logoResponse.status}`);
@@ -504,51 +559,130 @@ export class ShopifyClient {
 			// Get file extension from URL
 			const urlParts = logoUrl.split(".");
 			const extension = urlParts[urlParts.length - 1].split("?")[0]; // Remove query params
-			const assetKey = `assets/logo.${extension}`;
+			const filename = `logo.${extension}`;
 
-			// Upload logo as theme asset
-			await this.makeRequest(`/themes/${themeId}/assets.json`, {
-				method: "PUT",
-				body: JSON.stringify({
-					asset: {
-						key: assetKey,
-						value: `data:image/${extension};base64,${logoBase64}`,
+			// Use GraphQL themeFilesUpsert mutation to upload logo to theme assets
+			const mutation = `
+				mutation themeFilesUpsert($files: [OnlineStoreThemeFileInput!]!, $themeId: ID!) {
+					themeFilesUpsert(files: $files, themeId: $themeId) {
+						upsertedThemeFiles {
+							filename
+							size
+						}
+						userErrors {
+							field
+							message
+						}
+					}
+				}
+			`;
+
+			const variables = {
+				themeId: `gid://shopify/OnlineStoreTheme/${themeId}`,
+				files: [
+					{
+						filename: `assets/${filename}`,
+						body: {
+							type: "BASE64",
+							value: logoBase64,
+						},
 					},
-				}),
-			});
+				],
+			};
 
-			console.log(`Logo uploaded as theme asset: ${assetKey}`);
+			const result = await this.makeGraphQLRequest<{
+				themeFilesUpsert: {
+					upsertedThemeFiles: Array<{
+						filename: string;
+						size: number;
+					}>;
+					userErrors: Array<{ field: string; message: string }>;
+				};
+			}>(mutation, variables);
+
+			if (result.themeFilesUpsert.userErrors.length > 0) {
+				const errors = result.themeFilesUpsert.userErrors
+					.map((error) => error.message)
+					.join("; ");
+				throw new Error(`Theme file upload errors: ${errors}`);
+			}
+
+			console.log(`Logo uploaded successfully as assets/${filename}`);
+			console.log(
+				`Uploaded files:`,
+				result.themeFilesUpsert.upsertedThemeFiles
+			);
 		} catch (error) {
 			console.error("Error setting theme logo:", error);
 			throw error;
 		}
 	}
 
-	// Set contact email in store metafields
+	// Set contact email in store metafields using GraphQL
 	async setContactEmail(email: string): Promise<void> {
 		try {
-			await this.makeRequest("/metafields.json", {
-				method: "POST",
-				body: JSON.stringify({
-					metafield: {
+			const mutation = `
+				mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
+					metafieldsSet(metafields: $metafields) {
+						metafields {
+							id
+							namespace
+							key
+							value
+						}
+						userErrors {
+							field
+							message
+						}
+					}
+				}
+			`;
+
+			const variables = {
+				metafields: [
+					{
+						ownerId: "gid://shopify/Shop",
 						namespace: "genesis_contact",
 						key: "email",
 						value: email,
 						type: "single_line_text_field",
-						description: "Contact email for footer and support",
 					},
-				}),
-			});
+				],
+			};
+
+			const result = await this.makeGraphQLRequest<{
+				metafieldsSet: {
+					metafields: Array<{
+						id: string;
+						namespace: string;
+						key: string;
+						value: string;
+					}>;
+					userErrors: Array<{ field: string; message: string }>;
+				};
+			}>(mutation, variables);
+
+			if (result.metafieldsSet.userErrors.length > 0) {
+				const errors = result.metafieldsSet.userErrors
+					.map((error) => error.message)
+					.join("; ");
+				throw new Error(`Metafield set errors: ${errors}`);
+			}
+
+			console.log("Contact email metafield set successfully");
+			console.log("Metafields:", result.metafieldsSet.metafields);
 		} catch (error) {
 			console.error("Error setting contact email:", error);
 			throw error;
 		}
 	}
 
-	// Import products from CSV files
+	// Import products from CSV files using Shopify Bulk Operations
 	async importProductsFromCSV(storeId: string): Promise<number> {
 		try {
-			console.log("Importing products from CSV files...");
+			console.log(
+				"Importing products from CSV files using bulk operations..."
+			);
 
 			// Get CSV uploads for this store
 			const { getStoreUploads, supabaseAdmin } = await import(
@@ -565,6 +699,8 @@ export class ShopifyClient {
 
 			for (const upload of csvUploads) {
 				try {
+					console.log(`Processing CSV file: ${upload.file_name}`);
+
 					// Download the CSV file from Supabase storage
 					const { data: csvData, error } = await supabaseAdmin.storage
 						.from("store-files")
@@ -581,23 +717,29 @@ export class ShopifyClient {
 					const csvText = await csvData.text();
 					const products = this.parseProductCSV(csvText);
 
+					if (products.length === 0) {
+						console.log(
+							`No valid products found in ${upload.file_name}`
+						);
+						continue;
+					}
+
 					console.log(
 						`Found ${products.length} products in ${upload.file_name}`
 					);
 
-					// Create products in Shopify
-					for (const product of products) {
-						try {
-							await this.createProduct(product);
-							totalProductsCreated++;
-							console.log(`Created product: ${product.title}`);
-						} catch (productError) {
-							console.error(
-								`Error creating product ${product.title}:`,
-								productError
-							);
-						}
-					}
+					// Convert products to JSONL format for bulk import
+					const jsonlContent = this.convertProductsToJSONL(products);
+
+					// Use bulk operations to import products
+					const importedCount = await this.bulkImportProducts(
+						jsonlContent
+					);
+					totalProductsCreated += importedCount;
+
+					console.log(
+						`Successfully imported ${importedCount} products from ${upload.file_name}`
+					);
 				} catch (fileError) {
 					console.error(
 						`Error processing CSV file ${upload.file_name}:`,
@@ -606,9 +748,7 @@ export class ShopifyClient {
 				}
 			}
 
-			console.log(
-				`Successfully imported ${totalProductsCreated} products from CSV files`
-			);
+			console.log(`Total products imported: ${totalProductsCreated}`);
 			return totalProductsCreated;
 		} catch (error) {
 			console.error("Error importing products from CSV:", error);
@@ -714,6 +854,320 @@ export class ShopifyClient {
 		}
 
 		return products;
+	}
+
+	// Convert products to JSONL format for bulk import
+	private convertProductsToJSONL(
+		products: Array<{
+			title: string;
+			description: string;
+			vendor?: string;
+			product_type?: string;
+			price: string;
+			compare_at_price?: string;
+			inventory_quantity?: number;
+			weight?: number;
+			requires_shipping?: boolean;
+			taxable?: boolean;
+			sku?: string;
+			barcode?: string;
+			images?: string[];
+		}>
+	): string {
+		const jsonlLines = products.map((product) => {
+			// Convert product to ProductInput format for GraphQL
+			const productInput = {
+				title: product.title,
+				descriptionHtml: product.description,
+				vendor: product.vendor || "",
+				productType: product.product_type || "",
+				variants: [
+					{
+						price: parseFloat(product.price).toFixed(2),
+						compareAtPrice: product.compare_at_price
+							? parseFloat(product.compare_at_price).toFixed(2)
+							: undefined,
+						inventoryQuantities:
+							product.inventory_quantity !== undefined
+								? [
+										{
+											availableQuantity:
+												product.inventory_quantity,
+											locationId:
+												"gid://shopify/Location/primary", // Will be resolved by Shopify
+										},
+								  ]
+								: undefined,
+						weight: product.weight,
+						requiresShipping: product.requires_shipping !== false,
+						taxable: product.taxable !== false,
+						sku: product.sku,
+						barcode: product.barcode,
+					},
+				],
+				images: product.images?.map((src) => ({ src })) || [],
+				status: "ACTIVE",
+			};
+
+			// Return as JSONL format
+			return JSON.stringify({ input: productInput });
+		});
+
+		return jsonlLines.join("\n");
+	}
+
+	// Bulk import products using Shopify Bulk Operations
+	private async bulkImportProducts(jsonlContent: string): Promise<number> {
+		try {
+			console.log("Starting bulk import process...");
+
+			// Step 1: Create staged upload
+			const stagedUpload = await this.createStagedUpload();
+			console.log("Staged upload created:", stagedUpload);
+
+			// Step 2: Upload JSONL file to staged upload URL
+			await this.uploadJSONLFile(
+				stagedUpload.url,
+				stagedUpload.parameters,
+				jsonlContent
+			);
+			console.log("JSONL file uploaded successfully");
+
+			// Step 3: Start bulk operation
+			const bulkOperation = await this.startBulkProductImport(
+				stagedUpload.resourceUrl
+			);
+			console.log("Bulk operation started:", bulkOperation);
+
+			// Step 4: Wait for completion and return count
+			const completedOperation =
+				await this.waitForBulkOperationCompletion();
+			console.log("Bulk operation completed:", completedOperation);
+
+			return completedOperation.objectCount || 0;
+		} catch (error) {
+			console.error("Error in bulk import:", error);
+			throw error;
+		}
+	}
+
+	// Create staged upload for JSONL file
+	private async createStagedUpload(): Promise<{
+		url: string;
+		parameters: Array<{ name: string; value: string }>;
+		resourceUrl: string;
+	}> {
+		const mutation = `
+			mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+				stagedUploadsCreate(input: $input) {
+					stagedUploads {
+						url
+						parameters {
+							name
+							value
+						}
+						resourceUrl
+					}
+					userErrors {
+						field
+						message
+					}
+				}
+			}
+		`;
+
+		const variables = {
+			input: [
+				{
+					filename: "products.jsonl",
+					mimeType: "application/jsonl",
+					resource: "BULK_MUTATION_VARIABLES",
+					httpMethod: "POST",
+				},
+			],
+		};
+
+		const result = await this.makeGraphQLRequest<{
+			stagedUploadsCreate: {
+				stagedUploads: Array<{
+					url: string;
+					parameters: Array<{ name: string; value: string }>;
+					resourceUrl: string;
+				}>;
+				userErrors: Array<{ field: string; message: string }>;
+			};
+		}>(mutation, variables);
+
+		if (result.stagedUploadsCreate.userErrors.length > 0) {
+			const errors = result.stagedUploadsCreate.userErrors
+				.map((error) => error.message)
+				.join("; ");
+			throw new Error(`Staged upload creation errors: ${errors}`);
+		}
+
+		if (result.stagedUploadsCreate.stagedUploads.length === 0) {
+			throw new Error("No staged upload was created");
+		}
+
+		return result.stagedUploadsCreate.stagedUploads[0];
+	}
+
+	// Upload JSONL file to staged upload URL
+	private async uploadJSONLFile(
+		url: string,
+		parameters: Array<{ name: string; value: string }>,
+		jsonlContent: string
+	): Promise<void> {
+		const formData = new FormData();
+
+		// Add parameters to form data
+		parameters.forEach((param) => {
+			formData.append(param.name, param.value);
+		});
+
+		// Add the file content
+		const blob = new Blob([jsonlContent], { type: "application/jsonl" });
+		formData.append("file", blob, "products.jsonl");
+
+		const response = await fetch(url, {
+			method: "POST",
+			body: formData,
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			throw new Error(
+				`Failed to upload JSONL file: ${response.status} ${response.statusText} - ${errorText}`
+			);
+		}
+
+		console.log("JSONL file uploaded successfully");
+	}
+
+	// Start bulk product import operation
+	private async startBulkProductImport(stagedUploadPath: string): Promise<{
+		id: string;
+		status: string;
+	}> {
+		const mutation = `
+			mutation bulkOperationRunMutation($mutation: String!, $stagedUploadPath: String!) {
+				bulkOperationRunMutation(mutation: $mutation, stagedUploadPath: $stagedUploadPath) {
+					bulkOperation {
+						id
+						status
+					}
+					userErrors {
+						field
+						message
+					}
+				}
+			}
+		`;
+
+		const variables = {
+			mutation: `
+				mutation productCreate($input: ProductInput!) {
+					productCreate(input: $input) {
+						product {
+							id
+							title
+						}
+						userErrors {
+							field
+							message
+						}
+					}
+				}
+			`,
+			stagedUploadPath: stagedUploadPath,
+		};
+
+		const result = await this.makeGraphQLRequest<{
+			bulkOperationRunMutation: {
+				bulkOperation: {
+					id: string;
+					status: string;
+				};
+				userErrors: Array<{ field: string; message: string }>;
+			};
+		}>(mutation, variables);
+
+		if (result.bulkOperationRunMutation.userErrors.length > 0) {
+			const errors = result.bulkOperationRunMutation.userErrors
+				.map((error) => error.message)
+				.join("; ");
+			throw new Error(`Bulk operation start errors: ${errors}`);
+		}
+
+		return result.bulkOperationRunMutation.bulkOperation;
+	}
+
+	// Wait for bulk operation completion
+	private async waitForBulkOperationCompletion(): Promise<{
+		status: string;
+		objectCount: number;
+	}> {
+		const maxAttempts = 60; // Wait up to 10 minutes (60 * 10 seconds)
+		let attempts = 0;
+
+		while (attempts < maxAttempts) {
+			const query = `
+				query {
+					currentBulkOperation {
+						id
+						status
+						errorCode
+						objectCount
+						createdAt
+						completedAt
+					}
+				}
+			`;
+
+			const result = await this.makeGraphQLRequest<{
+				currentBulkOperation: {
+					id: string;
+					status: string;
+					errorCode?: string;
+					objectCount: number;
+					createdAt: string;
+					completedAt?: string;
+				} | null;
+			}>(query);
+
+			if (!result.currentBulkOperation) {
+				throw new Error("No current bulk operation found");
+			}
+
+			const operation = result.currentBulkOperation;
+			console.log(
+				`Bulk operation status: ${operation.status}, objects: ${operation.objectCount}`
+			);
+
+			if (operation.status === "COMPLETED") {
+				return {
+					status: operation.status,
+					objectCount: operation.objectCount,
+				};
+			}
+
+			if (
+				operation.status === "FAILED" ||
+				operation.status === "CANCELED"
+			) {
+				throw new Error(
+					`Bulk operation ${operation.status.toLowerCase()}: ${
+						operation.errorCode || "Unknown error"
+					}`
+				);
+			}
+
+			// Wait 10 seconds before checking again
+			await new Promise((resolve) => setTimeout(resolve, 10000));
+			attempts++;
+		}
+
+		throw new Error("Bulk operation timed out after 10 minutes");
 	}
 
 	// Update store branding
