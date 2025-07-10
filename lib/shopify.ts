@@ -718,9 +718,24 @@ export class ShopifyClient {
 							alt
 							fileStatus
 							... on MediaImage {
+								id
+								alt
 								image {
+									id
 									url
+									width
+									height
 								}
+								preview {
+									image {
+										url
+									}
+								}
+							}
+							... on GenericFile {
+								id
+								alt
+								url
 							}
 						}
 						userErrors {
@@ -750,8 +765,17 @@ export class ShopifyClient {
 							alt: string;
 							fileStatus: string;
 							image?: {
+								id: string;
 								url: string;
+								width?: number;
+								height?: number;
 							};
+							preview?: {
+								image: {
+									url: string;
+								};
+							};
+							url?: string; // for GenericFile
 						}>;
 						userErrors: Array<{ field: string; message: string }>;
 					};
@@ -764,10 +788,36 @@ export class ShopifyClient {
 				);
 			}
 
+			console.log(
+				"📋 File creation response:",
+				JSON.stringify(fileResponse.data.fileCreate, null, 2)
+			);
+
 			const createdFile = fileResponse.data.fileCreate.files[0];
-			const imageUrl = createdFile.image?.url;
+			console.log(
+				"📋 Created file structure:",
+				JSON.stringify(createdFile, null, 2)
+			);
+
+			// Try multiple possible URL locations
+			let imageUrl: string | undefined;
+
+			if (createdFile.image?.url) {
+				imageUrl = createdFile.image.url;
+				console.log("✅ Found URL in image.url:", imageUrl);
+			} else if (createdFile.preview?.image?.url) {
+				imageUrl = createdFile.preview.image.url;
+				console.log("✅ Found URL in preview.image.url:", imageUrl);
+			} else if (createdFile.url) {
+				imageUrl = createdFile.url;
+				console.log("✅ Found URL in direct url field:", imageUrl);
+			}
 
 			if (!imageUrl) {
+				console.error(
+					"❌ No image URL found in any expected location. Full file object:",
+					createdFile
+				);
 				throw new Error("No image URL returned from file creation");
 			}
 
