@@ -554,16 +554,21 @@ export class ShopifyClient {
 				}
 
 				// Update logo setting (Genesis theme uses "logo" as the main setting)
+				// Shopify expects asset URLs in the format: "file://[asset_key]"
+				const shopifyAssetUrl = `file://${assetKey}`;
 				const logoSettings = {
-					logo: assetKey, // Primary logo setting for Genesis theme
-					logo_image: assetKey, // Fallback for other themes
-					header_logo: assetKey, // Common alternative
-					site_logo: assetKey, // Another common alternative
-					brand_logo: assetKey,
-					main_logo: assetKey,
+					logo: shopifyAssetUrl, // Primary logo setting for Genesis theme
+					logo_image: shopifyAssetUrl, // Fallback for other themes
+					header_logo: shopifyAssetUrl, // Common alternative
+					site_logo: shopifyAssetUrl, // Another common alternative
+					brand_logo: shopifyAssetUrl,
+					main_logo: shopifyAssetUrl,
 					// Also try without the assets/ prefix for some themes
-					logo_url: assetKey.replace("assets/", ""),
-					header_logo_url: assetKey.replace("assets/", ""),
+					logo_url: `file://${assetKey.replace("assets/", "")}`,
+					header_logo_url: `file://${assetKey.replace(
+						"assets/",
+						""
+					)}`,
 				};
 
 				// Apply all possible logo setting names
@@ -703,72 +708,124 @@ export class ShopifyClient {
 		barcode?: string;
 		images?: string[];
 	}> {
-		const lines = csvText.split("\n").filter((line) => line.trim());
-		if (lines.length <= 1) return [];
+		console.log("Starting CSV parsing...");
+		console.log(`CSV text length: ${csvText.length} characters`);
 
-		const headers = lines[0]
-			.split(",")
-			.map((h) => h.trim().replace(/"/g, ""));
+		// Split by newlines and filter empty lines
+		const lines = csvText.split(/\r?\n/).filter((line) => line.trim());
+		console.log(`Found ${lines.length} lines in CSV`);
+
+		if (lines.length <= 1) {
+			console.log("CSV has no data rows (only header or empty)");
+			return [];
+		}
+
+		// Parse headers using proper CSV parsing (handle quoted fields)
+		const headers = this.parseCSVLine(lines[0]);
+		console.log("CSV Headers:", headers);
+
 		const products = [];
 
 		for (let i = 1; i < lines.length; i++) {
-			const values = lines[i]
-				.split(",")
-				.map((v) => v.trim().replace(/"/g, ""));
-			if (values.length < headers.length) continue;
+			console.log(
+				`\nProcessing line ${i}: ${lines[i].substring(0, 100)}...`
+			);
+
+			const values = this.parseCSVLine(lines[i]);
+			console.log(
+				`Parsed ${values.length} values for ${headers.length} headers`
+			);
+
+			if (values.length === 0) {
+				console.log(`Skipping empty line ${i}`);
+				continue;
+			}
 
 			const product: any = {};
 
 			headers.forEach((header, index) => {
-				const value = values[index];
+				const value = values[index]?.trim();
 				if (!value) return;
 
+				const headerLower = header.toLowerCase().trim();
+				console.log(`Mapping header "${headerLower}" = "${value}"`);
+
 				// Map common CSV headers to product fields
-				switch (header.toLowerCase()) {
+				switch (headerLower) {
 					case "title":
 					case "name":
 					case "product_title":
+					case "product name":
 						product.title = value;
 						break;
 					case "description":
 					case "body":
 					case "body_html":
+					case "product description":
 						product.description = value;
 						break;
 					case "vendor":
 					case "brand":
+					case "manufacturer":
 						product.vendor = value;
 						break;
 					case "product_type":
 					case "type":
 					case "category":
+					case "product type":
 						product.product_type = value;
 						break;
 					case "price":
 					case "variant_price":
-						product.price = value;
+					case "unit price":
+					case "cost":
+						// Remove currency symbols and spaces
+						const cleanPrice = value.replace(/[$£€¥,\s]/g, "");
+						if (!isNaN(parseFloat(cleanPrice))) {
+							product.price = cleanPrice;
+						}
 						break;
 					case "compare_at_price":
 					case "compare_price":
-						product.compare_at_price = value;
+					case "msrp":
+					case "retail price":
+						const cleanComparePrice = value.replace(
+							/[$£€¥,\s]/g,
+							""
+						);
+						if (!isNaN(parseFloat(cleanComparePrice))) {
+							product.compare_at_price = cleanComparePrice;
+						}
 						break;
 					case "inventory_quantity":
 					case "quantity":
 					case "stock":
-						product.inventory_quantity = parseInt(value) || 0;
+					case "inventory":
+						const qty = parseInt(value);
+						if (!isNaN(qty)) {
+							product.inventory_quantity = qty;
+						}
 						break;
 					case "weight":
-						product.weight = parseFloat(value) || undefined;
+						const weight = parseFloat(value);
+						if (!isNaN(weight)) {
+							product.weight = weight;
+						}
 						break;
 					case "sku":
+					case "product code":
 						product.sku = value;
 						break;
 					case "barcode":
+					case "upc":
+					case "ean":
 						product.barcode = value;
 						break;
 					case "image":
 					case "image_src":
 					case "images":
+					case "image url":
+					case "photo":
 						if (value.includes("http")) {
 							product.images = [value];
 						}
@@ -776,15 +833,61 @@ export class ShopifyClient {
 				}
 			});
 
+			console.log(`Product object:`, product);
+
 			// Ensure required fields
 			if (product.title && product.price) {
-				if (!product.description)
+				if (!product.description) {
 					product.description = `${product.title} - No description provided`;
+				}
 				products.push(product);
+				console.log(
+					`✓ Added product: ${product.title} ($${product.price})`
+				);
+			} else {
+				console.log(
+					`✗ Skipping product - missing title or price. Title: "${product.title}", Price: "${product.price}"`
+				);
 			}
 		}
 
+		console.log(
+			`\nCSV parsing completed. Found ${products.length} valid products.`
+		);
 		return products;
+	}
+
+	// Helper function to properly parse CSV lines (handles quoted fields)
+	private parseCSVLine(line: string): string[] {
+		const result = [];
+		let current = "";
+		let inQuotes = false;
+
+		for (let i = 0; i < line.length; i++) {
+			const char = line[i];
+
+			if (char === '"') {
+				if (inQuotes && line[i + 1] === '"') {
+					// Escaped quote
+					current += '"';
+					i++; // Skip next quote
+				} else {
+					// Toggle quote state
+					inQuotes = !inQuotes;
+				}
+			} else if (char === "," && !inQuotes) {
+				// End of field
+				result.push(current.trim());
+				current = "";
+			} else {
+				current += char;
+			}
+		}
+
+		// Add the last field
+		result.push(current.trim());
+
+		return result;
 	}
 
 	// Update store branding
