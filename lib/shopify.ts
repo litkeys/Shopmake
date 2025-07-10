@@ -940,6 +940,62 @@ export class ShopifyClient {
 		return null;
 	}
 
+	// Set logo in theme settings
+	private async setThemeLogoSettings(
+		themeId: number,
+		logoUrl: string
+	): Promise<boolean> {
+		try {
+			console.log(`🎨 Setting logo in theme ${themeId} settings...`);
+
+			// Get current theme settings
+			const currentSettings = await this.makeRequest<{
+				asset: { value: string };
+			}>(
+				`/themes/${themeId}/assets.json?asset[key]=config/settings_data.json`
+			);
+
+			let settingsData: any = {};
+			try {
+				settingsData = JSON.parse(currentSettings.asset.value);
+			} catch (parseError) {
+				console.log("Creating new settings data structure");
+				settingsData = {
+					current: {},
+					presets: {},
+				};
+			}
+
+			// Update the logo URL in theme settings
+			if (!settingsData.current) {
+				settingsData.current = {};
+			}
+
+			// Common logo setting keys in Shopify themes
+			settingsData.current.logo = logoUrl;
+			settingsData.current.logo_url = logoUrl;
+			settingsData.current.header_logo = logoUrl;
+			settingsData.current.site_logo = logoUrl;
+
+			// Update the theme settings
+			await this.makeRequest(`/themes/${themeId}/assets.json`, {
+				method: "PUT",
+				body: JSON.stringify({
+					asset: {
+						key: "config/settings_data.json",
+						value: JSON.stringify(settingsData),
+					},
+				}),
+			});
+
+			console.log("✅ Logo successfully set in theme settings");
+			return true;
+		} catch (error) {
+			console.error("❌ Error setting theme logo:", error);
+			return false;
+		}
+	}
+
 	private getMimeType(extension: string): string {
 		const ext = extension.toLowerCase();
 		switch (ext) {
@@ -1361,11 +1417,28 @@ export class ShopifyClient {
 					const logoFileUrl = await this.uploadLogoToFiles(
 						storeData.logo_url
 					);
-					logo_uploaded = !!logoFileUrl;
+
 					if (logoFileUrl) {
 						console.log(
 							"Logo successfully uploaded to Shopify Files"
 						);
+
+						// Set the logo in theme settings
+						const logoSetInTheme = await this.setThemeLogoSettings(
+							themeId,
+							logoFileUrl
+						);
+						logo_uploaded = logoSetInTheme;
+
+						if (logoSetInTheme) {
+							console.log(
+								"Logo successfully integrated into theme"
+							);
+						} else {
+							console.log(
+								"Logo uploaded but failed to integrate into theme"
+							);
+						}
 					} else {
 						console.log("Logo upload to Shopify Files failed");
 					}
