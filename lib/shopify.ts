@@ -492,7 +492,7 @@ export class ShopifyClient {
 	// Set theme logo
 	async setThemeLogo(themeId: number, logoUrl: string): Promise<void> {
 		try {
-			// Step 1: Upload logo as an asset to the theme
+			// Download and upload logo as theme asset
 			const logoResponse = await fetch(logoUrl);
 			if (!logoResponse.ok) {
 				throw new Error(`Failed to fetch logo: ${logoResponse.status}`);
@@ -503,7 +503,7 @@ export class ShopifyClient {
 
 			// Get file extension from URL
 			const urlParts = logoUrl.split(".");
-			const extension = urlParts[urlParts.length - 1].split("?")[0]; // Remove query params
+			const extension = urlParts[urlParts.length - 1].split("?")[0];
 			const assetKey = `assets/logo.${extension}`;
 
 			// Upload logo as theme asset
@@ -516,102 +516,6 @@ export class ShopifyClient {
 					},
 				}),
 			});
-
-			console.log(`Logo uploaded as theme asset: ${assetKey}`);
-			console.log(
-				`Logo can be referenced in theme as: {{ '${assetKey.replace(
-					"assets/",
-					""
-				)}' | asset_url }}`
-			);
-
-			// Step 2: Update theme settings to reference the logo
-			try {
-				// Get current theme settings
-				const currentSettings = await this.makeRequest<{
-					asset: { value: string };
-				}>(
-					`/themes/${themeId}/assets.json?asset[key]=config/settings_data.json`
-				);
-
-				let settingsData: any = {};
-				if (currentSettings.asset.value) {
-					try {
-						settingsData = JSON.parse(currentSettings.asset.value);
-					} catch (parseError) {
-						console.log(
-							"Could not parse existing settings, creating new ones"
-						);
-						settingsData = { current: {}, presets: {} };
-					}
-				} else {
-					settingsData = { current: {}, presets: {} };
-				}
-
-				// Ensure current settings object exists
-				if (!settingsData.current) {
-					settingsData.current = {};
-				}
-
-				// Update logo setting (Genesis theme uses "logo" as the main setting)
-				// Debug: Log current settings structure
-				console.log(
-					"Current theme settings structure:",
-					JSON.stringify(settingsData, null, 2)
-				);
-
-				// For theme settings image_picker fields, try different URL formats
-				const logoFilename = assetKey.replace("assets/", "");
-				console.log(
-					`Asset key: ${assetKey}, Logo filename: ${logoFilename}`
-				);
-
-				// Try different approaches based on Shopify documentation
-				const logoFormats = [
-					logoFilename, // Just filename: "logo.jpg"
-					`file://${assetKey}`, // File protocol with full path: "file://assets/logo.jpg"
-					`file://${logoFilename}`, // File protocol with filename: "file://logo.jpg"
-					`shopify://theme_asset/${logoFilename}`, // Shopify theme asset URL
-				];
-
-				console.log("Trying logo formats:", logoFormats);
-
-				// Try setting just the primary logo with the first format
-				settingsData.current.logo = logoFilename;
-
-				console.log(
-					"Updated settings data (logo only):",
-					JSON.stringify(settingsData.current, null, 2)
-				);
-
-				// Update the settings file
-				await this.makeRequest(`/themes/${themeId}/assets.json`, {
-					method: "PUT",
-					body: JSON.stringify({
-						asset: {
-							key: "config/settings_data.json",
-							value: JSON.stringify(settingsData),
-						},
-					}),
-				});
-
-				console.log(
-					`Logo setting updated successfully with filename: ${logoFilename}`
-				);
-			} catch (settingsError) {
-				console.error("Detailed settings error:", settingsError);
-
-				// Don't throw error - logo asset was uploaded successfully
-				console.warn(
-					"Theme settings update failed, but logo asset was uploaded and can be used in templates"
-				);
-				console.log(
-					`Logo asset reference for templates: {{ '${assetKey.replace(
-						"assets/",
-						""
-					)}' | asset_url }}`
-				);
-			}
 		} catch (error) {
 			console.error("Error setting theme logo:", error);
 			throw error;
@@ -726,36 +630,22 @@ export class ShopifyClient {
 		barcode?: string;
 		images?: string[];
 	}> {
-		console.log("Starting CSV parsing...");
-		console.log(`CSV text length: ${csvText.length} characters`);
-
 		// Split by newlines and filter empty lines
 		const lines = csvText.split(/\r?\n/).filter((line) => line.trim());
-		console.log(`Found ${lines.length} lines in CSV`);
 
 		if (lines.length <= 1) {
-			console.log("CSV has no data rows (only header or empty)");
 			return [];
 		}
 
 		// Parse headers using proper CSV parsing (handle quoted fields)
 		const headers = this.parseCSVLine(lines[0]);
-		console.log("CSV Headers:", headers);
 
 		const products = [];
 
 		for (let i = 1; i < lines.length; i++) {
-			console.log(
-				`\nProcessing line ${i}: ${lines[i].substring(0, 100)}...`
-			);
-
 			const values = this.parseCSVLine(lines[i]);
-			console.log(
-				`Parsed ${values.length} values for ${headers.length} headers`
-			);
 
 			if (values.length === 0) {
-				console.log(`Skipping empty line ${i}`);
 				continue;
 			}
 
@@ -766,7 +656,6 @@ export class ShopifyClient {
 				if (!value) return;
 
 				const headerLower = header.toLowerCase().trim();
-				console.log(`Mapping header "${headerLower}" = "${value}"`);
 
 				// Map common CSV headers to product fields
 				switch (headerLower) {
@@ -861,27 +750,15 @@ export class ShopifyClient {
 				}
 			});
 
-			console.log(`Product object:`, product);
-
 			// Ensure required fields
 			if (product.title && product.price) {
 				if (!product.description) {
 					product.description = `${product.title} - No description provided`;
 				}
 				products.push(product);
-				console.log(
-					`✓ Added product: ${product.title} ($${product.price})`
-				);
-			} else {
-				console.log(
-					`✗ Skipping product - missing title or price. Title: "${product.title}", Price: "${product.price}"`
-				);
 			}
 		}
 
-		console.log(
-			`\nCSV parsing completed. Found ${products.length} valid products.`
-		);
 		return products;
 	}
 
