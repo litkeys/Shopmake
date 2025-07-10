@@ -11,7 +11,7 @@ export async function testShopifyConnection(
 		console.log("Token length:", adminToken?.length || 0);
 
 		const response = await fetch(
-			`https://${shop}.myshopify.com/admin/api/2023-10/shop.json`,
+			`https://${shop}.myshopify.com/admin/api/2025-01/shop.json`,
 			{
 				headers: {
 					"X-Shopify-Access-Token": adminToken,
@@ -51,7 +51,7 @@ export async function testShopifyPermissions(
 		collections: false,
 	};
 
-	const baseUrl = `https://${shop}.myshopify.com/admin/api/2023-10`;
+	const baseUrl = `https://${shop}.myshopify.com/admin/api/2025-01`;
 	const headers = {
 		"X-Shopify-Access-Token": adminToken,
 		"Content-Type": "application/json",
@@ -118,7 +118,7 @@ export class ShopifyClient {
 		endpoint: string,
 		options: RequestInit = {}
 	): Promise<T> {
-		const url = `https://${this.shop}.myshopify.com/admin/api/2023-10${endpoint}`;
+		const url = `https://${this.shop}.myshopify.com/admin/api/2025-01${endpoint}`;
 
 		console.log("Making Shopify API request to:", url);
 		console.log("Request method:", options.method || "GET");
