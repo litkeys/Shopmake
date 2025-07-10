@@ -198,3 +198,37 @@ export async function generateShopifyStoreAPI(
 	const result = await response.json();
 	return result.data;
 }
+
+export async function disconnectShopifyStoreAPI(
+	storeId: string
+): Promise<void> {
+	const response = await fetch(`${getBaseUrl()}/api/shopify/disconnect`, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({ store_id: storeId }),
+	});
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to disconnect Shopify store");
+	}
+}
+
+export async function deleteStoreAPI(storeId: string): Promise<void> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/stores/${storeId}/delete`,
+		{
+			method: "DELETE",
+			headers: {
+				"Content-Type": "application/json",
+			},
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to delete store");
+	}
+}

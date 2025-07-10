@@ -31,6 +31,8 @@ import {
 	deleteFileAPI,
 	generateShopifyStoreAPI,
 	connectShopifyStoreAPI,
+	disconnectShopifyStoreAPI,
+	deleteStoreAPI,
 } from "@/lib/api";
 import { Store, StoreData, StoreFormData, Upload as UploadType } from "@/types";
 import Link from "next/link";
@@ -73,6 +75,9 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const [success, setSuccess] = useState<string | null>(null);
 	const [showShopifyForm, setShowShopifyForm] = useState(false);
 	const [isConnecting, setIsConnecting] = useState(false);
+	const [isDisconnecting, setIsDisconnecting] = useState(false);
+	const [isDeleting, setIsDeleting] = useState(false);
+	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 	const [shopifyFormData, setShopifyFormData] = useState({
 		store_domain: "",
 		admin_api_token: "",
@@ -433,6 +438,55 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		}
 	};
 
+	const handleDisconnectShopify = async () => {
+		if (!store) return;
+
+		try {
+			setIsDisconnecting(true);
+			setError(null);
+
+			await disconnectShopifyStoreAPI(store.id);
+
+			// Update local state to remove Shopify connection
+			setStore((prev) =>
+				prev ? { ...prev, shopify_store_domain: undefined } : null
+			);
+
+			setSuccess("Store disconnected from Shopify successfully");
+			setTimeout(() => setSuccess(null), 5000);
+		} catch (err) {
+			console.error("Disconnect error:", err);
+			setError(
+				err instanceof Error
+					? err.message
+					: "Failed to disconnect store"
+			);
+		} finally {
+			setIsDisconnecting(false);
+		}
+	};
+
+	const handleDeleteStore = async () => {
+		if (!store) return;
+
+		try {
+			setIsDeleting(true);
+			setError(null);
+
+			await deleteStoreAPI(store.id);
+
+			// Redirect to clients list after successful deletion
+			router.push("/dashboard/clients?deleted=true");
+		} catch (err) {
+			console.error("Delete error:", err);
+			setError(
+				err instanceof Error ? err.message : "Failed to delete store"
+			);
+			setIsDeleting(false);
+			setShowDeleteConfirm(false);
+		}
+	};
+
 	if (isLoading && !store) {
 		return (
 			<div className="max-w-2xl mx-auto">
@@ -486,18 +540,43 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 							Update client store information and files.
 						</p>
 					</div>
-					{store?.shopify_store_domain && (
-						<Button variant="outline" asChild>
-							<a
-								href={`https://${store.shopify_store_domain}.myshopify.com`}
-								target="_blank"
-								rel="noopener noreferrer"
+					<div className="flex items-center space-x-2">
+						{store?.shopify_store_domain && (
+							<Button variant="outline" asChild>
+								<a
+									href={`https://${store.shopify_store_domain}.myshopify.com`}
+									target="_blank"
+									rel="noopener noreferrer"
+								>
+									<ExternalLink className="h-4 w-4 mr-2" />
+									View Store
+								</a>
+							</Button>
+						)}
+
+						{store?.shopify_store_domain && (
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={handleDisconnectShopify}
+								disabled={isDisconnecting}
 							>
-								<ExternalLink className="h-4 w-4 mr-2" />
-								View Store
-							</a>
+								{isDisconnecting
+									? "Disconnecting..."
+									: "Disconnect Shopify"}
+							</Button>
+						)}
+
+						<Button
+							variant="destructive"
+							size="sm"
+							onClick={() => setShowDeleteConfirm(true)}
+							disabled={isDeleting}
+						>
+							<Trash2 className="h-4 w-4 mr-2" />
+							Delete Store
 						</Button>
-					)}
+					</div>
 				</div>
 			</div>
 
@@ -1116,6 +1195,68 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					</div>
 				</div>
 			</form>
+
+			{/* Delete Confirmation Dialog */}
+			{showDeleteConfirm && (
+				<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+					<Card className="w-full max-w-md mx-4">
+						<CardHeader>
+							<CardTitle className="text-red-600">
+								Delete Store
+							</CardTitle>
+							<CardDescription>
+								This action cannot be undone. This will
+								permanently delete the store and all associated
+								data.
+							</CardDescription>
+						</CardHeader>
+						<CardContent>
+							<div className="space-y-4">
+								<p className="text-sm text-gray-600">
+									Store: <strong>{store?.name}</strong>
+								</p>
+								<p className="text-sm text-gray-600">
+									This will delete:
+								</p>
+								<ul className="text-sm text-gray-600 list-disc list-inside space-y-1">
+									<li>Store information and settings</li>
+									<li>All uploaded files and CSV data</li>
+									<li>Shopify connection (if any)</li>
+									<li>All associated records</li>
+								</ul>
+							</div>
+						</CardContent>
+						<div className="flex space-x-3 p-6 pt-0">
+							<Button
+								variant="destructive"
+								onClick={handleDeleteStore}
+								disabled={isDeleting}
+								className="flex-1"
+							>
+								{isDeleting ? (
+									<>
+										<div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+										Deleting...
+									</>
+								) : (
+									<>
+										<Trash2 className="h-4 w-4 mr-2" />
+										Yes, Delete Store
+									</>
+								)}
+							</Button>
+							<Button
+								variant="outline"
+								onClick={() => setShowDeleteConfirm(false)}
+								disabled={isDeleting}
+								className="flex-1"
+							>
+								Cancel
+							</Button>
+						</div>
+					</Card>
+				</div>
+			)}
 		</div>
 	);
 }
