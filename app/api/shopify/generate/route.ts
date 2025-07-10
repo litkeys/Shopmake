@@ -87,20 +87,23 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
-		// Get Shopify Admin Token
+		// Get Shopify token for the store
+		console.log("Looking for Shopify token for store ID:", store_id);
 		const shopifyToken = await getShopifyAdminToken(store_id);
+		console.log("Shopify token found:", !!shopifyToken);
 		console.log(
-			"Shopify token found:",
-			shopifyToken ? "Yes" : "No",
-			"Domain:",
+			"Shopify store domain:",
 			shopifyToken?.shopify_store_domain
 		);
+		console.log(
+			"Token length:",
+			shopifyToken?.admin_api_token?.length || 0
+		);
+
 		if (!shopifyToken) {
-			console.log("Error: Shopify token not found");
+			console.log("No Shopify token found for store ID:", store_id);
 			return NextResponse.json(
-				{
-					error: "Shopify store not connected. Please add your Admin API token first.",
-				},
+				{ error: "Store not connected to Shopify" },
 				{ status: 400 }
 			);
 		}

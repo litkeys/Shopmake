@@ -7,14 +7,26 @@ export async function testShopifyConnection(
 	adminToken: string
 ): Promise<boolean> {
 	try {
-		const url = `https://${shop}.myshopify.com/admin/api/2023-10/shop.json`;
+		console.log("Testing Shopify connection for shop:", shop);
+		console.log("Token length:", adminToken?.length || 0);
 
-		const response = await fetch(url, {
-			headers: {
-				"X-Shopify-Access-Token": adminToken,
-				"Content-Type": "application/json",
-			},
-		});
+		const response = await fetch(
+			`https://${shop}.myshopify.com/admin/api/2023-10/shop.json`,
+			{
+				headers: {
+					"X-Shopify-Access-Token": adminToken,
+					"Content-Type": "application/json",
+				},
+			}
+		);
+
+		console.log("Connection test response status:", response.status);
+		console.log("Connection test response ok:", response.ok);
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			console.log("Connection test error response:", errorText);
+		}
 
 		return response.ok;
 	} catch (error) {
@@ -39,6 +51,10 @@ export class ShopifyClient {
 	): Promise<T> {
 		const url = `https://${this.shop}.myshopify.com/admin/api/2023-10${endpoint}`;
 
+		console.log("Making Shopify API request to:", url);
+		console.log("Request method:", options.method || "GET");
+		console.log("Access token length:", this.accessToken?.length || 0);
+
 		const response = await fetch(url, {
 			...options,
 			headers: {
@@ -48,14 +64,30 @@ export class ShopifyClient {
 			},
 		});
 
+		console.log("API response status:", response.status);
+		console.log("API response ok:", response.ok);
+
 		if (!response.ok) {
 			const errorText = await response.text();
+			console.error("Shopify API error response:", errorText);
+			console.error(
+				"Response headers:",
+				Object.fromEntries(response.headers.entries())
+			);
+
+			if (response.status === 401 || response.status === 403) {
+				throw new Error(
+					"Insufficient Shopify permissions. Please reconnect your store with the required permissions."
+				);
+			}
 			throw new Error(
 				`Shopify API error: ${response.status} ${response.statusText} - ${errorText}`
 			);
 		}
 
-		return response.json();
+		const data = await response.json();
+		console.log("API response data:", data);
+		return data;
 	}
 
 	// Upload and install theme
