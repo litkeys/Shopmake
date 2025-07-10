@@ -492,54 +492,48 @@ export class ShopifyClient {
 	// Set theme logo
 	async setThemeLogo(themeId: number, logoUrl: string): Promise<void> {
 		try {
-			console.log(`\n=== LOGO UPLOAD DEBUG ===`);
-			console.log(`Logo URL received: "${logoUrl}"`);
-
 			// Download and upload logo as theme asset
 			const logoResponse = await fetch(logoUrl);
-			console.log(`Logo fetch status: ${logoResponse.status}`);
-			console.log(
-				`Logo content-type: ${logoResponse.headers.get("content-type")}`
-			);
-			console.log(
-				`Logo content-length: ${logoResponse.headers.get(
-					"content-length"
-				)}`
-			);
-
 			if (!logoResponse.ok) {
 				throw new Error(`Failed to fetch logo: ${logoResponse.status}`);
 			}
 
 			const logoBuffer = await logoResponse.arrayBuffer();
-			console.log(`Logo buffer size: ${logoBuffer.byteLength} bytes`);
-
 			const logoBase64 = Buffer.from(logoBuffer).toString("base64");
-			console.log(`Logo base64 length: ${logoBase64.length} characters`);
-			console.log(
-				`Logo base64 preview: ${logoBase64.substring(0, 100)}...`
-			);
 
-			// Get file extension from URL
+			// Get file extension from URL and determine MIME type
 			const urlParts = logoUrl.split(".");
-			const extension = urlParts[urlParts.length - 1].split("?")[0];
+			const extension = urlParts[urlParts.length - 1]
+				.split("?")[0]
+				.toLowerCase();
 			const assetKey = `assets/logo.${extension}`;
-			console.log(`Asset key: ${assetKey}`);
+
+			// Map extensions to MIME types
+			const mimeTypes: { [key: string]: string } = {
+				jpg: "image/jpeg",
+				jpeg: "image/jpeg",
+				png: "image/png",
+				gif: "image/gif",
+				webp: "image/webp",
+			};
+
+			const mimeType = mimeTypes[extension] || "image/jpeg";
+
+			// Format as data URL for Asset API (this is the correct format)
+			const dataUrl = `data:${mimeType};base64,${logoBase64}`;
 
 			// Upload logo as theme asset
-			console.log(`Uploading to Shopify theme ${themeId}...`);
 			await this.makeRequest(`/themes/${themeId}/assets.json`, {
 				method: "PUT",
 				body: JSON.stringify({
 					asset: {
 						key: assetKey,
-						value: logoBase64,
+						value: dataUrl,
 					},
 				}),
 			});
 
-			console.log(`✅ Logo successfully uploaded as ${assetKey}`);
-			console.log(`=== END LOGO UPLOAD DEBUG ===\n`);
+			console.log(`Logo uploaded successfully to ${assetKey}`);
 		} catch (error) {
 			console.error("Error setting theme logo:", error);
 			throw error;
@@ -663,7 +657,6 @@ export class ShopifyClient {
 
 		// Parse headers using proper CSV parsing (handle quoted fields)
 		const headers = this.parseCSVLine(lines[0]);
-		console.log("Headers found:", headers.slice(0, 30)); // Show first 30 headers for debugging
 
 		const products = [];
 
@@ -676,31 +669,11 @@ export class ShopifyClient {
 
 			const product: any = {};
 
-			// Debug first product only
-			if (i === 1) {
-				console.log(
-					`\nFirst product has ${values.length} values, headers has ${headers.length}`
-				);
-				console.log(
-					`Value at index 22 (Variant Price): "${values[22]}"`
-				);
-			}
-
 			headers.forEach((header, index) => {
 				const value = values[index]?.trim();
 				if (!value) return;
 
 				const headerLower = header.toLowerCase().trim();
-
-				// Debug title and price mapping for first product
-				if (
-					i === 1 &&
-					(headerLower === "title" || headerLower === "variant price")
-				) {
-					console.log(
-						`Mapping "${header}" (${headerLower}) = "${value}"`
-					);
-				}
 
 				// Map common CSV headers to product fields
 				switch (headerLower) {
@@ -802,20 +775,6 @@ export class ShopifyClient {
 					product.description = `${product.title} - No description provided`;
 				}
 				products.push(product);
-
-				// Debug first 3 products
-				if (i <= 3) {
-					console.log(
-						`✓ Product ${i} added: "${product.title}" - $${product.price}`
-					);
-				}
-			} else {
-				// Debug first 3 products that fail
-				if (i <= 3) {
-					console.log(
-						`✗ Product ${i} failed: title="${product.title}", price="${product.price}"`
-					);
-				}
 			}
 		}
 
@@ -827,32 +786,47 @@ export class ShopifyClient {
 		const result = [];
 		let current = "";
 		let inQuotes = false;
+		let i = 0;
 
-		for (let i = 0; i < line.length; i++) {
+		while (i < line.length) {
 			const char = line[i];
 
 			if (char === '"') {
-				if (inQuotes && line[i + 1] === '"') {
-					// Escaped quote
+				if (!inQuotes) {
+					// Starting a quoted field
+					inQuotes = true;
+				} else if (i + 1 < line.length && line[i + 1] === '"') {
+					// Escaped quote (double quote)
 					current += '"';
-					i++; // Skip next quote
+					i++; // Skip the next quote
 				} else {
-					// Toggle quote state
-					inQuotes = !inQuotes;
+					// Ending a quoted field
+					inQuotes = false;
 				}
 			} else if (char === "," && !inQuotes) {
-				// End of field
-				result.push(current.trim());
+				// Field separator (only when not in quotes)
+				result.push(current);
 				current = "";
 			} else {
+				// Regular character
 				current += char;
 			}
+
+			i++;
 		}
 
 		// Add the last field
-		result.push(current.trim());
+		result.push(current);
 
-		return result;
+		// Clean up the results (remove surrounding quotes and trim)
+		return result.map((field) => {
+			let cleaned = field.trim();
+			// Remove surrounding quotes if present
+			if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+				cleaned = cleaned.slice(1, -1);
+			}
+			return cleaned;
+		});
 	}
 
 	// Update store branding
