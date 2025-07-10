@@ -492,21 +492,42 @@ export class ShopifyClient {
 	// Set theme logo
 	async setThemeLogo(themeId: number, logoUrl: string): Promise<void> {
 		try {
+			console.log(`\n=== LOGO UPLOAD DEBUG ===`);
+			console.log(`Logo URL received: "${logoUrl}"`);
+
 			// Download and upload logo as theme asset
 			const logoResponse = await fetch(logoUrl);
+			console.log(`Logo fetch status: ${logoResponse.status}`);
+			console.log(
+				`Logo content-type: ${logoResponse.headers.get("content-type")}`
+			);
+			console.log(
+				`Logo content-length: ${logoResponse.headers.get(
+					"content-length"
+				)}`
+			);
+
 			if (!logoResponse.ok) {
 				throw new Error(`Failed to fetch logo: ${logoResponse.status}`);
 			}
 
 			const logoBuffer = await logoResponse.arrayBuffer();
+			console.log(`Logo buffer size: ${logoBuffer.byteLength} bytes`);
+
 			const logoBase64 = Buffer.from(logoBuffer).toString("base64");
+			console.log(`Logo base64 length: ${logoBase64.length} characters`);
+			console.log(
+				`Logo base64 preview: ${logoBase64.substring(0, 100)}...`
+			);
 
 			// Get file extension from URL
 			const urlParts = logoUrl.split(".");
 			const extension = urlParts[urlParts.length - 1].split("?")[0];
 			const assetKey = `assets/logo.${extension}`;
+			console.log(`Asset key: ${assetKey}`);
 
 			// Upload logo as theme asset
+			console.log(`Uploading to Shopify theme ${themeId}...`);
 			await this.makeRequest(`/themes/${themeId}/assets.json`, {
 				method: "PUT",
 				body: JSON.stringify({
@@ -516,6 +537,9 @@ export class ShopifyClient {
 					},
 				}),
 			});
+
+			console.log(`✅ Logo successfully uploaded as ${assetKey}`);
+			console.log(`=== END LOGO UPLOAD DEBUG ===\n`);
 		} catch (error) {
 			console.error("Error setting theme logo:", error);
 			throw error;
@@ -655,8 +679,10 @@ export class ShopifyClient {
 			// Debug first product only
 			if (i === 1) {
 				console.log(
-					`\nFirst product values (first 30):`,
-					values.slice(0, 30)
+					`\nFirst product has ${values.length} values, headers has ${headers.length}`
+				);
+				console.log(
+					`Value at index 22 (Variant Price): "${values[22]}"`
 				);
 			}
 
