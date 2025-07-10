@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { Store, StoreData, Upload, ShopifyToken } from "@/types";
+import { Store, StoreData, Upload, ShopifyAdminToken } from "@/types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -134,12 +134,12 @@ export async function upsertStoreData(
 	return data;
 }
 
-// Shopify token operations
-export async function getShopifyToken(
+// Shopify Admin Token operations
+export async function getShopifyAdminToken(
 	storeId: string
-): Promise<ShopifyToken | null> {
+): Promise<ShopifyAdminToken | null> {
 	const { data, error } = await supabaseAdmin
-		.from("shopify_tokens")
+		.from("shopify_admin_tokens")
 		.select("*")
 		.eq("store_id", storeId)
 		.single();
@@ -148,27 +148,29 @@ export async function getShopifyToken(
 		if (error.code === "PGRST116") {
 			return null; // Not found
 		}
-		throw new Error(`Failed to fetch Shopify token: ${error.message}`);
+		throw new Error(
+			`Failed to fetch Shopify admin token: ${error.message}`
+		);
 	}
 
 	return data;
 }
 
-export async function upsertShopifyToken(
+export async function upsertShopifyAdminToken(
 	storeId: string,
 	shopifyStoreDomain: string,
-	accessToken: string,
-	scopes: string
-): Promise<ShopifyToken> {
+	adminApiToken: string,
+	tokenName?: string
+): Promise<ShopifyAdminToken> {
 	const { data, error } = await supabaseAdmin
-		.from("shopify_tokens")
+		.from("shopify_admin_tokens")
 		.upsert(
 			[
 				{
 					store_id: storeId,
 					shopify_store_domain: shopifyStoreDomain,
-					access_token: accessToken,
-					scopes: scopes,
+					admin_api_token: adminApiToken,
+					token_name: tokenName,
 					updated_at: new Date().toISOString(),
 				},
 			],
@@ -180,20 +182,24 @@ export async function upsertShopifyToken(
 		.single();
 
 	if (error) {
-		throw new Error(`Failed to upsert Shopify token: ${error.message}`);
+		throw new Error(
+			`Failed to upsert Shopify admin token: ${error.message}`
+		);
 	}
 
 	return data;
 }
 
-export async function deleteShopifyToken(storeId: string): Promise<void> {
+export async function deleteShopifyAdminToken(storeId: string): Promise<void> {
 	const { error } = await supabaseAdmin
-		.from("shopify_tokens")
+		.from("shopify_admin_tokens")
 		.delete()
 		.eq("store_id", storeId);
 
 	if (error) {
-		throw new Error(`Failed to delete Shopify token: ${error.message}`);
+		throw new Error(
+			`Failed to delete Shopify admin token: ${error.message}`
+		);
 	}
 }
 

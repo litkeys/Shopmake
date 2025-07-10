@@ -30,6 +30,7 @@ import {
 	getStoreUploadsAPI,
 	deleteFileAPI,
 	generateShopifyStoreAPI,
+	connectShopifyStoreAPI,
 } from "@/lib/api";
 import { Store, StoreData, StoreFormData, Upload as UploadType } from "@/types";
 import Link from "next/link";
@@ -70,6 +71,13 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const [logoPreview, setLogoPreview] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [success, setSuccess] = useState<string | null>(null);
+	const [showShopifyForm, setShowShopifyForm] = useState(false);
+	const [isConnecting, setIsConnecting] = useState(false);
+	const [shopifyFormData, setShopifyFormData] = useState({
+		store_domain: "",
+		admin_api_token: "",
+		token_name: "",
+	});
 
 	const [formData, setFormData] = useState<StoreFormData>({
 		brand_name: "",
@@ -100,9 +108,11 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 		if (errorParam) {
 			const errorMessages: Record<string, string> = {
-				oauth_failed: "Failed to connect to Shopify. Please try again.",
-				oauth_missing_params: "Invalid OAuth parameters.",
-				oauth_invalid_signature: "Invalid OAuth signature.",
+				shopify_connection_failed:
+					"Failed to connect to Shopify. Please try again.",
+				invalid_credentials: "Invalid store domain or Admin API token.",
+				insufficient_permissions:
+					"Admin API token doesn't have required permissions.",
 				store_access_denied: "Access denied to store.",
 			};
 
@@ -354,23 +364,51 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		return uploads.filter((upload) => upload.file_type === `csv_${type}`);
 	};
 
+	const handleShopifyConnect = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!store) return;
+
+		try {
+			setIsConnecting(true);
+			setError(null);
+
+			const result = await connectShopifyStoreAPI(store.id, {
+				store_domain: shopifyFormData.store_domain,
+				admin_api_token: shopifyFormData.admin_api_token,
+				token_name:
+					shopifyFormData.token_name || "Genesis Project Token",
+			});
+
+			setSuccess(
+				`Shopify store connected successfully! Store: ${result.store_url}`
+			);
+			setShowShopifyForm(false);
+			setShopifyFormData({
+				store_domain: "",
+				admin_api_token: "",
+				token_name: "",
+			});
+
+			// Reload store data to get updated Shopify domain
+			await loadStoreData();
+		} catch (err) {
+			setError(
+				err instanceof Error
+					? err.message
+					: "Failed to connect Shopify store"
+			);
+		} finally {
+			setIsConnecting(false);
+		}
+	};
+
 	const handleGenerateStore = async () => {
 		if (!store) return;
 
-		// Check if store has a Shopify domain
+		// Check if store has a Shopify domain (means it's connected)
 		if (!store.shopify_store_domain) {
-			// Prompt for Shopify store domain
-			const shopDomain = window.prompt(
-				"Enter your Shopify store domain (e.g., 'mystore' for mystore.myshopify.com):"
-			);
-
-			if (!shopDomain) return;
-
-			// Redirect to OAuth flow
-			const baseUrl = window.location.origin;
-			window.location.href = `${baseUrl}/api/shopify/oauth?shop=${encodeURIComponent(
-				shopDomain
-			)}&state=${encodeURIComponent(store.id)}`;
+			// Show the connection form
+			setShowShopifyForm(true);
 			return;
 		}
 
@@ -831,7 +869,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 						<CardDescription>
 							{store?.shopify_store_domain
 								? `Connected to ${store.shopify_store_domain}.myshopify.com`
-								: "Connect to Shopify and generate your store with the Genesis theme"}
+								: "Connect your Shopify Custom App and generate your store with the Genesis theme"}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
@@ -870,6 +908,119 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 										</div>
 									</div>
 								</div>
+							) : showShopifyForm ? (
+								<form
+									onSubmit={handleShopifyConnect}
+									className="space-y-4"
+								>
+									<div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+										<h3 className="text-sm font-medium text-blue-800 mb-2">
+											Connect Your Shopify Custom App
+										</h3>
+										<p className="text-sm text-blue-700 mb-4">
+											Enter your store domain and Admin
+											API token from your Shopify Custom
+											App.
+										</p>
+									</div>
+
+									<div>
+										<Label htmlFor="store_domain">
+											Store Domain *
+										</Label>
+										<Input
+											id="store_domain"
+											type="text"
+											value={shopifyFormData.store_domain}
+											onChange={(e) =>
+												setShopifyFormData((prev) => ({
+													...prev,
+													store_domain:
+														e.target.value,
+												}))
+											}
+											placeholder="genesis-project-demo"
+											required
+										/>
+										<p className="text-sm text-muted-foreground mt-1">
+											Just the subdomain (without
+											.myshopify.com)
+										</p>
+									</div>
+
+									<div>
+										<Label htmlFor="admin_api_token">
+											Admin API Token *
+										</Label>
+										<Input
+											id="admin_api_token"
+											type="password"
+											value={
+												shopifyFormData.admin_api_token
+											}
+											onChange={(e) =>
+												setShopifyFormData((prev) => ({
+													...prev,
+													admin_api_token:
+														e.target.value,
+												}))
+											}
+											placeholder="shpat_..."
+											required
+										/>
+										<p className="text-sm text-muted-foreground mt-1">
+											From your Custom App in Shopify
+											Admin
+										</p>
+									</div>
+
+									<div>
+										<Label htmlFor="token_name">
+											Token Name (Optional)
+										</Label>
+										<Input
+											id="token_name"
+											type="text"
+											value={shopifyFormData.token_name}
+											onChange={(e) =>
+												setShopifyFormData((prev) => ({
+													...prev,
+													token_name: e.target.value,
+												}))
+											}
+											placeholder="Genesis Project Token"
+										/>
+									</div>
+
+									<div className="flex space-x-3">
+										<Button
+											type="submit"
+											disabled={
+												isConnecting ||
+												!shopifyFormData.store_domain.trim() ||
+												!shopifyFormData.admin_api_token.trim()
+											}
+										>
+											{isConnecting ? (
+												<>
+													<div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+													Connecting...
+												</>
+											) : (
+												"Connect Store"
+											)}
+										</Button>
+										<Button
+											type="button"
+											variant="outline"
+											onClick={() =>
+												setShowShopifyForm(false)
+											}
+										>
+											Cancel
+										</Button>
+									</div>
+								</form>
 							) : (
 								<div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
 									<div className="flex">
@@ -893,9 +1044,10 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 											<div className="mt-2 text-sm text-blue-700">
 												<p>
 													You'll need to connect your
-													Shopify store before
-													generating. We'll guide you
-													through the OAuth process.
+													Shopify Custom App before
+													generating. We'll need your
+													store domain and Admin API
+													token.
 												</p>
 											</div>
 										</div>
@@ -924,7 +1076,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 											<Zap className="h-4 w-4 mr-2" />
 											{store?.shopify_store_domain
 												? "Generate Store"
-												: "Connect Shopify & Generate Store"}
+												: "Connect Custom App & Generate Store"}
 										</>
 									)}
 								</Button>

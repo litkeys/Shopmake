@@ -1,4 +1,9 @@
-import { Store, StoreData, ShopifyStoreGenerationRequest } from "@/types";
+import {
+	Store,
+	StoreData,
+	ShopifyStoreGenerationRequest,
+	ShopifyCustomAppConnection,
+} from "@/types";
 
 // Helper to get the base URL
 function getBaseUrl() {
@@ -136,17 +141,32 @@ export async function deleteFileAPI(filePath: string): Promise<void> {
 }
 
 // Shopify-related API functions
-export function getShopifyOAuthURL(
-	shopDomain: string,
-	storeId: string
-): string {
-	const baseUrl = getBaseUrl();
-	const params = new URLSearchParams({
-		shop: shopDomain,
-		state: storeId, // Use store ID as state to identify the store after callback
+export async function connectShopifyStoreAPI(
+	storeId: string,
+	connection: ShopifyCustomAppConnection
+): Promise<{
+	store_domain: string;
+	store_url: string;
+	token_name: string;
+}> {
+	const response = await fetch(`${getBaseUrl()}/api/shopify/connect`, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({
+			store_id: storeId,
+			...connection,
+		}),
 	});
 
-	return `${baseUrl}/api/shopify/oauth?${params.toString()}`;
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to connect Shopify store");
+	}
+
+	const result = await response.json();
+	return result.data;
 }
 
 export async function generateShopifyStoreAPI(

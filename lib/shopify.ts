@@ -1,81 +1,26 @@
 import { SHOPIFY_CONFIG } from "./constants";
-import { ShopifyToken, ShopifyCallbackParams, StoreData } from "@/types";
-import crypto from "crypto";
+import { ShopifyAdminToken, StoreData } from "@/types";
 
-// Helper to verify Shopify webhook HMAC
-export function verifyShopifyWebhook(
-	rawBody: string,
-	hmacHeader: string
-): boolean {
-	const hash = crypto
-		.createHmac("sha256", SHOPIFY_CONFIG.CLIENT_SECRET)
-		.update(rawBody, "utf8")
-		.digest("base64");
-
-	return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(hmacHeader));
-}
-
-// Helper to verify Shopify OAuth callback
-export function verifyShopifyCallback(params: ShopifyCallbackParams): boolean {
-	const { hmac, ...otherParams } = params;
-
-	// Create query string from params (excluding hmac)
-	const queryString = Object.keys(otherParams)
-		.sort()
-		.map((key) => `${key}=${otherParams[key as keyof typeof otherParams]}`)
-		.join("&");
-
-	const computedHmac = crypto
-		.createHmac("sha256", SHOPIFY_CONFIG.CLIENT_SECRET)
-		.update(queryString)
-		.digest("hex");
-
-	return crypto.timingSafeEqual(Buffer.from(computedHmac), Buffer.from(hmac));
-}
-
-// Generate Shopify OAuth URL
-export function generateShopifyOAuthUrl(shop: string, state: string): string {
-	const params = new URLSearchParams({
-		client_id: SHOPIFY_CONFIG.CLIENT_ID,
-		scope: SHOPIFY_CONFIG.SCOPES,
-		redirect_uri: SHOPIFY_CONFIG.REDIRECT_URI,
-		state: state,
-		"grant_options[]": "per-user",
-	});
-
-	return `https://${shop}.myshopify.com/admin/oauth/authorize?${params.toString()}`;
-}
-
-// Exchange OAuth code for access token
-export async function exchangeCodeForToken(
+// Test Admin API connection
+export async function testShopifyConnection(
 	shop: string,
-	code: string
-): Promise<{
-	access_token: string;
-	scope: string;
-}> {
-	const response = await fetch(
-		`https://${shop}.myshopify.com/admin/oauth/access_token`,
-		{
-			method: "POST",
+	adminToken: string
+): Promise<boolean> {
+	try {
+		const url = `https://${shop}.myshopify.com/admin/api/2023-10/shop.json`;
+
+		const response = await fetch(url, {
 			headers: {
+				"X-Shopify-Access-Token": adminToken,
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({
-				client_id: SHOPIFY_CONFIG.CLIENT_ID,
-				client_secret: SHOPIFY_CONFIG.CLIENT_SECRET,
-				code: code,
-			}),
-		}
-	);
+		});
 
-	if (!response.ok) {
-		throw new Error(
-			`Failed to exchange code for token: ${response.statusText}`
-		);
+		return response.ok;
+	} catch (error) {
+		console.error("Error testing Shopify connection:", error);
+		return false;
 	}
-
-	return response.json();
 }
 
 // Shopify API Client class

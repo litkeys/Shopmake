@@ -2,7 +2,7 @@ import { auth, currentUser } from "@clerk/nextjs";
 import { NextRequest, NextResponse } from "next/server";
 import { isAdminEmail } from "@/lib/admin";
 import { ShopifyClient } from "@/lib/shopify";
-import { getStore, getStoreData, getShopifyToken } from "@/lib/supabase";
+import { getStore, getStoreData, getShopifyAdminToken } from "@/lib/supabase";
 import { ShopifyStoreGenerationRequest } from "@/types";
 
 export async function POST(request: NextRequest) {
@@ -65,12 +65,12 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
-		// Get Shopify token
-		const shopifyToken = await getShopifyToken(store_id);
+		// Get Shopify Admin Token
+		const shopifyToken = await getShopifyAdminToken(store_id);
 		if (!shopifyToken) {
 			return NextResponse.json(
 				{
-					error: "Shopify store not connected. Please connect to Shopify first.",
+					error: "Shopify store not connected. Please add your Admin API token first.",
 				},
 				{ status: 400 }
 			);
@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
 		// Initialize Shopify client
 		const shopify = new ShopifyClient(
 			shopifyToken.shopify_store_domain,
-			shopifyToken.access_token
+			shopifyToken.admin_api_token
 		);
 
 		// Generate the store

@@ -39,30 +39,20 @@ export interface Upload {
 }
 
 // Shopify-related types
-export interface ShopifyToken {
+export interface ShopifyAdminToken {
 	id: string;
 	store_id: string;
 	shopify_store_domain: string;
-	access_token: string;
-	scopes: string;
+	admin_api_token: string;
+	token_name?: string;
 	created_at: string;
 	updated_at: string;
 }
 
-export interface ShopifyOAuthParams {
-	client_id: string;
-	scope: string;
-	redirect_uri: string;
-	state: string;
-	"grant_options[]"?: string;
-}
-
-export interface ShopifyCallbackParams {
-	code: string;
-	hmac: string;
-	shop: string;
-	state: string;
-	timestamp: string;
+export interface ShopifyCustomAppConnection {
+	store_domain: string;
+	admin_api_token: string;
+	token_name?: string;
 }
 
 export interface ShopifyStoreGenerationRequest {
