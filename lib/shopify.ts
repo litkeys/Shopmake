@@ -492,7 +492,7 @@ export class ShopifyClient {
 	// Set theme logo
 	async setThemeLogo(themeId: number, logoUrl: string): Promise<void> {
 		try {
-			// Upload logo as an asset to the theme
+			// Step 1: Upload logo as an asset to the theme
 			const logoResponse = await fetch(logoUrl);
 			if (!logoResponse.ok) {
 				throw new Error(`Failed to fetch logo: ${logoResponse.status}`);
@@ -518,6 +518,77 @@ export class ShopifyClient {
 			});
 
 			console.log(`Logo uploaded as theme asset: ${assetKey}`);
+			console.log(
+				`Logo can be referenced in theme as: {{ '${assetKey.replace(
+					"assets/",
+					""
+				)}' | asset_url }}`
+			);
+
+			// Step 2: Update theme settings to reference the logo
+			try {
+				// Get current theme settings
+				const currentSettings = await this.makeRequest<{
+					asset: { value: string };
+				}>(
+					`/themes/${themeId}/assets.json?asset[key]=config/settings_data.json`
+				);
+
+				let settingsData: any = {};
+				if (currentSettings.asset.value) {
+					try {
+						settingsData = JSON.parse(currentSettings.asset.value);
+					} catch (parseError) {
+						console.log(
+							"Could not parse existing settings, creating new ones"
+						);
+						settingsData = { current: {}, presets: {} };
+					}
+				} else {
+					settingsData = { current: {}, presets: {} };
+				}
+
+				// Ensure current settings object exists
+				if (!settingsData.current) {
+					settingsData.current = {};
+				}
+
+				// Update logo setting (Genesis theme uses "logo" as the main setting)
+				const logoSettings = {
+					logo: assetKey, // Primary logo setting for Genesis theme
+					logo_image: assetKey, // Fallback for other themes
+					header_logo: assetKey, // Common alternative
+					site_logo: assetKey, // Another common alternative
+					brand_logo: assetKey,
+					main_logo: assetKey,
+					// Also try without the assets/ prefix for some themes
+					logo_url: assetKey.replace("assets/", ""),
+					header_logo_url: assetKey.replace("assets/", ""),
+				};
+
+				// Apply all possible logo setting names
+				Object.assign(settingsData.current, logoSettings);
+
+				// Update the settings file
+				await this.makeRequest(`/themes/${themeId}/assets.json`, {
+					method: "PUT",
+					body: JSON.stringify({
+						asset: {
+							key: "config/settings_data.json",
+							value: JSON.stringify(settingsData),
+						},
+					}),
+				});
+
+				console.log(
+					`Logo settings updated in theme settings with multiple setting names`
+				);
+			} catch (settingsError) {
+				console.warn(
+					"Could not update theme settings, but logo asset was uploaded:",
+					settingsError
+				);
+			}
 		} catch (error) {
 			console.error("Error setting theme logo:", error);
 			throw error;
