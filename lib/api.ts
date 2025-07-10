@@ -1,4 +1,4 @@
-import { Store, StoreData } from "@/types";
+import { Store, StoreData, ShopifyStoreGenerationRequest } from "@/types";
 
 // Helper to get the base URL
 function getBaseUrl() {
@@ -133,4 +133,48 @@ export async function deleteFileAPI(filePath: string): Promise<void> {
 		const error = await response.json();
 		throw new Error(error.error || "Failed to delete file");
 	}
+}
+
+// Shopify-related API functions
+export function getShopifyOAuthURL(
+	shopDomain: string,
+	storeId: string
+): string {
+	const baseUrl = getBaseUrl();
+	const params = new URLSearchParams({
+		shop: shopDomain,
+		state: storeId, // Use store ID as state to identify the store after callback
+	});
+
+	return `${baseUrl}/api/shopify/oauth?${params.toString()}`;
+}
+
+export async function generateShopifyStoreAPI(
+	storeId: string,
+	forceRegenerate: boolean = false
+): Promise<{
+	store_domain: string;
+	theme_id: number;
+	collection_id?: number;
+	products_created: number;
+	store_url: string;
+}> {
+	const response = await fetch(`${getBaseUrl()}/api/shopify/generate`, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify({
+			store_id: storeId,
+			force_regenerate: forceRegenerate,
+		} as ShopifyStoreGenerationRequest),
+	});
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to generate Shopify store");
+	}
+
+	const result = await response.json();
+	return result.data;
 }

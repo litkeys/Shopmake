@@ -87,7 +87,32 @@ CREATE POLICY "Users can access their uploads" ON uploads
     );
 ```
 
-### 4. Add updated_at triggers
+### 4. shopify_tokens
+
+```sql
+CREATE TABLE shopify_tokens (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    store_id UUID REFERENCES stores(id) ON DELETE CASCADE UNIQUE,
+    shopify_store_domain TEXT NOT NULL,
+    access_token TEXT NOT NULL,
+    scopes TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Add RLS policies
+ALTER TABLE shopify_tokens ENABLE ROW LEVEL SECURITY;
+
+-- Users can only access shopify_tokens for their own stores
+CREATE POLICY "Users can access their shopify tokens" ON shopify_tokens
+    FOR ALL USING (
+        store_id IN (
+            SELECT id FROM stores WHERE created_by = (auth.jwt() ->> 'sub')::text
+        )
+    );
+```
+
+### 5. Add updated_at triggers
 
 ```sql
 -- Function to update updated_at timestamp
@@ -106,6 +131,10 @@ CREATE TRIGGER update_stores_updated_at
 
 CREATE TRIGGER update_store_data_updated_at
     BEFORE UPDATE ON store_data
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_shopify_tokens_updated_at
+    BEFORE UPDATE ON shopify_tokens
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 ```
 
@@ -185,6 +214,14 @@ Make sure these environment variables are set:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your-supabase-project-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+
+# Shopify Integration (NEW)
+SHOPIFY_CLIENT_ID=your-shopify-app-client-id
+SHOPIFY_CLIENT_SECRET=your-shopify-app-client-secret
+SHOPIFY_REDIRECT_URI=https://your-domain.com/api/shopify/callback
+SHOPIFY_SCOPES=read_products,write_products,read_themes,write_themes,read_script_tags,write_script_tags
+GENESIS_THEME_URL=https://your-cdn.com/genesis-theme.zip
 ```
 
 ## File Storage Structure
@@ -217,5 +254,19 @@ store-files/
 5. **Database Relationships**: The schema uses foreign key constraints to maintain data integrity.
 
 6. **Clerk Integration**: The system uses Clerk JWTs with Supabase RLS policies that reference the `sub` claim for user identification.
+
+7. **Shopify Integration**: Shopify access tokens are stored securely in the `shopify_tokens` table and never exposed to the client.
+
+## Shopify App Setup
+
+To integrate with Shopify, you need to create a Shopify app:
+
+1. Go to [Shopify Partners](https://partners.shopify.com/) and create a partner account
+2. Create a new app in your partner dashboard
+3. Configure the following settings:
+    - **App URL**: `https://your-domain.com/dashboard`
+    - **Allowed redirection URL(s)**: `https://your-domain.com/api/shopify/callback`
+    - **Scopes**: `read_products,write_products,read_themes,write_themes,read_script_tags,write_script_tags`
+4. Note down your Client ID and Client Secret for the environment variables
 
 To set up your Supabase instance, copy and paste the SQL commands above into the Supabase SQL editor and execute them in order.

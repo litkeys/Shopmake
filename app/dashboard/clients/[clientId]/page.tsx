@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import {
 	Card,
@@ -14,13 +14,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Save, Upload, Trash2, ExternalLink } from "lucide-react";
+import {
+	ArrowLeft,
+	Save,
+	Upload,
+	Trash2,
+	ExternalLink,
+	Store as StoreIcon,
+	Zap,
+} from "lucide-react";
 import {
 	getStoreAPI,
 	updateStoreDataAPI,
 	uploadFileAPI,
 	getStoreUploadsAPI,
 	deleteFileAPI,
+	generateShopifyStoreAPI,
 } from "@/lib/api";
 import { Store, StoreData, StoreFormData, Upload as UploadType } from "@/types";
 import Link from "next/link";
@@ -50,9 +59,11 @@ interface EditClientPageProps {
 
 export default function EditClientPage({ params }: EditClientPageProps) {
 	const router = useRouter();
+	const searchParams = useSearchParams();
 	const { userId } = useAuth();
 	const [isLoading, setIsLoading] = useState(true);
 	const [isSaving, setIsSaving] = useState(false);
+	const [isGenerating, setIsGenerating] = useState(false);
 	const [store, setStore] = useState<Store | null>(null);
 	const [storeData, setStoreData] = useState<StoreData | null>(null);
 	const [uploads, setUploads] = useState<UploadType[]>([]);
@@ -74,6 +85,33 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	useEffect(() => {
 		loadStoreData();
 	}, [params.clientId]);
+
+	// Handle URL parameters for success/error messages
+	useEffect(() => {
+		const successParam = searchParams.get("success");
+		const errorParam = searchParams.get("error");
+
+		if (successParam === "shopify_connected") {
+			setSuccess("Shopify store connected successfully!");
+			setTimeout(() => setSuccess(null), 5000);
+			// Clean up URL parameters
+			router.replace(`/dashboard/clients/${params.clientId}`);
+		}
+
+		if (errorParam) {
+			const errorMessages: Record<string, string> = {
+				oauth_failed: "Failed to connect to Shopify. Please try again.",
+				oauth_missing_params: "Invalid OAuth parameters.",
+				oauth_invalid_signature: "Invalid OAuth signature.",
+				store_access_denied: "Access denied to store.",
+			};
+
+			setError(errorMessages[errorParam] || "An error occurred.");
+			setTimeout(() => setError(null), 5000);
+			// Clean up URL parameters
+			router.replace(`/dashboard/clients/${params.clientId}`);
+		}
+	}, [searchParams, params.clientId, router]);
 
 	// Auto-save effect
 	useEffect(() => {
@@ -314,6 +352,46 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 	const getCsvUploads = (type: string) => {
 		return uploads.filter((upload) => upload.file_type === `csv_${type}`);
+	};
+
+	const handleGenerateStore = async () => {
+		if (!store) return;
+
+		// Check if store has a Shopify domain
+		if (!store.shopify_store_domain) {
+			// Prompt for Shopify store domain
+			const shopDomain = window.prompt(
+				"Enter your Shopify store domain (e.g., 'mystore' for mystore.myshopify.com):"
+			);
+
+			if (!shopDomain) return;
+
+			// Redirect to OAuth flow
+			const baseUrl = window.location.origin;
+			window.location.href = `${baseUrl}/api/shopify/oauth?shop=${encodeURIComponent(
+				shopDomain
+			)}&state=${encodeURIComponent(store.id)}`;
+			return;
+		}
+
+		// Store is already connected, proceed with generation
+		try {
+			setIsGenerating(true);
+			setError(null);
+
+			const result = await generateShopifyStoreAPI(store.id);
+
+			setSuccess(
+				`Store generated successfully! Your store is now live at ${result.store_url}`
+			);
+			setTimeout(() => setSuccess(null), 10000);
+		} catch (err) {
+			setError(
+				err instanceof Error ? err.message : "Failed to generate store"
+			);
+		} finally {
+			setIsGenerating(false);
+		}
 	};
 
 	if (isLoading && !store) {
@@ -738,6 +816,125 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 									<Upload className="h-4 w-4 mr-2" />
 									Upload Orders CSV
 								</Button>
+							</div>
+						</div>
+					</CardContent>
+				</Card>
+
+				{/* Generate Store Section */}
+				<Card>
+					<CardHeader>
+						<CardTitle className="flex items-center">
+							<StoreIcon className="h-5 w-5 mr-2" />
+							Generate Shopify Store
+						</CardTitle>
+						<CardDescription>
+							{store?.shopify_store_domain
+								? `Connected to ${store.shopify_store_domain}.myshopify.com`
+								: "Connect to Shopify and generate your store with the Genesis theme"}
+						</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<div className="space-y-4">
+							{store?.shopify_store_domain ? (
+								<div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+									<div className="flex items-center">
+										<div className="flex-shrink-0">
+											<svg
+												className="h-5 w-5 text-green-400"
+												viewBox="0 0 20 20"
+												fill="currentColor"
+											>
+												<path
+													fillRule="evenodd"
+													d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+													clipRule="evenodd"
+												/>
+											</svg>
+										</div>
+										<div className="ml-3">
+											<h3 className="text-sm font-medium text-green-800">
+												Shopify Store Connected
+											</h3>
+											<div className="mt-2 text-sm text-green-700">
+												<p>
+													Your store is connected to{" "}
+													<strong>
+														{
+															store.shopify_store_domain
+														}
+														.myshopify.com
+													</strong>
+												</p>
+											</div>
+										</div>
+									</div>
+								</div>
+							) : (
+								<div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+									<div className="flex">
+										<div className="flex-shrink-0">
+											<svg
+												className="h-5 w-5 text-blue-400"
+												viewBox="0 0 20 20"
+												fill="currentColor"
+											>
+												<path
+													fillRule="evenodd"
+													d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+													clipRule="evenodd"
+												/>
+											</svg>
+										</div>
+										<div className="ml-3">
+											<h3 className="text-sm font-medium text-blue-800">
+												Connect to Shopify
+											</h3>
+											<div className="mt-2 text-sm text-blue-700">
+												<p>
+													You'll need to connect your
+													Shopify store before
+													generating. We'll guide you
+													through the OAuth process.
+												</p>
+											</div>
+										</div>
+									</div>
+								</div>
+							)}
+
+							<div className="flex flex-col space-y-3">
+								<Button
+									type="button"
+									onClick={handleGenerateStore}
+									disabled={
+										isGenerating ||
+										!formData.brand_name.trim()
+									}
+									className="w-full"
+									size="lg"
+								>
+									{isGenerating ? (
+										<>
+											<div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+											Generating Store...
+										</>
+									) : (
+										<>
+											<Zap className="h-4 w-4 mr-2" />
+											{store?.shopify_store_domain
+												? "Generate Store"
+												: "Connect Shopify & Generate Store"}
+										</>
+									)}
+								</Button>
+
+								{!formData.brand_name.trim() && (
+									<p className="text-sm text-muted-foreground text-center">
+										Please enter a brand name before
+										generating
+									</p>
+								)}
 							</div>
 						</div>
 					</CardContent>

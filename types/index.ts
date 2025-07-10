@@ -38,6 +38,38 @@ export interface Upload {
 	uploaded_at: string;
 }
 
+// Shopify-related types
+export interface ShopifyToken {
+	id: string;
+	store_id: string;
+	shopify_store_domain: string;
+	access_token: string;
+	scopes: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface ShopifyOAuthParams {
+	client_id: string;
+	scope: string;
+	redirect_uri: string;
+	state: string;
+	"grant_options[]"?: string;
+}
+
+export interface ShopifyCallbackParams {
+	code: string;
+	hmac: string;
+	shop: string;
+	state: string;
+	timestamp: string;
+}
+
+export interface ShopifyStoreGenerationRequest {
+	store_id: string;
+	force_regenerate?: boolean;
+}
+
 // Form data interface for the client form
 export interface StoreFormData {
 	brand_name: string;

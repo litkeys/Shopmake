@@ -1,0 +1,151 @@
+import { auth, currentUser } from "@clerk/nextjs";
+import { NextRequest, NextResponse } from "next/server";
+import { isAdminEmail } from "@/lib/admin";
+import { ShopifyClient } from "@/lib/shopify";
+import { getStore, getStoreData, getShopifyToken } from "@/lib/supabase";
+import { ShopifyStoreGenerationRequest } from "@/types";
+
+export async function POST(request: NextRequest) {
+	try {
+		const { userId } = auth();
+
+		if (!userId) {
+			return NextResponse.json(
+				{ error: "Not authenticated" },
+				{ status: 401 }
+			);
+		}
+
+		// Check if user is admin
+		const user = await currentUser();
+		const userEmail = user?.emailAddresses[0]?.emailAddress;
+
+		if (!userEmail || !isAdminEmail(userEmail)) {
+			return NextResponse.json(
+				{ error: "Admin access required" },
+				{ status: 403 }
+			);
+		}
+
+		const body: ShopifyStoreGenerationRequest = await request.json();
+		const { store_id, force_regenerate = false } = body;
+
+		if (!store_id) {
+			return NextResponse.json(
+				{ error: "Store ID is required" },
+				{ status: 400 }
+			);
+		}
+
+		// Verify store ownership
+		const store = await getStore(store_id);
+		if (!store || store.created_by !== userId) {
+			return NextResponse.json(
+				{ error: "Store not found or access denied" },
+				{ status: 404 }
+			);
+		}
+
+		// Get store data
+		const storeData = await getStoreData(store_id);
+		if (!storeData) {
+			return NextResponse.json(
+				{
+					error: "Store data not found. Please complete the store form first.",
+				},
+				{ status: 400 }
+			);
+		}
+
+		// Check if brand name is provided
+		if (!storeData.brand_name?.trim()) {
+			return NextResponse.json(
+				{ error: "Store brand name is required for generation" },
+				{ status: 400 }
+			);
+		}
+
+		// Get Shopify token
+		const shopifyToken = await getShopifyToken(store_id);
+		if (!shopifyToken) {
+			return NextResponse.json(
+				{
+					error: "Shopify store not connected. Please connect to Shopify first.",
+				},
+				{ status: 400 }
+			);
+		}
+
+		// Initialize Shopify client
+		const shopify = new ShopifyClient(
+			shopifyToken.shopify_store_domain,
+			shopifyToken.access_token
+		);
+
+		// Generate the store
+		console.log(`Starting store generation for ${storeData.brand_name}...`);
+
+		const result = await shopify.generateStore(storeData);
+
+		console.log(`Store generation completed:`, result);
+
+		return NextResponse.json({
+			success: true,
+			message: "Store generated successfully!",
+			data: {
+				store_domain: shopifyToken.shopify_store_domain,
+				theme_id: result.theme_id,
+				collection_id: result.collection_id,
+				products_created: result.products_created,
+				store_url: `https://${shopifyToken.shopify_store_domain}.myshopify.com`,
+			},
+		});
+	} catch (error) {
+		console.error("Error generating Shopify store:", error);
+
+		const errorMessage =
+			error instanceof Error ? error.message : "Unknown error occurred";
+
+		// Return more specific error messages for common issues
+		if (
+			errorMessage.includes("403") ||
+			errorMessage.includes("Forbidden")
+		) {
+			return NextResponse.json(
+				{
+					error: "Insufficient Shopify permissions. Please reconnect your store with the required permissions.",
+				},
+				{ status: 400 }
+			);
+		}
+
+		if (
+			errorMessage.includes("404") ||
+			errorMessage.includes("Not Found")
+		) {
+			return NextResponse.json(
+				{
+					error: "Shopify store not found. Please verify your store connection.",
+				},
+				{ status: 400 }
+			);
+		}
+
+		if (
+			errorMessage.includes("401") ||
+			errorMessage.includes("Unauthorized")
+		) {
+			return NextResponse.json(
+				{
+					error: "Shopify authorization expired. Please reconnect your store.",
+				},
+				{ status: 400 }
+			);
+		}
+
+		return NextResponse.json(
+			{ error: `Store generation failed: ${errorMessage}` },
+			{ status: 500 }
+		);
+	}
+}
