@@ -153,6 +153,7 @@ export class ShopifyClient {
 			if (response.status === 422) {
 				// Parse the error response to get more specific information
 				try {
+					console.log("Full 422 error response:", errorText);
 					const errorData = JSON.parse(errorText);
 					if (errorData.errors) {
 						const errorMessages = Object.entries(errorData.errors)
@@ -178,7 +179,7 @@ export class ShopifyClient {
 				throw new Error(
 					`Shopify validation error: ${errorText.substring(
 						0,
-						200
+						500
 					)}...`
 				);
 			}
@@ -193,7 +194,7 @@ export class ShopifyClient {
 		return data;
 	}
 
-	// Upload and install theme
+	// Upload and install theme using asset upload method (more reliable than base64)
 	async uploadTheme(themeName: string): Promise<{ theme_id: number }> {
 		try {
 			console.log(
@@ -201,18 +202,33 @@ export class ShopifyClient {
 				SHOPIFY_CONFIG.GENESIS_THEME_URL
 			);
 
-			let themeBuffer: ArrayBuffer;
+			// First create an empty theme
+			console.log("Creating empty theme...");
+			const themeResult = await this.makeRequest<{
+				theme: { id: number };
+			}>("/themes.json", {
+				method: "POST",
+				body: JSON.stringify({
+					theme: {
+						name: themeName,
+						role: "unpublished",
+					},
+				}),
+			});
 
-			// Check if Genesis theme URL is a Supabase storage URL
+			const themeId = themeResult.theme.id;
+			console.log("Created empty theme with ID:", themeId);
+
+			// Download the theme ZIP file
+			let themeBuffer: ArrayBuffer;
 			if (SHOPIFY_CONFIG.GENESIS_THEME_URL.includes("supabase")) {
 				console.log("Downloading theme from Supabase storage...");
-				// For Supabase storage, we need to handle authentication
 				const { supabaseAdmin } = await import("./supabase");
 
-				// Extract bucket and path from URL
-				// Expected format: https://project.supabase.co/storage/v1/object/public/bucket-name/path/theme.zip
 				const url = new URL(SHOPIFY_CONFIG.GENESIS_THEME_URL);
-				const pathParts = url.pathname.split("/");
+				const pathParts = url.pathname
+					.split("/")
+					.filter((part) => part.length > 0);
 				const bucketIndex =
 					pathParts.findIndex((part) => part === "public") + 1;
 				const bucketName = pathParts[bucketIndex];
@@ -225,7 +241,6 @@ export class ShopifyClient {
 					filePath
 				);
 
-				// Download from Supabase storage
 				const { data, error } = await supabaseAdmin.storage
 					.from(bucketName)
 					.download(filePath);
@@ -239,7 +254,6 @@ export class ShopifyClient {
 				themeBuffer = await data.arrayBuffer();
 			} else {
 				console.log("Downloading theme from external URL...");
-				// Download from external URL
 				const themeResponse = await fetch(
 					SHOPIFY_CONFIG.GENESIS_THEME_URL
 				);
@@ -255,43 +269,60 @@ export class ShopifyClient {
 				themeBuffer = await themeResponse.arrayBuffer();
 			}
 
-			const themeBase64 = Buffer.from(themeBuffer).toString("base64");
-
 			console.log("Theme file size:", themeBuffer.byteLength, "bytes");
-			console.log("Base64 size:", themeBase64.length, "characters");
 
-			// Shopify has a limit on theme upload size - typically around 10MB
-			const maxSizeBytes = 10 * 1024 * 1024; // 10MB
-			if (themeBuffer.byteLength > maxSizeBytes) {
-				throw new Error(
-					`Theme file too large: ${(
-						themeBuffer.byteLength /
-						1024 /
-						1024
-					).toFixed(2)}MB. Maximum allowed is 10MB.`
-				);
+			// Extract and upload theme files individually using JSZip
+			const JSZip = (await import("jszip")).default;
+			const zip = new JSZip();
+			const zipContents = await zip.loadAsync(themeBuffer);
+
+			console.log("Extracting theme files...");
+			const uploadPromises: Promise<void>[] = [];
+
+			// Upload each file in the ZIP to the theme
+			for (const [relativePath, file] of Object.entries(
+				zipContents.files
+			)) {
+				if (!file.dir) {
+					// Skip directories
+					const content = await file.async("text");
+					console.log("Uploading file:", relativePath);
+
+					const uploadPromise = this.uploadThemeAsset(
+						themeId,
+						relativePath,
+						content
+					);
+					uploadPromises.push(uploadPromise);
+				}
 			}
 
-			// Create theme via Shopify API
-			const result = await this.makeRequest<{ theme: { id: number } }>(
-				"/themes.json",
-				{
-					method: "POST",
-					body: JSON.stringify({
-						theme: {
-							name: themeName,
-							src: `data:application/zip;base64,${themeBase64}`,
-							role: "unpublished",
-						},
-					}),
-				}
-			);
+			// Wait for all files to upload
+			await Promise.all(uploadPromises);
+			console.log("All theme files uploaded successfully");
 
-			return { theme_id: result.theme.id };
+			return { theme_id: themeId };
 		} catch (error) {
 			console.error("Error uploading theme:", error);
 			throw error;
 		}
+	}
+
+	// Helper method to upload individual theme assets
+	private async uploadThemeAsset(
+		themeId: number,
+		assetKey: string,
+		content: string
+	): Promise<void> {
+		await this.makeRequest(`/themes/${themeId}/assets.json`, {
+			method: "PUT",
+			body: JSON.stringify({
+				asset: {
+					key: assetKey,
+					value: content,
+				},
+			}),
+		});
 	}
 
 	// Publish theme
