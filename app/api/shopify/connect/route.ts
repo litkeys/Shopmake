@@ -98,6 +98,11 @@ export async function POST(request: NextRequest) {
 		return NextResponse.json({
 			success: true,
 			message: "Store connected to Shopify successfully",
+			data: {
+				store_domain: cleanDomain,
+				store_url: `https://${cleanDomain}.myshopify.com`,
+				token_name: token_name || "Admin API Token",
+			},
 			permissions: permissionTests,
 		});
 	} catch (error) {
