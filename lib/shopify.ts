@@ -773,7 +773,7 @@ export class ShopifyClient {
 		}
 	}
 
-	// Parse product CSV data
+	// Parse product CSV data with comprehensive field mapping
 	private parseProductCSV(csvText: string): Array<{
 		title: string;
 		description: string;
@@ -788,84 +788,241 @@ export class ShopifyClient {
 		sku?: string;
 		barcode?: string;
 		images?: string[];
+		handle?: string;
+		tags?: string[];
+		published?: boolean;
+		gift_card?: boolean;
+		seo_title?: string;
+		seo_description?: string;
+		options?: Array<{ name: string; values: string[] }>;
+		status?: string;
 	}> {
 		const lines = csvText.split("\n").filter((line) => line.trim());
 		if (lines.length <= 1) return [];
 
-		const headers = lines[0]
-			.split(",")
-			.map((h) => h.trim().replace(/"/g, ""));
+		// Parse CSV more carefully to handle quoted fields with commas
+		const parseCSVLine = (line: string): string[] => {
+			const result = [];
+			let current = "";
+			let inQuotes = false;
+
+			for (let i = 0; i < line.length; i++) {
+				const char = line[i];
+
+				if (char === '"') {
+					inQuotes = !inQuotes;
+				} else if (char === "," && !inQuotes) {
+					result.push(current.trim());
+					current = "";
+				} else {
+					current += char;
+				}
+			}
+
+			result.push(current.trim());
+			return result;
+		};
+
+		const headers = parseCSVLine(lines[0]);
 		const products = [];
 
 		for (let i = 1; i < lines.length; i++) {
-			const values = lines[i]
-				.split(",")
-				.map((v) => v.trim().replace(/"/g, ""));
-			if (values.length < headers.length) continue;
+			const values = parseCSVLine(lines[i]);
+			if (values.length < 3) continue; // Skip malformed rows
 
 			const product: any = {};
+			const productOptions: Map<string, Set<string>> = new Map();
 
 			headers.forEach((header, index) => {
-				const value = values[index];
-				if (!value) return;
+				const value = values[index] || "";
+				const cleanValue = value.replace(/^"|"$/g, ""); // Remove surrounding quotes
+				if (!cleanValue) return;
 
-				// Map common CSV headers to product fields
-				switch (header.toLowerCase()) {
+				const lowerHeader = header.toLowerCase();
+
+				// Map CSV headers to ProductInput fields according to Shopify's latest schema
+				switch (lowerHeader) {
+					case "handle":
+						product.handle = cleanValue;
+						break;
 					case "title":
 					case "name":
 					case "product_title":
-						product.title = value;
+						product.title = cleanValue;
 						break;
+					case "body (html)":
 					case "description":
 					case "body":
 					case "body_html":
-						product.description = value;
+						product.description = cleanValue;
 						break;
 					case "vendor":
 					case "brand":
-						product.vendor = value;
+						product.vendor = cleanValue;
 						break;
+					case "product category":
 					case "product_type":
 					case "type":
 					case "category":
-						product.product_type = value;
+						product.product_type = cleanValue;
 						break;
+					case "tags":
+						if (cleanValue) {
+							product.tags = cleanValue
+								.split(",")
+								.map((tag) => tag.trim());
+						}
+						break;
+					case "published":
+						product.published = cleanValue.toLowerCase() === "true";
+						break;
+					case "gift card":
+					case "gift_card":
+						product.gift_card = cleanValue.toLowerCase() === "true";
+						break;
+					case "seo title":
+					case "seo_title":
+						product.seo_title = cleanValue;
+						break;
+					case "seo description":
+					case "seo_description":
+						product.seo_description = cleanValue;
+						break;
+					case "status":
+						product.status = cleanValue.toLowerCase();
+						break;
+
+					// Variant-specific fields
+					case "variant price":
 					case "price":
-					case "variant_price":
-						product.price = value;
+						if (cleanValue && !isNaN(parseFloat(cleanValue))) {
+							product.price = cleanValue;
+						}
 						break;
+					case "variant compare at price":
 					case "compare_at_price":
 					case "compare_price":
-						product.compare_at_price = value;
+						if (cleanValue && !isNaN(parseFloat(cleanValue))) {
+							product.compare_at_price = cleanValue;
+						}
 						break;
-					case "inventory_quantity":
-					case "quantity":
-					case "stock":
-						product.inventory_quantity = parseInt(value) || 0;
-						break;
+					case "variant grams":
 					case "weight":
-						product.weight = parseFloat(value) || undefined;
+						if (cleanValue && !isNaN(parseFloat(cleanValue))) {
+							product.weight = parseFloat(cleanValue);
+						}
 						break;
+					case "variant requires shipping":
+					case "requires_shipping":
+						product.requires_shipping =
+							cleanValue.toLowerCase() === "true";
+						break;
+					case "variant taxable":
+					case "taxable":
+						product.taxable = cleanValue.toLowerCase() === "true";
+						break;
+					case "variant sku":
 					case "sku":
-						product.sku = value;
+						product.sku = cleanValue;
 						break;
+					case "variant barcode":
 					case "barcode":
-						product.barcode = value;
+						product.barcode = cleanValue;
 						break;
+					case "variant inventory tracker":
+					case "inventory_tracker":
+						// This field exists in CSV but not directly mapped to ProductInput
+						break;
+					case "variant inventory policy":
+					case "inventory_policy":
+						// This field exists in CSV but not directly mapped to ProductInput
+						break;
+					case "variant fulfillment service":
+					case "fulfillment_service":
+						// This field exists in CSV but not directly mapped to ProductInput
+						break;
+					case "image src":
 					case "image":
-					case "image_src":
 					case "images":
-						if (value.includes("http")) {
-							product.images = [value];
+						if (cleanValue && cleanValue.includes("http")) {
+							if (!product.images) product.images = [];
+							product.images.push(cleanValue);
+						}
+						break;
+					case "variant image":
+						if (cleanValue && cleanValue.includes("http")) {
+							if (!product.images) product.images = [];
+							product.images.push(cleanValue);
+						}
+						break;
+
+					// Product options (Option1 Name, Option1 Value, etc.)
+					default:
+						if (lowerHeader.match(/^option\d+ name$/)) {
+							const optionName = cleanValue;
+							if (optionName) {
+								productOptions.set(optionName, new Set());
+							}
+						} else if (lowerHeader.match(/^option\d+ value$/)) {
+							// Find the corresponding option name
+							const optionNum =
+								lowerHeader.match(/^option(\d+) value$/)?.[1];
+							if (optionNum) {
+								const optionNameHeader = headers.find(
+									(h) =>
+										h.toLowerCase() ===
+										`option${optionNum} name`
+								);
+								if (optionNameHeader) {
+									const optionNameIndex =
+										headers.indexOf(optionNameHeader);
+									const optionName = values[
+										optionNameIndex
+									]?.replace(/^"|"$/g, "");
+									if (optionName && cleanValue) {
+										if (!productOptions.has(optionName)) {
+											productOptions.set(
+												optionName,
+												new Set()
+											);
+										}
+										productOptions
+											.get(optionName)
+											?.add(cleanValue);
+									}
+								}
+							}
 						}
 						break;
 				}
 			});
 
-			// Ensure required fields
+			// Convert options map to array format
+			if (productOptions.size > 0) {
+				product.options = Array.from(productOptions.entries()).map(
+					([name, values]) => ({
+						name,
+						values: Array.from(values),
+					})
+				);
+			}
+
+			// Ensure required fields and validate
 			if (product.title && product.price) {
-				if (!product.description)
+				// Set defaults for missing fields
+				if (!product.description) {
 					product.description = `${product.title} - No description provided`;
+				}
+				if (product.vendor === undefined) product.vendor = "";
+				if (product.product_type === undefined)
+					product.product_type = "";
+				if (product.requires_shipping === undefined)
+					product.requires_shipping = true;
+				if (product.taxable === undefined) product.taxable = true;
+				if (product.published === undefined) product.published = true;
+				if (product.gift_card === undefined) product.gift_card = false;
+				if (!product.status) product.status = "active";
+
 				products.push(product);
 			}
 		}
@@ -889,21 +1046,66 @@ export class ShopifyClient {
 			sku?: string;
 			barcode?: string;
 			images?: string[];
+			handle?: string;
+			tags?: string[];
+			published?: boolean;
+			gift_card?: boolean;
+			seo_title?: string;
+			seo_description?: string;
+			options?: Array<{ name: string; values: string[] }>;
+			status?: string;
 		}>
 	): string {
 		const jsonlLines = products.map((product) => {
-			// Convert product to ProductInput format for GraphQL
-			const productInput = {
+			// Convert product to ProductInput format for GraphQL according to latest schema
+			const productInput: any = {
 				title: product.title,
 				descriptionHtml: product.description,
 				vendor: product.vendor || "",
 				productType: product.product_type || "",
+				handle: product.handle || undefined,
+				tags:
+					product.tags && product.tags.length > 0
+						? product.tags
+						: undefined,
+				status:
+					product.status?.toUpperCase() === "DRAFT"
+						? "DRAFT"
+						: "ACTIVE",
+				giftCard: product.gift_card || false,
+
+				// SEO fields
+				seo:
+					product.seo_title || product.seo_description
+						? {
+								title: product.seo_title || undefined,
+								description:
+									product.seo_description || undefined,
+						  }
+						: undefined,
+
+				// Product options (for variants with different sizes, colors, etc.)
+				productOptions:
+					product.options && product.options.length > 0
+						? product.options.map((option) => ({
+								name: option.name,
+								values: option.values.map((value) => ({
+									name: value,
+								})),
+						  }))
+						: undefined,
+
+				// Variants array - each product needs at least one variant
 				variants: [
 					{
 						price: parseFloat(product.price).toFixed(2),
 						compareAtPrice: product.compare_at_price
 							? parseFloat(product.compare_at_price).toFixed(2)
 							: undefined,
+
+						// Inventory management
+						inventoryManagement: "SHOPIFY",
+						inventoryPolicy: "DENY", // Don't allow overselling by default
 						inventoryQuantities:
 							product.inventory_quantity !== undefined
 								? [
@@ -915,19 +1117,60 @@ export class ShopifyClient {
 										},
 								  ]
 								: undefined,
-						weight: product.weight,
+
+						// Physical properties
+						weight: product.weight || undefined,
+						weightUnit: product.weight ? "GRAMS" : undefined,
 						requiresShipping: product.requires_shipping !== false,
+
+						// Tax and identification
 						taxable: product.taxable !== false,
-						sku: product.sku,
-						barcode: product.barcode,
+						sku: product.sku || undefined,
+						barcode: product.barcode || undefined,
+
+						// If product has options, map the first variant to first option values
+						optionValues:
+							product.options && product.options.length > 0
+								? product.options.map((option) => ({
+										optionName: option.name,
+										name: option.values[0] || "Default",
+								  }))
+								: undefined,
 					},
 				],
-				images: product.images?.map((src) => ({ src })) || [],
-				status: "ACTIVE",
+
+				// Images
+				images:
+					product.images && product.images.length > 0
+						? product.images.map((url) => ({
+								src: url,
+								altText: `${product.title} image`,
+						  }))
+						: undefined,
+
+				// Publication settings
+				published: product.published !== false,
+				publishedAt:
+					product.published !== false
+						? new Date().toISOString()
+						: undefined,
+
+				// Collections - could be added later based on product_type or tags
+				collectionsToJoin: undefined,
+
+				// Metafields for additional data
+				metafields: undefined,
 			};
 
+			// Clean up undefined fields to keep JSONL clean and valid
+			const cleanProductInput = JSON.parse(
+				JSON.stringify(productInput, (key, value) => {
+					return value === undefined ? undefined : value;
+				})
+			);
+
 			// Return as JSONL format
-			return JSON.stringify({ input: productInput });
+			return JSON.stringify({ input: cleanProductInput });
 		});
 
 		return jsonlLines.join("\n");
