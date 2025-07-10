@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
 		// Generate the store
 		console.log(`Starting store generation for ${storeData.brand_name}...`);
 
-		const result = await shopify.generateStore(storeData);
+		const result = await shopify.generateStore(storeData, store_id);
 
 		console.log(`Store generation completed:`, result);
 
@@ -128,8 +128,9 @@ export async function POST(request: NextRequest) {
 			data: {
 				store_domain: shopifyToken.shopify_store_domain,
 				theme_id: result.theme_id,
-				collection_id: result.collection_id,
 				products_created: result.products_created,
+				logo_uploaded: result.logo_uploaded,
+				contact_email_set: result.contact_email_set,
 				store_url: `https://${shopifyToken.shopify_store_domain}.myshopify.com`,
 			},
 		});

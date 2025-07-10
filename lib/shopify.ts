@@ -489,24 +489,318 @@ export class ShopifyClient {
 		return { product_id: result.product.id };
 	}
 
+	// Set theme logo
+	async setThemeLogo(themeId: number, logoUrl: string): Promise<void> {
+		try {
+			// Upload logo as an asset to the theme
+			const logoResponse = await fetch(logoUrl);
+			if (!logoResponse.ok) {
+				throw new Error(`Failed to fetch logo: ${logoResponse.status}`);
+			}
+
+			const logoBuffer = await logoResponse.arrayBuffer();
+			const logoBase64 = Buffer.from(logoBuffer).toString("base64");
+
+			// Get file extension from URL
+			const urlParts = logoUrl.split(".");
+			const extension = urlParts[urlParts.length - 1].split("?")[0]; // Remove query params
+			const assetKey = `assets/logo.${extension}`;
+
+			// Upload logo as theme asset
+			await this.makeRequest(`/themes/${themeId}/assets.json`, {
+				method: "PUT",
+				body: JSON.stringify({
+					asset: {
+						key: assetKey,
+						value: `data:image/${extension};base64,${logoBase64}`,
+					},
+				}),
+			});
+
+			console.log(`Logo uploaded as theme asset: ${assetKey}`);
+		} catch (error) {
+			console.error("Error setting theme logo:", error);
+			throw error;
+		}
+	}
+
+	// Set contact email in store metafields
+	async setContactEmail(email: string): Promise<void> {
+		try {
+			await this.makeRequest("/metafields.json", {
+				method: "POST",
+				body: JSON.stringify({
+					metafield: {
+						namespace: "genesis_contact",
+						key: "email",
+						value: email,
+						type: "single_line_text_field",
+						description: "Contact email for footer and support",
+					},
+				}),
+			});
+		} catch (error) {
+			console.error("Error setting contact email:", error);
+			throw error;
+		}
+	}
+
+	// Import products from CSV files
+	async importProductsFromCSV(storeId: string): Promise<number> {
+		try {
+			console.log("Importing products from CSV files...");
+
+			// Get CSV uploads for this store
+			const { getStoreUploads, supabaseAdmin } = await import(
+				"./supabase"
+			);
+			const csvUploads = await getStoreUploads(storeId, "csv_products");
+
+			if (csvUploads.length === 0) {
+				console.log("No product CSV files found, skipping import");
+				return 0;
+			}
+
+			let totalProductsCreated = 0;
+
+			for (const upload of csvUploads) {
+				try {
+					// Download the CSV file from Supabase storage
+					const { data: csvData, error } = await supabaseAdmin.storage
+						.from("store-files")
+						.download(upload.file_path);
+
+					if (error) {
+						console.error(
+							`Error downloading CSV ${upload.file_name}:`,
+							error
+						);
+						continue;
+					}
+
+					const csvText = await csvData.text();
+					const products = this.parseProductCSV(csvText);
+
+					console.log(
+						`Found ${products.length} products in ${upload.file_name}`
+					);
+
+					// Create products in Shopify
+					for (const product of products) {
+						try {
+							await this.createProduct(product);
+							totalProductsCreated++;
+							console.log(`Created product: ${product.title}`);
+						} catch (productError) {
+							console.error(
+								`Error creating product ${product.title}:`,
+								productError
+							);
+						}
+					}
+				} catch (fileError) {
+					console.error(
+						`Error processing CSV file ${upload.file_name}:`,
+						fileError
+					);
+				}
+			}
+
+			console.log(
+				`Successfully imported ${totalProductsCreated} products from CSV files`
+			);
+			return totalProductsCreated;
+		} catch (error) {
+			console.error("Error importing products from CSV:", error);
+			return 0; // Don't throw - CSV import is not critical
+		}
+	}
+
+	// Parse product CSV data
+	private parseProductCSV(csvText: string): Array<{
+		title: string;
+		description: string;
+		vendor?: string;
+		product_type?: string;
+		price: string;
+		compare_at_price?: string;
+		inventory_quantity?: number;
+		weight?: number;
+		requires_shipping?: boolean;
+		taxable?: boolean;
+		sku?: string;
+		barcode?: string;
+		images?: string[];
+	}> {
+		const lines = csvText.split("\n").filter((line) => line.trim());
+		if (lines.length <= 1) return [];
+
+		const headers = lines[0]
+			.split(",")
+			.map((h) => h.trim().replace(/"/g, ""));
+		const products = [];
+
+		for (let i = 1; i < lines.length; i++) {
+			const values = lines[i]
+				.split(",")
+				.map((v) => v.trim().replace(/"/g, ""));
+			if (values.length < headers.length) continue;
+
+			const product: any = {};
+
+			headers.forEach((header, index) => {
+				const value = values[index];
+				if (!value) return;
+
+				// Map common CSV headers to product fields
+				switch (header.toLowerCase()) {
+					case "title":
+					case "name":
+					case "product_title":
+						product.title = value;
+						break;
+					case "description":
+					case "body":
+					case "body_html":
+						product.description = value;
+						break;
+					case "vendor":
+					case "brand":
+						product.vendor = value;
+						break;
+					case "product_type":
+					case "type":
+					case "category":
+						product.product_type = value;
+						break;
+					case "price":
+					case "variant_price":
+						product.price = value;
+						break;
+					case "compare_at_price":
+					case "compare_price":
+						product.compare_at_price = value;
+						break;
+					case "inventory_quantity":
+					case "quantity":
+					case "stock":
+						product.inventory_quantity = parseInt(value) || 0;
+						break;
+					case "weight":
+						product.weight = parseFloat(value) || undefined;
+						break;
+					case "sku":
+						product.sku = value;
+						break;
+					case "barcode":
+						product.barcode = value;
+						break;
+					case "image":
+					case "image_src":
+					case "images":
+						if (value.includes("http")) {
+							product.images = [value];
+						}
+						break;
+				}
+			});
+
+			// Ensure required fields
+			if (product.title && product.price) {
+				if (!product.description)
+					product.description = `${product.title} - No description provided`;
+				products.push(product);
+			}
+		}
+
+		return products;
+	}
+
 	// Update store branding
-	async updateStoreBranding(storeData: StoreData): Promise<void> {
+	async updateStoreBranding(
+		storeData: StoreData,
+		storeId: string,
+		themeId: number
+	): Promise<{
+		logo_uploaded: boolean;
+		contact_email_set: boolean;
+	}> {
+		let logo_uploaded = false;
+		let contact_email_set = false;
+
 		try {
 			console.log("Updating store branding...");
 
-			// Note: Shop name cannot be updated via Admin API - it's read-only
-			// Instead, we can update other branding elements like:
+			// 1. Upload logo to theme settings if available
+			if (storeData.logo_url) {
+				try {
+					await this.setThemeLogo(themeId, storeData.logo_url);
+					logo_uploaded = true;
+					console.log("Logo successfully uploaded to theme");
+				} catch (logoError) {
+					console.error("Error uploading logo to theme:", logoError);
+				}
+			}
 
-			// 1. Create a branded page if needed
-			// 2. Update metafields for branding
-			// 3. Configure theme settings (requires theme-specific API calls)
+			// 2. Set contact email in theme settings/metafields
+			if (storeData.contact_email) {
+				try {
+					await this.setContactEmail(storeData.contact_email);
+					contact_email_set = true;
+					console.log("Contact email successfully set");
+				} catch (emailError) {
+					console.error("Error setting contact email:", emailError);
+				}
+			}
 
-			// For now, we'll skip shop-level updates since they're not supported
-			// The branding will be reflected in the theme, products, and collections
+			// 3. Set store branding via metafields (accessible in theme)
+			if (storeData.brand_name) {
+				try {
+					await this.makeRequest("/metafields.json", {
+						method: "POST",
+						body: JSON.stringify({
+							metafield: {
+								namespace: "genesis_branding",
+								key: "brand_name",
+								value: storeData.brand_name,
+								type: "single_line_text_field",
+								description:
+									"Brand name set by Genesis Project",
+							},
+						}),
+					});
+					console.log("Brand name metafield created");
+				} catch (metafieldError) {
+					console.log(
+						"Brand name metafield creation skipped (may already exist)"
+					);
+				}
+			}
 
-			console.log(
-				"Store branding update completed (theme-based branding applied)"
-			);
+			if (storeData.description) {
+				try {
+					await this.makeRequest("/metafields.json", {
+						method: "POST",
+						body: JSON.stringify({
+							metafield: {
+								namespace: "genesis_branding",
+								key: "brand_description",
+								value: storeData.description,
+								type: "multi_line_text_field",
+								description:
+									"Brand description set by Genesis Project",
+							},
+						}),
+					});
+					console.log("Brand description metafield created");
+				} catch (metafieldError) {
+					console.log(
+						"Brand description metafield creation skipped (may already exist)"
+					);
+				}
+			}
+
+			console.log("Store branding update completed");
 		} catch (error) {
 			console.error("Error updating store branding:", error);
 			// Don't throw - branding is not critical for store generation
@@ -514,13 +808,22 @@ export class ShopifyClient {
 				"Continuing store generation despite branding error..."
 			);
 		}
+
+		return {
+			logo_uploaded,
+			contact_email_set,
+		};
 	}
 
 	// Generate full store
-	async generateStore(storeData: StoreData): Promise<{
+	async generateStore(
+		storeData: StoreData,
+		storeId: string
+	): Promise<{
 		theme_id: number;
-		collection_id?: number;
 		products_created: number;
+		logo_uploaded: boolean;
+		contact_email_set: boolean;
 	}> {
 		try {
 			// 1. Upload and publish theme
@@ -528,37 +831,21 @@ export class ShopifyClient {
 			const { theme_id } = await this.uploadTheme(themeName);
 			await this.publishTheme(theme_id);
 
-			// 2. Update store branding
-			await this.updateStoreBranding(storeData);
+			// 2. Update store branding (including logo and contact email)
+			const brandingResult = await this.updateStoreBranding(
+				storeData,
+				storeId,
+				theme_id
+			);
 
-			// 3. Create main collection if category is provided
-			let collection_id: number | undefined;
-			if (storeData.main_product_category) {
-				const result = await this.createCollection(
-					storeData.main_product_category,
-					`Featured ${storeData.main_product_category} collection`
-				);
-				collection_id = result.collection_id;
-			}
-
-			// 4. Create sample products (you can expand this based on CSV data)
-			let products_created = 0;
-			if (storeData.main_product_category) {
-				// Create a sample product for the category
-				await this.createProduct({
-					title: `Sample ${storeData.main_product_category}`,
-					description: `This is a sample product in the ${storeData.main_product_category} category. Replace with your actual products.`,
-					product_type: storeData.main_product_category,
-					price: "29.99",
-					inventory_quantity: 100,
-				});
-				products_created = 1;
-			}
+			// 3. Import products from CSV files
+			const products_created = await this.importProductsFromCSV(storeId);
 
 			return {
 				theme_id,
-				collection_id,
 				products_created,
+				logo_uploaded: brandingResult.logo_uploaded,
+				contact_email_set: brandingResult.contact_email_set,
 			};
 		} catch (error) {
 			console.error("Error generating store:", error);

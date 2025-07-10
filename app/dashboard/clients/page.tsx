@@ -185,21 +185,6 @@ export default async function ClientsPage() {
 													Edit
 												</Link>
 											</Button>
-											{store.shopify_store_domain && (
-												<Button
-													variant="outline"
-													size="sm"
-													asChild
-												>
-													<a
-														href={`https://${store.shopify_store_domain}`}
-														target="_blank"
-														rel="noopener noreferrer"
-													>
-														View Store
-													</a>
-												</Button>
-											)}
 										</div>
 									</div>
 								))}
