@@ -715,9 +715,13 @@ export class ShopifyClient {
 					fileCreate(files: $files) {
 						files {
 							id
-							url
 							alt
 							fileStatus
+							... on MediaImage {
+								image {
+									url
+								}
+							}
 						}
 						userErrors {
 							field
@@ -743,9 +747,11 @@ export class ShopifyClient {
 					fileCreate: {
 						files: Array<{
 							id: string;
-							url: string;
 							alt: string;
 							fileStatus: string;
+							image?: {
+								url: string;
+							};
 						}>;
 						userErrors: Array<{ field: string; message: string }>;
 					};
@@ -759,11 +765,17 @@ export class ShopifyClient {
 			}
 
 			const createdFile = fileResponse.data.fileCreate.files[0];
+			const imageUrl = createdFile.image?.url;
+
+			if (!imageUrl) {
+				throw new Error("No image URL returned from file creation");
+			}
+
 			console.log(
-				`✅ Logo uploaded to Shopify Files successfully: ${createdFile.url}`
+				`✅ Logo uploaded to Shopify Files successfully: ${imageUrl}`
 			);
 
-			return createdFile.url;
+			return imageUrl;
 		} catch (error) {
 			console.error("❌ Error uploading logo to Files:", error);
 			return null;
