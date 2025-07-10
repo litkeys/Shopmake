@@ -35,6 +35,75 @@ export async function testShopifyConnection(
 	}
 }
 
+export async function testShopifyPermissions(
+	shop: string,
+	adminToken: string
+): Promise<{
+	shop: boolean;
+	themes: boolean;
+	products: boolean;
+	collections: boolean;
+}> {
+	const results = {
+		shop: false,
+		themes: false,
+		products: false,
+		collections: false,
+	};
+
+	const baseUrl = `https://${shop}.myshopify.com/admin/api/2023-10`;
+	const headers = {
+		"X-Shopify-Access-Token": adminToken,
+		"Content-Type": "application/json",
+	};
+
+	try {
+		// Test shop access
+		const shopResponse = await fetch(`${baseUrl}/shop.json`, { headers });
+		results.shop = shopResponse.ok;
+		console.log("Shop API test:", shopResponse.status, shopResponse.ok);
+
+		// Test themes access
+		const themesResponse = await fetch(`${baseUrl}/themes.json`, {
+			headers,
+		});
+		results.themes = themesResponse.ok;
+		console.log(
+			"Themes API test:",
+			themesResponse.status,
+			themesResponse.ok
+		);
+
+		// Test products access
+		const productsResponse = await fetch(
+			`${baseUrl}/products.json?limit=1`,
+			{ headers }
+		);
+		results.products = productsResponse.ok;
+		console.log(
+			"Products API test:",
+			productsResponse.status,
+			productsResponse.ok
+		);
+
+		// Test collections access
+		const collectionsResponse = await fetch(
+			`${baseUrl}/custom_collections.json?limit=1`,
+			{ headers }
+		);
+		results.collections = collectionsResponse.ok;
+		console.log(
+			"Collections API test:",
+			collectionsResponse.status,
+			collectionsResponse.ok
+		);
+	} catch (error) {
+		console.error("Error testing permissions:", error);
+	}
+
+	return results;
+}
+
 // Shopify API Client class
 export class ShopifyClient {
 	private shop: string;

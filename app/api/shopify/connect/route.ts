@@ -1,7 +1,7 @@
 import { auth, currentUser } from "@clerk/nextjs";
 import { NextRequest, NextResponse } from "next/server";
 import { isAdminEmail } from "@/lib/admin";
-import { testShopifyConnection } from "@/lib/shopify";
+import { testShopifyConnection, testShopifyPermissions } from "@/lib/shopify";
 import { getStore, updateStore, upsertShopifyAdminToken } from "@/lib/supabase";
 import { ShopifyCustomAppConnection } from "@/types";
 
@@ -52,28 +52,42 @@ export async function POST(request: NextRequest) {
 		// Clean store domain (remove .myshopify.com if present)
 		const cleanDomain = store_domain.replace(".myshopify.com", "");
 
+		console.log("Testing Shopify connection with provided token");
+		console.log("Store domain:", cleanDomain);
+		console.log("Token length:", admin_api_token?.length || 0);
+		console.log("Token prefix:", admin_api_token?.substring(0, 10) + "...");
+
 		// Test the connection
-		console.log(`Testing Shopify connection for ${cleanDomain}...`);
-		const isConnectionValid = await testShopifyConnection(
+		const isValid = await testShopifyConnection(
 			cleanDomain,
 			admin_api_token
 		);
 
-		if (!isConnectionValid) {
+		console.log("Connection test result:", isValid);
+
+		if (!isValid) {
+			console.log("Connection test failed");
 			return NextResponse.json(
 				{
-					error: "Invalid Shopify connection. Please check your store domain and Admin API token.",
+					error: "Failed to connect to Shopify. Please check your store domain and Admin API token.",
 				},
 				{ status: 400 }
 			);
 		}
 
-		// Save the token
+		// Also test specific permissions by trying to access different endpoints
+		const permissionTests = await testShopifyPermissions(
+			cleanDomain,
+			admin_api_token
+		);
+		console.log("Permission tests:", permissionTests);
+
+		// Store the token
 		await upsertShopifyAdminToken(
 			store_id,
 			cleanDomain,
 			admin_api_token,
-			token_name
+			token_name || "Admin API Token"
 		);
 
 		// Update store with Shopify domain
@@ -81,16 +95,10 @@ export async function POST(request: NextRequest) {
 			shopify_store_domain: cleanDomain,
 		});
 
-		console.log(`Successfully connected Shopify store: ${cleanDomain}`);
-
 		return NextResponse.json({
 			success: true,
-			message: "Shopify store connected successfully!",
-			data: {
-				store_domain: cleanDomain,
-				store_url: `https://${cleanDomain}.myshopify.com`,
-				token_name: token_name || "Genesis Project Token",
-			},
+			message: "Store connected to Shopify successfully",
+			permissions: permissionTests,
 		});
 	} catch (error) {
 		console.error("Error connecting Shopify store:", error);
