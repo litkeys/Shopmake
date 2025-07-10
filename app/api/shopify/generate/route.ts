@@ -30,7 +30,14 @@ export async function POST(request: NextRequest) {
 		const body: ShopifyStoreGenerationRequest = await request.json();
 		const { store_id, force_regenerate = false } = body;
 
+		console.log("Generate store request:", {
+			store_id,
+			force_regenerate,
+			userId,
+		});
+
 		if (!store_id) {
+			console.log("Error: Store ID is missing");
 			return NextResponse.json(
 				{ error: "Store ID is required" },
 				{ status: 400 }
@@ -39,7 +46,14 @@ export async function POST(request: NextRequest) {
 
 		// Verify store ownership
 		const store = await getStore(store_id);
+		console.log(
+			"Store found:",
+			store ? "Yes" : "No",
+			"User match:",
+			store?.created_by === userId
+		);
 		if (!store || store.created_by !== userId) {
+			console.log("Error: Store not found or access denied");
 			return NextResponse.json(
 				{ error: "Store not found or access denied" },
 				{ status: 404 }
@@ -48,7 +62,14 @@ export async function POST(request: NextRequest) {
 
 		// Get store data
 		const storeData = await getStoreData(store_id);
+		console.log(
+			"Store data found:",
+			storeData ? "Yes" : "No",
+			"Brand name:",
+			storeData?.brand_name
+		);
 		if (!storeData) {
+			console.log("Error: Store data not found");
 			return NextResponse.json(
 				{
 					error: "Store data not found. Please complete the store form first.",
@@ -59,6 +80,7 @@ export async function POST(request: NextRequest) {
 
 		// Check if brand name is provided
 		if (!storeData.brand_name?.trim()) {
+			console.log("Error: Brand name is missing");
 			return NextResponse.json(
 				{ error: "Store brand name is required for generation" },
 				{ status: 400 }
@@ -67,7 +89,14 @@ export async function POST(request: NextRequest) {
 
 		// Get Shopify Admin Token
 		const shopifyToken = await getShopifyAdminToken(store_id);
+		console.log(
+			"Shopify token found:",
+			shopifyToken ? "Yes" : "No",
+			"Domain:",
+			shopifyToken?.shopify_store_domain
+		);
 		if (!shopifyToken) {
+			console.log("Error: Shopify token not found");
 			return NextResponse.json(
 				{
 					error: "Shopify store not connected. Please add your Admin API token first.",

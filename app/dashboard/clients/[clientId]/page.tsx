@@ -416,6 +416,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			setIsGenerating(true);
 			setError(null);
 
+			console.log("Starting store generation for store:", store.id);
 			const result = await generateShopifyStoreAPI(store.id);
 
 			setSuccess(
@@ -423,6 +424,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			);
 			setTimeout(() => setSuccess(null), 10000);
 		} catch (err) {
+			console.error("Store generation error:", err);
 			setError(
 				err instanceof Error ? err.message : "Failed to generate store"
 			);
@@ -487,7 +489,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					{store?.shopify_store_domain && (
 						<Button variant="outline" asChild>
 							<a
-								href={`https://${store.shopify_store_domain}`}
+								href={`https://${store.shopify_store_domain}.myshopify.com`}
 								target="_blank"
 								rel="noopener noreferrer"
 							>
