@@ -492,7 +492,7 @@ export class ShopifyClient {
 	// Set theme logo
 	async setThemeLogo(themeId: number, logoUrl: string): Promise<void> {
 		try {
-			// Download and upload logo as theme asset
+			// Upload logo as an asset to the theme
 			const logoResponse = await fetch(logoUrl);
 			if (!logoResponse.ok) {
 				throw new Error(`Failed to fetch logo: ${logoResponse.status}`);
@@ -503,7 +503,7 @@ export class ShopifyClient {
 
 			// Get file extension from URL
 			const urlParts = logoUrl.split(".");
-			const extension = urlParts[urlParts.length - 1].split("?")[0];
+			const extension = urlParts[urlParts.length - 1].split("?")[0]; // Remove query params
 			const assetKey = `assets/logo.${extension}`;
 
 			// Upload logo as theme asset
@@ -516,6 +516,8 @@ export class ShopifyClient {
 					},
 				}),
 			});
+
+			console.log(`Logo uploaded as theme asset: ${assetKey}`);
 		} catch (error) {
 			console.error("Error setting theme logo:", error);
 			throw error;
@@ -630,121 +632,74 @@ export class ShopifyClient {
 		barcode?: string;
 		images?: string[];
 	}> {
-		// Split by newlines and filter empty lines
-		const lines = csvText.split(/\r?\n/).filter((line) => line.trim());
+		const lines = csvText.split("\n").filter((line) => line.trim());
+		if (lines.length <= 1) return [];
 
-		if (lines.length <= 1) {
-			return [];
-		}
-
-		// Parse headers using proper CSV parsing (handle quoted fields)
-		const headers = this.parseCSVLine(lines[0]);
-
+		const headers = lines[0]
+			.split(",")
+			.map((h) => h.trim().replace(/"/g, ""));
 		const products = [];
 
 		for (let i = 1; i < lines.length; i++) {
-			const values = this.parseCSVLine(lines[i]);
-
-			if (values.length === 0) {
-				continue;
-			}
+			const values = lines[i]
+				.split(",")
+				.map((v) => v.trim().replace(/"/g, ""));
+			if (values.length < headers.length) continue;
 
 			const product: any = {};
 
 			headers.forEach((header, index) => {
-				const value = values[index]?.trim();
+				const value = values[index];
 				if (!value) return;
 
-				const headerLower = header.toLowerCase().trim();
-
 				// Map common CSV headers to product fields
-				switch (headerLower) {
+				switch (header.toLowerCase()) {
 					case "title":
 					case "name":
 					case "product_title":
-					case "product name":
 						product.title = value;
 						break;
 					case "description":
 					case "body":
 					case "body_html":
-					case "product description":
 						product.description = value;
 						break;
 					case "vendor":
 					case "brand":
-					case "manufacturer":
 						product.vendor = value;
 						break;
 					case "product_type":
 					case "type":
 					case "category":
-					case "product type":
 						product.product_type = value;
 						break;
 					case "price":
 					case "variant_price":
-					case "variant price":
-					case "unit price":
-					case "cost":
-						// Remove currency symbols and spaces
-						const cleanPrice = value.replace(/[$£€¥,\s]/g, "");
-						if (!isNaN(parseFloat(cleanPrice))) {
-							product.price = cleanPrice;
-						}
+						product.price = value;
 						break;
 					case "compare_at_price":
 					case "compare_price":
-					case "msrp":
-					case "retail price":
-						const cleanComparePrice = value.replace(
-							/[$£€¥,\s]/g,
-							""
-						);
-						if (!isNaN(parseFloat(cleanComparePrice))) {
-							product.compare_at_price = cleanComparePrice;
-						}
+						product.compare_at_price = value;
 						break;
 					case "inventory_quantity":
-					case "variant inventory qty":
 					case "quantity":
 					case "stock":
-					case "inventory":
-						const qty = parseInt(value);
-						if (!isNaN(qty)) {
-							product.inventory_quantity = qty;
-						}
+						product.inventory_quantity = parseInt(value) || 0;
 						break;
 					case "weight":
-						const weight = parseFloat(value);
-						if (!isNaN(weight)) {
-							product.weight = weight;
-						}
+						product.weight = parseFloat(value) || undefined;
 						break;
 					case "sku":
-					case "product code":
 						product.sku = value;
 						break;
 					case "barcode":
-					case "upc":
-					case "ean":
 						product.barcode = value;
 						break;
 					case "image":
 					case "image_src":
-					case "image src":
 					case "images":
-					case "image url":
-					case "photo":
 						if (value.includes("http")) {
-							// Handle multiple images separated by commas
-							const imageUrls = value
-								.split(",")
-								.map((url) => url.trim())
-								.filter((url) => url.includes("http"));
-							if (imageUrls.length > 0) {
-								product.images = imageUrls;
-							}
+							product.images = [value];
 						}
 						break;
 				}
@@ -752,47 +707,13 @@ export class ShopifyClient {
 
 			// Ensure required fields
 			if (product.title && product.price) {
-				if (!product.description) {
+				if (!product.description)
 					product.description = `${product.title} - No description provided`;
-				}
 				products.push(product);
 			}
 		}
 
 		return products;
-	}
-
-	// Helper function to properly parse CSV lines (handles quoted fields)
-	private parseCSVLine(line: string): string[] {
-		const result = [];
-		let current = "";
-		let inQuotes = false;
-
-		for (let i = 0; i < line.length; i++) {
-			const char = line[i];
-
-			if (char === '"') {
-				if (inQuotes && line[i + 1] === '"') {
-					// Escaped quote
-					current += '"';
-					i++; // Skip next quote
-				} else {
-					// Toggle quote state
-					inQuotes = !inQuotes;
-				}
-			} else if (char === "," && !inQuotes) {
-				// End of field
-				result.push(current.trim());
-				current = "";
-			} else {
-				current += char;
-			}
-		}
-
-		// Add the last field
-		result.push(current.trim());
-
-		return result;
 	}
 
 	// Update store branding
