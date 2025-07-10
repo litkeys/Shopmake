@@ -811,14 +811,23 @@ export class ShopifyClient {
 			} else if (createdFile.url) {
 				imageUrl = createdFile.url;
 				console.log("✅ Found URL in direct url field:", imageUrl);
+			} else {
+				// Image processing might be happening asynchronously - poll for it
+				console.log(
+					"⏳ Image URL not available yet, polling for processing completion..."
+				);
+				const polledUrl = await this.pollForImageUrl(createdFile.id);
+				imageUrl = polledUrl || undefined;
 			}
 
 			if (!imageUrl) {
 				console.error(
-					"❌ No image URL found in any expected location. Full file object:",
+					"❌ No image URL found after polling. Full file object:",
 					createdFile
 				);
-				throw new Error("No image URL returned from file creation");
+				throw new Error(
+					"No image URL returned from file creation after polling"
+				);
 			}
 
 			console.log(
@@ -830,6 +839,105 @@ export class ShopifyClient {
 			console.error("❌ Error uploading logo to Files:", error);
 			return null;
 		}
+	}
+
+	private async pollForImageUrl(fileId: string): Promise<string | null> {
+		const maxAttempts = 10;
+		const delayMs = 2000; // 2 seconds between attempts
+
+		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+			try {
+				console.log(
+					`⏳ Polling attempt ${attempt}/${maxAttempts} for file ${fileId}...`
+				);
+
+				const fileQuery = `
+					query getFile($id: ID!) {
+						file: node(id: $id) {
+							... on MediaImage {
+								id
+								alt
+								image {
+									id
+									url
+									width
+									height
+								}
+								preview {
+									image {
+										url
+									}
+								}
+							}
+							... on GenericFile {
+								id
+								alt
+								url
+							}
+						}
+					}
+				`;
+
+				const response = await this.makeGraphQLRequest<{
+					data: {
+						file: {
+							id: string;
+							alt: string;
+							image?: {
+								id: string;
+								url: string;
+								width?: number;
+								height?: number;
+							};
+							preview?: {
+								image: {
+									url: string;
+								};
+							};
+							url?: string;
+						};
+					};
+				}>(fileQuery, { id: fileId });
+
+				const file = response.data.file;
+
+				if (file.image?.url) {
+					console.log(
+						`✅ Found URL after ${attempt} attempts: ${file.image.url}`
+					);
+					return file.image.url;
+				} else if (file.preview?.image?.url) {
+					console.log(
+						`✅ Found preview URL after ${attempt} attempts: ${file.preview.image.url}`
+					);
+					return file.preview.image.url;
+				} else if (file.url) {
+					console.log(
+						`✅ Found direct URL after ${attempt} attempts: ${file.url}`
+					);
+					return file.url;
+				}
+
+				console.log(
+					`⏳ Attempt ${attempt}: Image still processing, waiting ${delayMs}ms...`
+				);
+				await new Promise((resolve) => setTimeout(resolve, delayMs));
+			} catch (error) {
+				console.error(
+					`❌ Error during polling attempt ${attempt}:`,
+					error
+				);
+				if (attempt === maxAttempts) {
+					return null;
+				}
+				await new Promise((resolve) => setTimeout(resolve, delayMs));
+			}
+		}
+
+		console.error(
+			`❌ Image URL not available after ${maxAttempts} attempts`
+		);
+		return null;
 	}
 
 	private getMimeType(extension: string): string {
