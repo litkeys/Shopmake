@@ -364,8 +364,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		return uploads.filter((upload) => upload.file_type === `csv_${type}`);
 	};
 
-	const handleShopifyConnect = async (e: React.FormEvent) => {
-		e.preventDefault();
+	const handleShopifyConnect = async () => {
 		if (!store) return;
 
 		try {
@@ -909,10 +908,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 									</div>
 								</div>
 							) : showShopifyForm ? (
-								<form
-									onSubmit={handleShopifyConnect}
-									className="space-y-4"
-								>
+								<div className="space-y-4">
 									<div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
 										<h3 className="text-sm font-medium text-blue-800 mb-2">
 											Connect Your Shopify Custom App
@@ -940,7 +936,6 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 												}))
 											}
 											placeholder="genesis-project-demo"
-											required
 										/>
 										<p className="text-sm text-muted-foreground mt-1">
 											Just the subdomain (without
@@ -966,7 +961,6 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 												}))
 											}
 											placeholder="shpat_..."
-											required
 										/>
 										<p className="text-sm text-muted-foreground mt-1">
 											From your Custom App in Shopify
@@ -994,7 +988,8 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 									<div className="flex space-x-3">
 										<Button
-											type="submit"
+											type="button"
+											onClick={handleShopifyConnect}
 											disabled={
 												isConnecting ||
 												!shopifyFormData.store_domain.trim() ||
@@ -1020,7 +1015,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 											Cancel
 										</Button>
 									</div>
-								</form>
+								</div>
 							) : (
 								<div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
 									<div className="flex">
