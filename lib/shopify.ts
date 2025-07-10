@@ -940,13 +940,75 @@ export class ShopifyClient {
 		return null;
 	}
 
-	// Set logo in theme settings
-	private async setThemeLogoSettings(
+	// Copy logo file into theme assets folder
+	private async copyLogoToThemeAssets(
 		themeId: number,
 		logoUrl: string
+	): Promise<string | null> {
+		try {
+			console.log(`📁 Copying logo to theme ${themeId} assets folder...`);
+
+			// Step 1: Download the logo file from the provided URL
+			const logoResponse = await fetch(logoUrl);
+			if (!logoResponse.ok) {
+				throw new Error(`Failed to fetch logo: ${logoResponse.status}`);
+			}
+
+			const logoBuffer = await logoResponse.arrayBuffer();
+
+			// Get file extension from URL
+			const urlParts = logoUrl.split(".");
+			const extension = urlParts[urlParts.length - 1]
+				.split("?")[0]
+				.toLowerCase();
+
+			const assetFileName = `logo.${extension}`;
+			const logoBase64 = Buffer.from(logoBuffer).toString("base64");
+
+			console.log(`📤 Uploading ${assetFileName} to theme assets...`);
+
+			// Step 2: Upload the logo directly to theme assets folder
+			await this.makeRequest(`/themes/${themeId}/assets.json`, {
+				method: "PUT",
+				body: JSON.stringify({
+					asset: {
+						key: `assets/${assetFileName}`,
+						value: logoBase64,
+					},
+				}),
+			});
+
+			console.log("✅ Logo successfully copied to theme assets");
+
+			// Step 3: Update theme settings to reference the asset
+			const assetReference = assetFileName; // Just the filename for theme settings
+			const settingsUpdated = await this.updateThemeSettingsWithLogo(
+				themeId,
+				assetReference
+			);
+
+			if (!settingsUpdated) {
+				console.log(
+					"⚠️ Logo uploaded but theme settings update failed"
+				);
+			}
+
+			return assetReference;
+		} catch (error) {
+			console.error("❌ Error copying logo to theme assets:", error);
+			return null;
+		}
+	}
+
+	// Update theme settings to reference the logo asset
+	private async updateThemeSettingsWithLogo(
+		themeId: number,
+		logoAssetName: string
 	): Promise<boolean> {
 		try {
-			console.log(`🎨 Setting logo in theme ${themeId} settings...`);
+			console.log(
+				`🎨 Updating theme settings to reference ${logoAssetName}...`
+			);
 
 			// Get current theme settings
 			const currentSettings = await this.makeRequest<{
@@ -966,16 +1028,15 @@ export class ShopifyClient {
 				};
 			}
 
-			// Update the logo URL in theme settings
+			// Update the logo reference in theme settings
 			if (!settingsData.current) {
 				settingsData.current = {};
 			}
 
-			// Common logo setting keys in Shopify themes
-			settingsData.current.logo = logoUrl;
-			settingsData.current.logo_url = logoUrl;
-			settingsData.current.header_logo = logoUrl;
-			settingsData.current.site_logo = logoUrl;
+			// Set logo reference using just the asset filename (not full URL)
+			settingsData.current.logo = logoAssetName;
+			settingsData.current.header_logo = logoAssetName;
+			settingsData.current.site_logo = logoAssetName;
 
 			// Update the theme settings
 			await this.makeRequest(`/themes/${themeId}/assets.json`, {
@@ -988,10 +1049,10 @@ export class ShopifyClient {
 				}),
 			});
 
-			console.log("✅ Logo successfully set in theme settings");
+			console.log("✅ Theme settings updated with logo reference");
 			return true;
 		} catch (error) {
-			console.error("❌ Error setting theme logo:", error);
+			console.error("❌ Error updating theme settings:", error);
 			return false;
 		}
 	}
@@ -1423,14 +1484,14 @@ export class ShopifyClient {
 							"Logo successfully uploaded to Shopify Files"
 						);
 
-						// Set the logo in theme settings
-						const logoSetInTheme = await this.setThemeLogoSettings(
+						// Copy logo to theme assets
+						const logoAssetName = await this.copyLogoToThemeAssets(
 							themeId,
 							logoFileUrl
 						);
-						logo_uploaded = logoSetInTheme;
+						logo_uploaded = !!logoAssetName;
 
-						if (logoSetInTheme) {
+						if (logoAssetName) {
 							console.log(
 								"Logo successfully integrated into theme"
 							);
