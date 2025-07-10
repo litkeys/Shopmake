@@ -74,6 +74,8 @@ export async function updateStore(
 	storeId: string,
 	updates: Partial<Store>
 ): Promise<Store> {
+	console.log("updateStore - Updating store:", storeId, "with:", updates);
+
 	const { data, error } = await supabaseAdmin
 		.from("stores")
 		.update(updates)
@@ -82,9 +84,13 @@ export async function updateStore(
 		.single();
 
 	if (error) {
+		console.error("updateStore - Error:", error);
+		console.error("updateStore - Error code:", error.code);
+		console.error("updateStore - Error details:", error.details);
 		throw new Error(`Failed to update store: ${error.message}`);
 	}
 
+	console.log("updateStore - Successfully updated store:", data);
 	return data;
 }
 

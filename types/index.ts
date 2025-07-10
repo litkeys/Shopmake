@@ -12,7 +12,7 @@ export interface Store {
 	id: string;
 	name: string;
 	created_by: string; // Clerk user ID
-	shopify_store_domain?: string;
+	shopify_store_domain?: string | null;
 	created_at: string;
 	updated_at: string;
 }

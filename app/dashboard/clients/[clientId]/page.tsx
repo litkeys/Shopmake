@@ -447,10 +447,8 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 			await disconnectShopifyStoreAPI(store.id);
 
-			// Update local state to remove Shopify connection
-			setStore((prev) =>
-				prev ? { ...prev, shopify_store_domain: undefined } : null
-			);
+			// Reload store data to get the updated state
+			await loadStoreData();
 
 			setSuccess("Store disconnected from Shopify successfully");
 			setTimeout(() => setSuccess(null), 5000);

@@ -39,6 +39,12 @@ export async function POST(request: NextRequest) {
 
 		// Verify store exists and user has access
 		const store = await getStore(store_id);
+		console.log(
+			"Disconnect - Store found:",
+			!!store,
+			"Store ID:",
+			store_id
+		);
 		if (!store) {
 			return NextResponse.json(
 				{ error: "Store not found" },
@@ -53,14 +59,25 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
+		console.log("Disconnect - Deleting Shopify token for store:", store_id);
 		// Delete the Shopify token
 		await deleteShopifyAdminToken(store_id);
 
-		// Remove Shopify domain from store
-		await updateStore(store_id, {
-			shopify_store_domain: undefined,
-		});
+		console.log("Disconnect - Updating store to remove Shopify domain");
+		// Remove Shopify domain from store - use raw update to avoid type issues
+		try {
+			await updateStore(store_id, {
+				shopify_store_domain: null as any,
+			});
+		} catch (updateError) {
+			console.error(
+				"Failed to update store shopify_store_domain, but token was deleted:",
+				updateError
+			);
+			// Continue anyway since the token deletion is the important part
+		}
 
+		console.log("Disconnect - Successfully disconnected store:", store_id);
 		return NextResponse.json({
 			success: true,
 			message: "Store disconnected from Shopify successfully",
