@@ -563,19 +563,19 @@ export class ShopifyClient {
 
 			// Use GraphQL themeFilesUpsert mutation to upload logo to theme assets
 			const mutation = `
-				mutation themeFilesUpsert($files: [OnlineStoreThemeFileInput!]!, $themeId: ID!) {
-					themeFilesUpsert(files: $files, themeId: $themeId) {
-						upsertedThemeFiles {
-							filename
-							size
-						}
-						userErrors {
-							field
-							message
-						}
+			mutation themeFilesUpsert($files: [OnlineStoreThemeFilesUpsertFileInput!]!, $themeId: ID!) {
+				themeFilesUpsert(files: $files, themeId: $themeId) {
+					upsertedThemeFiles {
+						filename
+						size
+					}
+					userErrors {
+						field
+						message
 					}
 				}
-			`;
+			}
+		`;
 
 			const variables = {
 				themeId: `gid://shopify/OnlineStoreTheme/${themeId}`,
@@ -621,6 +621,23 @@ export class ShopifyClient {
 	// Set contact email in store metafields using GraphQL
 	async setContactEmail(email: string): Promise<void> {
 		try {
+			// First, get the shop ID
+			const shopQuery = `
+				query {
+					shop {
+						id
+					}
+				}
+			`;
+
+			const shopResponse = await this.makeGraphQLRequest<{
+				shop: {
+					id: string;
+				};
+			}>(shopQuery, {});
+			const shopId = shopResponse.shop.id;
+
+			// Then set the metafield with the correct shop ID
 			const mutation = `
 				mutation metafieldsSet($metafields: [MetafieldsSetInput!]!) {
 					metafieldsSet(metafields: $metafields) {
@@ -641,7 +658,7 @@ export class ShopifyClient {
 			const variables = {
 				metafields: [
 					{
-						ownerId: "gid://shopify/Shop",
+						ownerId: shopId,
 						namespace: "genesis_contact",
 						key: "email",
 						value: email,
