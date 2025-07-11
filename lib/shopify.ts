@@ -1725,15 +1725,13 @@ export class ShopifyClient {
 		publicationId: string
 	): Promise<void> {
 		const mutation = `
-			mutation publishablePublish($id: ID!, $input: PublishablePublishInput!) {
-				publishablePublish(id: $id, input: $input) {
+			mutation publishablePublish($id: ID!, $publicationId: ID!) {
+				publishablePublish(id: $id, publicationId: $publicationId) {
 					publishable {
 						... on Product {
 							id
 							title
-							publishedOnPublication(publicationId: $publicationId) {
-								isPublished
-							}
+							publishedOnPublication(publicationId: $publicationId)
 						}
 					}
 					userErrors {
@@ -1746,10 +1744,7 @@ export class ShopifyClient {
 
 		const variables = {
 			id: productId,
-			input: {
-				publicationId: publicationId,
-			},
-			publicationId: publicationId, // For the fragment query
+			publicationId: publicationId,
 		};
 
 		const result = await this.makeGraphQLRequest<{
@@ -1757,9 +1752,7 @@ export class ShopifyClient {
 				publishable: {
 					id: string;
 					title: string;
-					publishedOnPublication: {
-						isPublished: boolean;
-					};
+					publishedOnPublication: boolean;
 				};
 				userErrors: Array<{ field: string; message: string }>;
 			};
