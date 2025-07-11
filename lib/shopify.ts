@@ -1277,41 +1277,30 @@ export class ShopifyClient {
 			// Step 3: Start bulk operation
 			console.log("Step 3: Starting bulk operation...");
 
-			// Extract the file key from resourceUrl for bulkOperationRunMutation
-			// The resourceUrl is a full URL but we need just the path part for stagedUploadPath
-			let stagedUploadPath = stagedUpload.resourceUrl;
+			// Extract the file key from the parameters for bulkOperationRunMutation
+			// The key parameter contains the full path needed for the bulk operation
+			const keyParameter = stagedUpload.parameters.find(
+				(param) => param.name === "key"
+			);
 
-			if (
-				!stagedUpload.resourceUrl ||
-				stagedUpload.resourceUrl.endsWith("/")
-			) {
+			if (!keyParameter || !keyParameter.value) {
 				console.error(
-					"Invalid resourceUrl received:",
-					stagedUpload.resourceUrl
+					"No key parameter found in staged upload response:",
+					stagedUpload.parameters
 				);
 				throw new Error(
-					"Staged upload did not return a valid file path. The resourceUrl is empty or invalid."
+					"Staged upload did not return a valid key parameter. Cannot proceed with bulk operation."
 				);
 			}
 
-			try {
-				const url = new URL(stagedUpload.resourceUrl);
-				// Extract path without leading slash
-				stagedUploadPath = url.pathname.startsWith("/")
-					? url.pathname.substring(1)
-					: url.pathname;
-				console.log("Extracted staged upload path:", stagedUploadPath);
+			const stagedUploadPath = keyParameter.value;
+			console.log(
+				"Extracted staged upload path from key:",
+				stagedUploadPath
+			);
 
-				if (!stagedUploadPath || stagedUploadPath === "") {
-					throw new Error("Extracted path is empty");
-				}
-			} catch (error) {
-				console.log("Error extracting path:", error);
-				console.log(
-					"Using resourceUrl as-is:",
-					stagedUpload.resourceUrl
-				);
-				stagedUploadPath = stagedUpload.resourceUrl;
+			if (!stagedUploadPath || stagedUploadPath === "") {
+				throw new Error("Extracted key parameter is empty");
 			}
 
 			const bulkOperation = await this.startBulkProductImport(
