@@ -1197,7 +1197,7 @@ export class ShopifyClient {
 
 			// Step 4: Wait for completion and return count
 			const completedOperation =
-				await this.waitForBulkOperationCompletion();
+				await this.waitForBulkOperationCompletion(bulkOperation.id);
 			console.log("Bulk operation completed:", completedOperation);
 
 			return completedOperation.objectCount || 0;
@@ -1369,17 +1369,22 @@ export class ShopifyClient {
 	}
 
 	// Wait for bulk operation completion
-	private async waitForBulkOperationCompletion(): Promise<{
+	private async waitForBulkOperationCompletion(
+		bulkOperationId: string
+	): Promise<{
 		status: string;
 		objectCount: number;
 	}> {
 		const maxAttempts = 60; // Wait up to 10 minutes (60 * 10 seconds)
 		let attempts = 0;
 
+		// Wait a moment before first check to allow the operation to start
+		await new Promise((resolve) => setTimeout(resolve, 2000));
+
 		while (attempts < maxAttempts) {
 			const query = `
-				query {
-					currentBulkOperation {
+				query getBulkOperation($id: ID!) {
+					bulkOperation(id: $id) {
 						id
 						status
 						errorCode
@@ -1391,7 +1396,7 @@ export class ShopifyClient {
 			`;
 
 			const result = await this.makeGraphQLRequest<{
-				currentBulkOperation: {
+				bulkOperation: {
 					id: string;
 					status: string;
 					errorCode?: string;
@@ -1399,13 +1404,20 @@ export class ShopifyClient {
 					createdAt: string;
 					completedAt?: string;
 				} | null;
-			}>(query);
+			}>(query, { id: bulkOperationId });
 
-			if (!result.currentBulkOperation) {
-				throw new Error("No current bulk operation found");
+			if (!result.bulkOperation) {
+				console.log(
+					`Bulk operation ${bulkOperationId} not found, attempt ${
+						attempts + 1
+					}/${maxAttempts}`
+				);
+				await new Promise((resolve) => setTimeout(resolve, 5000));
+				attempts++;
+				continue;
 			}
 
-			const operation = result.currentBulkOperation;
+			const operation = result.bulkOperation;
 			console.log(
 				`Bulk operation status: ${operation.status}, objects: ${operation.objectCount}`
 			);
