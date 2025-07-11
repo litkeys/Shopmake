@@ -1229,29 +1229,36 @@ export class ShopifyClient {
 				};
 			}>(productsQuery);
 
-			// Filter products created in the last 10 minutes that need variant updates
-			const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-			const recentProducts = result.products.nodes.filter((product) => {
-				// Check if product has pricing metafields
-				const hasPrice = product.metafields.nodes.some(
-					(meta) =>
-						meta.namespace === "custom" &&
-						meta.key === "original_price"
-				);
-				return hasPrice;
-			});
+			// Filter products that need variant updates (have pricing metafields)
+			const productsNeedingUpdates = result.products.nodes.filter(
+				(product) => {
+					// Check if product has pricing metafields
+					const hasPrice = product.metafields.nodes.some(
+						(meta) =>
+							meta.namespace === "custom" &&
+							meta.key === "original_price"
+					);
+					return hasPrice && product.variants.nodes.length > 0;
+				}
+			);
 
-			if (recentProducts.length === 0) {
+			if (productsNeedingUpdates.length === 0) {
+				console.log("No products found that need variant updates");
 				return 0;
 			}
 
+			console.log(
+				`Found ${productsNeedingUpdates.length} products that need variant updates`
+			);
+
 			let updatedCount = 0;
 
-			// Update variants in batches to avoid rate limits
-			for (const product of recentProducts) {
+			// Update variants one by one (productVariantsBulkUpdate works per product)
+			for (const product of productsNeedingUpdates) {
 				try {
 					await this.updateProductVariant(product);
 					updatedCount++;
+					console.log(`Updated variants for: ${product.title}`);
 				} catch (error) {
 					console.error(
 						`Failed to update variants for product ${product.title}:`,
@@ -1270,7 +1277,7 @@ export class ShopifyClient {
 		}
 	}
 
-	// Update a single product's variant with pricing data from metafields
+	// Update a single product's variant with pricing data from metafields using productVariantsBulkUpdate
 	private async updateProductVariant(product: {
 		id: string;
 		title: string;
@@ -1304,11 +1311,36 @@ export class ShopifyClient {
 		}
 		const variantId = product.variants.nodes[0].id;
 
-		// Update the variant with pricing
+		// Prepare variant input for bulk update
+		const variantInput: any = {
+			id: variantId,
+			price: parseFloat(originalPrice).toFixed(2),
+		};
+
+		// Add compare at price if available
+		if (compareAtPrice) {
+			variantInput.compareAtPrice = parseFloat(compareAtPrice).toFixed(2);
+		}
+
+		// Note: Skip inventory quantities for now as they require valid location IDs
+		// Inventory can be managed separately through the inventory API
+		// if (inventoryQuantity) {
+		// 	variantInput.inventoryQuantities = [
+		// 		{
+		// 			availableQuantity: parseInt(inventoryQuantity),
+		// 			locationId: "gid://shopify/Location/...", // Requires valid location ID
+		// 		},
+		// 	];
+		// }
+
+		// Update the variant using productVariantsBulkUpdate
 		const mutation = `
-			mutation productVariantUpdate($input: ProductVariantInput!) {
-				productVariantUpdate(input: $input) {
-					productVariant {
+			mutation productVariantsBulkUpdate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+				productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+					product {
+						id
+					}
+					productVariants {
 						id
 						price
 						compareAtPrice
@@ -1322,39 +1354,29 @@ export class ShopifyClient {
 		`;
 
 		const variables = {
-			input: {
-				id: variantId,
-				price: parseFloat(originalPrice).toFixed(2),
-				compareAtPrice: compareAtPrice
-					? parseFloat(compareAtPrice).toFixed(2)
-					: null,
-				inventoryQuantities: inventoryQuantity
-					? [
-							{
-								availableQuantity: parseInt(inventoryQuantity),
-								locationId: "gid://shopify/Location/primary",
-							},
-					  ]
-					: undefined,
-			},
+			productId: product.id,
+			variants: [variantInput],
 		};
 
 		const result = await this.makeGraphQLRequest<{
-			productVariantUpdate: {
-				productVariant: {
+			productVariantsBulkUpdate: {
+				product: {
+					id: string;
+				};
+				productVariants: Array<{
 					id: string;
 					price: string;
 					compareAtPrice?: string;
-				};
+				}>;
 				userErrors: Array<{ field: string; message: string }>;
 			};
 		}>(mutation, variables);
 
-		if (result.productVariantUpdate.userErrors.length > 0) {
-			const errors = result.productVariantUpdate.userErrors
+		if (result.productVariantsBulkUpdate.userErrors.length > 0) {
+			const errors = result.productVariantsBulkUpdate.userErrors
 				.map((error) => error.message)
 				.join("; ");
-			throw new Error(`Variant update errors: ${errors}`);
+			throw new Error(`Variant bulk update errors: ${errors}`);
 		}
 	}
 
