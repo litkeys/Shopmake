@@ -1503,6 +1503,8 @@ export class ShopifyClient {
 							objectCount
 							createdAt
 							completedAt
+							url
+							partialDataUrl
 						}
 					}
 				}
@@ -1516,6 +1518,8 @@ export class ShopifyClient {
 					objectCount: number;
 					createdAt: string;
 					completedAt?: string;
+					url?: string;
+					partialDataUrl?: string;
 				} | null;
 			}>(query, { id: bulkOperationId });
 
@@ -1529,9 +1533,64 @@ export class ShopifyClient {
 			);
 
 			if (operation.status === "COMPLETED") {
+				console.log("Bulk operation completed details:", {
+					objectCount: operation.objectCount,
+					resultUrl: operation.url,
+					partialDataUrl: operation.partialDataUrl,
+				});
+
+				// If objectCount is 0 but we know products were created,
+				// fall back to counting products directly from Shopify
+				let finalObjectCount = operation.objectCount;
+
+				if (operation.objectCount === 0) {
+					console.log(
+						"Object count is 0, checking actual products created..."
+					);
+					try {
+						const productsQuery = `
+							query {
+								products(first: 250, sortKey: CREATED_AT, reverse: true) {
+									nodes {
+										id
+										createdAt
+									}
+								}
+							}
+						`;
+
+						const productsResult = await this.makeGraphQLRequest<{
+							products: {
+								nodes: Array<{ id: string; createdAt: string }>;
+							};
+						}>(productsQuery);
+
+						// Count products created in the last 10 minutes (bulk operation timeframe)
+						const tenMinutesAgo = new Date(
+							Date.now() - 10 * 60 * 1000
+						);
+						const recentProducts =
+							productsResult.products.nodes.filter(
+								(product) =>
+									new Date(product.createdAt) > tenMinutesAgo
+							);
+
+						finalObjectCount = recentProducts.length;
+						console.log(
+							`Found ${finalObjectCount} products created in the last 10 minutes`
+						);
+					} catch (countError) {
+						console.warn(
+							"Could not count recent products:",
+							countError
+						);
+						// Use the bulk operation count even if it's 0
+					}
+				}
+
 				return {
 					status: operation.status,
-					objectCount: operation.objectCount,
+					objectCount: finalObjectCount,
 				};
 			}
 
@@ -1539,6 +1598,12 @@ export class ShopifyClient {
 				operation.status === "FAILED" ||
 				operation.status === "CANCELED"
 			) {
+				console.error("Bulk operation failed/canceled:", {
+					errorCode: operation.errorCode,
+					resultUrl: operation.url,
+					partialDataUrl: operation.partialDataUrl,
+				});
+
 				throw new Error(
 					`Bulk operation ${operation.status.toLowerCase()}: ${
 						operation.errorCode || "Unknown error"
