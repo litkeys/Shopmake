@@ -797,25 +797,39 @@ export class ShopifyClient {
 		options?: Array<{ name: string; values: string[] }>;
 		status?: string;
 	}> {
+		console.log("Starting CSV parsing...");
 		const lines = csvText.split("\n").filter((line) => line.trim());
-		if (lines.length <= 1) return [];
+		if (lines.length <= 1) {
+			console.log("CSV file has no data rows");
+			return [];
+		}
 
-		// Parse CSV more carefully to handle quoted fields with commas
+		// Improved CSV parsing to handle quoted fields with commas and escaped quotes
 		const parseCSVLine = (line: string): string[] => {
 			const result = [];
 			let current = "";
 			let inQuotes = false;
+			let i = 0;
 
-			for (let i = 0; i < line.length; i++) {
+			while (i < line.length) {
 				const char = line[i];
 
 				if (char === '"') {
-					inQuotes = !inQuotes;
+					// Check for escaped quotes ("")
+					if (i + 1 < line.length && line[i + 1] === '"') {
+						current += '"';
+						i += 2; // Skip both quotes
+					} else {
+						inQuotes = !inQuotes;
+						i++;
+					}
 				} else if (char === "," && !inQuotes) {
 					result.push(current.trim());
 					current = "";
+					i++;
 				} else {
 					current += char;
+					i++;
 				}
 			}
 
@@ -824,11 +838,21 @@ export class ShopifyClient {
 		};
 
 		const headers = parseCSVLine(lines[0]);
+		console.log(
+			`Found ${headers.length} headers in CSV:`,
+			headers.slice(0, 10)
+		);
+
 		const products = [];
 
 		for (let i = 1; i < lines.length; i++) {
 			const values = parseCSVLine(lines[i]);
-			if (values.length < 3) continue; // Skip malformed rows
+			if (values.length < headers.length / 2) {
+				console.log(
+					`Skipping malformed row ${i}: only ${values.length} values for ${headers.length} headers`
+				);
+				continue; // Skip malformed rows
+			}
 
 			const product: any = {};
 			const productOptions: Map<string, Set<string>> = new Map();
@@ -870,7 +894,8 @@ export class ShopifyClient {
 						if (cleanValue) {
 							product.tags = cleanValue
 								.split(",")
-								.map((tag) => tag.trim());
+								.map((tag) => tag.trim())
+								.filter((tag) => tag);
 						}
 						break;
 					case "published":
@@ -928,14 +953,6 @@ export class ShopifyClient {
 					case "variant barcode":
 					case "barcode":
 						product.barcode = cleanValue;
-						break;
-					case "variant inventory tracker":
-					case "inventory_tracker":
-						// This field exists in CSV but not directly mapped to ProductInput
-						break;
-					case "variant inventory policy":
-					case "inventory_policy":
-						// This field exists in CSV but not directly mapped to ProductInput
 						break;
 					case "variant fulfillment service":
 					case "fulfillment_service":
@@ -1024,9 +1041,24 @@ export class ShopifyClient {
 				if (!product.status) product.status = "active";
 
 				products.push(product);
+				console.log(
+					`Added product: ${product.title} - $${product.price}`
+				);
+			} else {
+				console.log(`Skipped product - missing title or price:`, {
+					title: product.title,
+					price: product.price,
+					hasTitle: !!product.title,
+					hasPrice: !!product.price,
+				});
 			}
 		}
 
+		console.log(
+			`CSV parsing completed. Found ${
+				products.length
+			} valid products out of ${lines.length - 1} total rows`
+		);
 		return products;
 	}
 
