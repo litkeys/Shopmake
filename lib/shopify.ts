@@ -798,46 +798,76 @@ export class ShopifyClient {
 		status?: string;
 	}> {
 		console.log("Starting CSV parsing...");
-		const lines = csvText.split("\n").filter((line) => line.trim());
-		if (lines.length <= 1) {
-			console.log("CSV file has no data rows");
-			return [];
-		}
 
-		// Improved CSV parsing to handle quoted fields with commas and escaped quotes
-		const parseCSVLine = (line: string): string[] => {
-			const result = [];
-			let current = "";
+		// Proper CSV parsing that handles multi-line quoted fields
+		const parseCSV = (csvText: string): string[][] => {
+			const rows: string[][] = [];
+			let currentRow: string[] = [];
+			let currentField = "";
 			let inQuotes = false;
 			let i = 0;
 
-			while (i < line.length) {
-				const char = line[i];
+			while (i < csvText.length) {
+				const char = csvText[i];
 
 				if (char === '"') {
 					// Check for escaped quotes ("")
-					if (i + 1 < line.length && line[i + 1] === '"') {
-						current += '"';
-						i += 2; // Skip both quotes
+					if (i + 1 < csvText.length && csvText[i + 1] === '"') {
+						currentField += '"';
+						i += 2;
 					} else {
 						inQuotes = !inQuotes;
 						i++;
 					}
 				} else if (char === "," && !inQuotes) {
-					result.push(current.trim());
-					current = "";
+					// End of field
+					currentRow.push(currentField.trim());
+					currentField = "";
 					i++;
+				} else if ((char === "\n" || char === "\r") && !inQuotes) {
+					// End of row (only if not inside quotes)
+					if (currentField.trim() || currentRow.length > 0) {
+						currentRow.push(currentField.trim());
+						if (currentRow.some((field) => field.length > 0)) {
+							rows.push(currentRow);
+						}
+						currentRow = [];
+						currentField = "";
+					}
+					// Skip \r\n combinations
+					if (
+						char === "\r" &&
+						i + 1 < csvText.length &&
+						csvText[i + 1] === "\n"
+					) {
+						i += 2;
+					} else {
+						i++;
+					}
 				} else {
-					current += char;
+					currentField += char;
 					i++;
 				}
 			}
 
-			result.push(current.trim());
-			return result;
+			// Add the last field and row if there's content
+			if (currentField.trim() || currentRow.length > 0) {
+				currentRow.push(currentField.trim());
+				if (currentRow.some((field) => field.length > 0)) {
+					rows.push(currentRow);
+				}
+			}
+
+			return rows;
 		};
 
-		const headers = parseCSVLine(lines[0]);
+		const rows = parseCSV(csvText);
+		if (rows.length <= 1) {
+			console.log("CSV file has no data rows");
+			return [];
+		}
+
+		const headers = rows[0];
 		console.log(
 			`Found ${headers.length} headers in CSV:`,
 			headers.slice(0, 10)
@@ -845,8 +875,8 @@ export class ShopifyClient {
 
 		const products = [];
 
-		for (let i = 1; i < lines.length; i++) {
-			const values = parseCSVLine(lines[i]);
+		for (let i = 1; i < rows.length; i++) {
+			const values = rows[i];
 			if (values.length < headers.length / 2) {
 				console.log(
 					`Skipping malformed row ${i}: only ${values.length} values for ${headers.length} headers`
@@ -1057,7 +1087,7 @@ export class ShopifyClient {
 		console.log(
 			`CSV parsing completed. Found ${
 				products.length
-			} valid products out of ${lines.length - 1} total rows`
+			} valid products out of ${rows.length - 1} total rows`
 		);
 		return products;
 	}
