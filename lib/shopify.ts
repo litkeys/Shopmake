@@ -1725,8 +1725,8 @@ export class ShopifyClient {
 		publicationId: string
 	): Promise<void> {
 		const mutation = `
-			mutation publishablePublish($id: ID!, $publicationId: ID!) {
-				publishablePublish(id: $id, publicationId: $publicationId) {
+			mutation publishablePublish($id: ID!, $input: [PublicationInput!]!) {
+				publishablePublish(id: $id, input: $input) {
 					publishable {
 						... on Product {
 							id
@@ -1744,7 +1744,12 @@ export class ShopifyClient {
 
 		const variables = {
 			id: productId,
-			publicationId: publicationId,
+			input: [
+				{
+					publicationId: publicationId,
+				},
+			],
+			publicationId: publicationId, // For the fragment query
 		};
 
 		const result = await this.makeGraphQLRequest<{
