@@ -1539,11 +1539,73 @@ export class ShopifyClient {
 					partialDataUrl: operation.partialDataUrl,
 				});
 
+				// Download and analyze the result URL to check for errors
+				if (operation.url) {
+					try {
+						console.log("Downloading bulk operation results...");
+						const resultResponse = await fetch(operation.url);
+						if (resultResponse.ok) {
+							const resultText = await resultResponse.text();
+							const resultLines = resultText
+								.trim()
+								.split("\n")
+								.filter((line) => line);
+							console.log(
+								`Result file contains ${resultLines.length} lines`
+							);
+
+							// Parse first few lines to check for errors
+							const sampleResults = resultLines
+								.slice(0, 3)
+								.map((line) => {
+									try {
+										return JSON.parse(line);
+									} catch {
+										return line;
+									}
+								});
+							console.log(
+								"Sample result entries:",
+								sampleResults
+							);
+
+							// Count successful vs failed operations
+							let successCount = 0;
+							let errorCount = 0;
+							resultLines.forEach((line) => {
+								try {
+									const result = JSON.parse(line);
+									if (
+										result.userErrors &&
+										result.userErrors.length > 0
+									) {
+										errorCount++;
+									} else if (result.product || result.data) {
+										successCount++;
+									}
+								} catch {
+									// Skip unparseable lines
+								}
+							});
+
+							console.log(
+								`Bulk operation results: ${successCount} successful, ${errorCount} errors`
+							);
+						}
+					} catch (resultError) {
+						console.warn(
+							"Could not download bulk operation results:",
+							resultError
+						);
+					}
+				}
+
 				// If objectCount is 0 but we know products were created,
 				// fall back to counting products directly from Shopify
-				let finalObjectCount = operation.objectCount;
+				let finalObjectCount =
+					parseInt(operation.objectCount.toString()) || 0;
 
-				if (operation.objectCount === 0) {
+				if (finalObjectCount === 0) {
 					console.log(
 						"Object count is 0, checking actual products created..."
 					);
