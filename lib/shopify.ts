@@ -1276,7 +1276,7 @@ export class ShopifyClient {
 		const mutation = `
 			mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
 				stagedUploadsCreate(input: $input) {
-					stagedUploads {
+					stagedTargets {
 						url
 						parameters {
 							name
@@ -1305,7 +1305,7 @@ export class ShopifyClient {
 
 		const result = await this.makeGraphQLRequest<{
 			stagedUploadsCreate: {
-				stagedUploads: Array<{
+				stagedTargets: Array<{
 					url: string;
 					parameters: Array<{ name: string; value: string }>;
 					resourceUrl: string;
@@ -1321,11 +1321,11 @@ export class ShopifyClient {
 			throw new Error(`Staged upload creation errors: ${errors}`);
 		}
 
-		if (result.stagedUploadsCreate.stagedUploads.length === 0) {
+		if (result.stagedUploadsCreate.stagedTargets.length === 0) {
 			throw new Error("No staged upload was created");
 		}
 
-		return result.stagedUploadsCreate.stagedUploads[0];
+		return result.stagedUploadsCreate.stagedTargets[0];
 	}
 
 	// Upload JSONL file to staged upload URL
