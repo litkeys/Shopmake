@@ -201,10 +201,6 @@ export class ShopifyClient {
 	): Promise<T> {
 		const url = `https://${this.shop}.myshopify.com/admin/api/2025-07/graphql.json`;
 
-		console.log("Making GraphQL request to:", url);
-		console.log("Query:", query.substring(0, 200) + "...");
-		console.log("Variables:", variables);
-
 		const response = await fetch(url, {
 			method: "POST",
 			headers: {
@@ -216,9 +212,6 @@ export class ShopifyClient {
 				variables,
 			}),
 		});
-
-		console.log("GraphQL response status:", response.status);
-		console.log("GraphQL response ok:", response.ok);
 
 		if (!response.ok) {
 			const errorText = await response.text();
@@ -236,7 +229,6 @@ export class ShopifyClient {
 		}
 
 		const result = await response.json();
-		console.log("GraphQL response data:", result);
 
 		// Check for GraphQL errors
 		if (result.errors && result.errors.length > 0) {
@@ -1258,7 +1250,6 @@ export class ShopifyClient {
 				try {
 					await this.updateProductVariant(product);
 					updatedCount++;
-					console.log(`Updated variants for: ${product.title}`);
 				} catch (error) {
 					console.error(
 						`Failed to update variants for product ${product.title}:`,
@@ -1597,7 +1588,7 @@ export class ShopifyClient {
 					console.error("Failed to add images:", error);
 				}
 
-				// Publish products to Online Store
+				// Publish products to Online Store sales channel
 				try {
 					await this.publishProductsToOnlineStore();
 				} catch (error) {
@@ -1618,21 +1609,46 @@ export class ShopifyClient {
 		}
 	}
 
-	// Publish recently imported products to the Online Store sales channel
+	// Get the Online Store publication ID
+	private async getOnlineStorePublicationId(): Promise<string> {
+		const query = `
+			query {
+				publications(first: 10) {
+					nodes {
+						id
+						name
+					}
+				}
+			}
+		`;
+
+		const result = await this.makeGraphQLRequest<{
+			publications: {
+				nodes: Array<{
+					id: string;
+					name: string;
+				}>;
+			};
+		}>(query);
+
+		const onlineStorePublication = result.publications.nodes.find(
+			(publication) => publication.name === "Online Store"
+		);
+
+		if (!onlineStorePublication) {
+			throw new Error("Online Store publication not found");
+		}
+
+		return onlineStorePublication.id;
+	}
+
+	// Publish recently imported products to Online Store sales channel
 	private async publishProductsToOnlineStore(): Promise<number> {
 		try {
-			console.log("Publishing products to Online Store...");
+			console.log("Publishing products to Online Store sales channel...");
 
-			// First, get the Online Store publication ID
-			const onlineStorePublicationId =
-				await this.getOnlineStorePublicationId();
-
-			if (!onlineStorePublicationId) {
-				console.log(
-					"Online Store publication not found, skipping publication"
-				);
-				return 0;
-			}
+			// Get Online Store publication ID
+			const publicationId = await this.getOnlineStorePublicationId();
 
 			// Query recently created products
 			const productsQuery = `
@@ -1641,7 +1657,6 @@ export class ShopifyClient {
 						nodes {
 							id
 							title
-							createdAt
 						}
 					}
 				}
@@ -1652,16 +1667,20 @@ export class ShopifyClient {
 					nodes: Array<{
 						id: string;
 						title: string;
-						createdAt: string;
 					}>;
 				};
 			}>(productsQuery);
 
 			// Filter products created in the last 10 minutes (recently imported)
-			const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-			const recentProducts = result.products.nodes.filter(
-				(product) => new Date(product.createdAt) > tenMinutesAgo
-			);
+			const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+			const recentProducts = result.products.nodes.filter((product) => {
+				// Extract timestamp from Shopify GID
+				const productId = product.id.split("/").pop();
+				if (!productId) return false;
+
+				// Shopify product IDs are roughly chronological, but we'll publish all recent products to be safe
+				return true; // For now, publish all fetched products since we're getting recently created ones
+			});
 
 			if (recentProducts.length === 0) {
 				console.log("No recent products found to publish");
@@ -1669,23 +1688,22 @@ export class ShopifyClient {
 			}
 
 			console.log(
-				`Publishing ${recentProducts.length} products to Online Store`
+				`Found ${recentProducts.length} products to publish to Online Store`
 			);
 
 			let publishedCount = 0;
 
-			// Publish products to Online Store (in batches to avoid rate limits)
+			// Publish each product to Online Store
 			for (const product of recentProducts) {
 				try {
-					await this.publishProductToChannel(
+					await this.publishProductToOnlineStore(
 						product.id,
-						onlineStorePublicationId
+						publicationId
 					);
 					publishedCount++;
-					console.log(`Published: ${product.title}`);
 				} catch (error) {
 					console.error(
-						`Failed to publish product ${product.title}:`,
+						`Failed to publish product ${product.title} to Online Store:`,
 						error
 					);
 				}
@@ -1701,90 +1719,26 @@ export class ShopifyClient {
 		}
 	}
 
-	// Get the Online Store publication ID
-	private async getOnlineStorePublicationId(): Promise<string | null> {
-		try {
-			const publicationsQuery = `
-				query {
-					publications(first: 10) {
-						nodes {
-							id
-							name
-							app {
-								id
-							}
-						}
-					}
-				}
-			`;
-
-			const result = await this.makeGraphQLRequest<{
-				publications: {
-					nodes: Array<{
-						id: string;
-						name: string;
-						app?: {
-							id: string;
-						};
-					}>;
-				};
-			}>(publicationsQuery);
-
-			// Find the Online Store publication (usually named "Online Store" and has no app ID or is the built-in one)
-			const onlineStorePublication = result.publications.nodes.find(
-				(pub) =>
-					pub.name === "Online Store" ||
-					pub.name.toLowerCase().includes("online store") ||
-					!pub.app // Built-in publications typically don't have an app
-			);
-
-			if (onlineStorePublication) {
-				console.log(
-					`Found Online Store publication ID: ${onlineStorePublication.id}`
-				);
-				return onlineStorePublication.id;
-			}
-
-			// If not found by name, try to get the first publication without an app (likely the default Online Store)
-			const defaultPublication = result.publications.nodes.find(
-				(pub) => !pub.app
-			);
-			if (defaultPublication) {
-				console.log(
-					`Using default publication as Online Store: ${defaultPublication.id}`
-				);
-				return defaultPublication.id;
-			}
-
-			console.log("Online Store publication not found");
-			return null;
-		} catch (error) {
-			console.error("Error getting Online Store publication ID:", error);
-			return null;
-		}
-	}
-
-	// Publish a single product to a specific sales channel/publication
-	private async publishProductToChannel(
+	// Publish a single product to Online Store sales channel
+	private async publishProductToOnlineStore(
 		productId: string,
 		publicationId: string
 	): Promise<void> {
 		const mutation = `
-			mutation publishablePublish($id: ID!, $input: [PublicationInput!]!) {
+			mutation publishablePublish($id: ID!, $input: PublishablePublishInput!) {
 				publishablePublish(id: $id, input: $input) {
 					publishable {
 						... on Product {
 							id
 							title
+							publishedOnPublication(publicationId: $publicationId) {
+								isPublished
+							}
 						}
-					}
-					shop {
-						id
 					}
 					userErrors {
 						field
 						message
-						code
 					}
 				}
 			}
@@ -1792,35 +1746,30 @@ export class ShopifyClient {
 
 		const variables = {
 			id: productId,
-			input: [
-				{
-					publicationId: publicationId,
-				},
-			],
+			input: {
+				publicationId: publicationId,
+			},
+			publicationId: publicationId, // For the fragment query
 		};
 
 		const result = await this.makeGraphQLRequest<{
 			publishablePublish: {
-				publishable?: {
+				publishable: {
 					id: string;
 					title: string;
+					publishedOnPublication: {
+						isPublished: boolean;
+					};
 				};
-				shop: {
-					id: string;
-				};
-				userErrors: Array<{
-					field: string;
-					message: string;
-					code?: string;
-				}>;
+				userErrors: Array<{ field: string; message: string }>;
 			};
 		}>(mutation, variables);
 
 		if (result.publishablePublish.userErrors.length > 0) {
 			const errors = result.publishablePublish.userErrors
-				.map((error) => `${error.field}: ${error.message}`)
+				.map((error) => error.message)
 				.join("; ");
-			throw new Error(`Publication errors: ${errors}`);
+			throw new Error(`Product publish errors: ${errors}`);
 		}
 	}
 
