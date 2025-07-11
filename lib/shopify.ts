@@ -1123,7 +1123,9 @@ export class ShopifyClient {
 		}>
 	): string {
 		const jsonlLines = products.map((product) => {
-			// Convert product to ProductInput format for GraphQL according to latest schema
+			// Convert product to ProductInput format according to Shopify GraphQL schema
+			// Reference: https://shopify.dev/docs/api/admin-graphql/latest/input-objects/ProductInput
+			// IMPORTANT: ProductInput does NOT support variants, images, or inventory fields directly
 			const productInput: any = {
 				title: product.title,
 				descriptionHtml: product.description,
@@ -1161,71 +1163,52 @@ export class ShopifyClient {
 						  }))
 						: undefined,
 
-				// Variants array - each product needs at least one variant
-				variants: [
-					{
-						price: parseFloat(product.price).toFixed(2),
-						compareAtPrice: product.compare_at_price
-							? parseFloat(product.compare_at_price).toFixed(2)
-							: undefined,
-
-						// Inventory management
-						inventoryManagement: "SHOPIFY",
-						inventoryPolicy: "DENY", // Don't allow overselling by default
-						inventoryQuantities:
-							product.inventory_quantity !== undefined
-								? [
-										{
-											availableQuantity:
-												product.inventory_quantity,
-											locationId:
-												"gid://shopify/Location/primary", // Will be resolved by Shopify
-										},
-								  ]
-								: undefined,
-
-						// Physical properties
-						weight: product.weight || undefined,
-						weightUnit: product.weight ? "GRAMS" : undefined,
-						requiresShipping: product.requires_shipping !== false,
-
-						// Tax and identification
-						taxable: product.taxable !== false,
-						sku: product.sku || undefined,
-						barcode: product.barcode || undefined,
-
-						// If product has options, map the first variant to first option values
-						optionValues:
-							product.options && product.options.length > 0
-								? product.options.map((option) => ({
-										optionName: option.name,
-										name: option.values[0] || "Default",
-								  }))
-								: undefined,
-					},
-				],
-
-				// Images
-				images:
-					product.images && product.images.length > 0
-						? product.images.map((url) => ({
-								src: url,
-								altText: `${product.title} image`,
-						  }))
-						: undefined,
-
-				// Publication settings
-				published: product.published !== false,
-				publishedAt:
-					product.published !== false
-						? new Date().toISOString()
-						: undefined,
-
 				// Collections - could be added later based on product_type or tags
 				collectionsToJoin: undefined,
 
-				// Metafields for additional data
-				metafields: undefined,
+				// Metafields for additional data - could include pricing info here
+				metafields: [
+					// Store the original price as metafield since ProductInput doesn't support pricing
+					{
+						namespace: "custom",
+						key: "original_price",
+						value: product.price,
+						type: "single_line_text_field",
+					},
+					// Store compare at price if available
+					...(product.compare_at_price
+						? [
+								{
+									namespace: "custom",
+									key: "compare_at_price",
+									value: product.compare_at_price,
+									type: "single_line_text_field",
+								},
+						  ]
+						: []),
+					// Store inventory quantity if available
+					...(product.inventory_quantity !== undefined
+						? [
+								{
+									namespace: "custom",
+									key: "inventory_quantity",
+									value: product.inventory_quantity.toString(),
+									type: "single_line_text_field",
+								},
+						  ]
+						: []),
+					// Store image URLs as metafield for later processing
+					...(product.images && product.images.length > 0
+						? [
+								{
+									namespace: "custom",
+									key: "image_urls",
+									value: product.images.join(","),
+									type: "multi_line_text_field",
+								},
+						  ]
+						: []),
+				].filter(Boolean),
 			};
 
 			// Clean up undefined fields to keep JSONL clean and valid
