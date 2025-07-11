@@ -1071,16 +1071,6 @@ export class ShopifyClient {
 				if (!product.status) product.status = "active";
 
 				products.push(product);
-				console.log(
-					`Added product: ${product.title} - $${product.price}`
-				);
-			} else {
-				console.log(`Skipped product - missing title or price:`, {
-					title: product.title,
-					price: product.price,
-					hasTitle: !!product.title,
-					hasPrice: !!product.price,
-				});
 			}
 		}
 
@@ -1242,10 +1232,14 @@ export class ShopifyClient {
 	private async bulkImportProducts(jsonlContent: string): Promise<number> {
 		try {
 			console.log("Starting bulk import process...");
+			console.log(
+				`JSONL content preview (first 500 chars):`,
+				jsonlContent.substring(0, 500)
+			);
 
 			// Step 1: Create staged upload
 			const stagedUpload = await this.createStagedUpload();
-			console.log("Staged upload created:", stagedUpload);
+			console.log("Staged upload created successfully");
 
 			// Step 2: Upload JSONL file to staged upload URL
 			await this.uploadJSONLFile(
@@ -1467,6 +1461,7 @@ export class ShopifyClient {
 			);
 
 			if (operation.status === "COMPLETED") {
+				console.log("Bulk operation completed successfully!");
 				return {
 					status: operation.status,
 					objectCount: operation.objectCount,
@@ -1477,6 +1472,11 @@ export class ShopifyClient {
 				operation.status === "FAILED" ||
 				operation.status === "CANCELED"
 			) {
+				console.error("Bulk operation failed:", {
+					status: operation.status,
+					errorCode: operation.errorCode,
+					objectCount: operation.objectCount,
+				});
 				throw new Error(
 					`Bulk operation ${operation.status.toLowerCase()}: ${
 						operation.errorCode || "Unknown error"
