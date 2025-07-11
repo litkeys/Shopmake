@@ -1294,7 +1294,7 @@ export class ShopifyClient {
 			// Step 4: Wait for completion and return count
 			console.log("Step 4: Waiting for bulk operation completion...");
 			const completedOperation =
-				await this.waitForBulkOperationCompletion();
+				await this.waitForBulkOperationCompletion(bulkOperation.id);
 			console.log("Bulk operation completed:", completedOperation);
 
 			return completedOperation.objectCount || 0;
@@ -1483,7 +1483,9 @@ export class ShopifyClient {
 	}
 
 	// Wait for bulk operation completion
-	private async waitForBulkOperationCompletion(): Promise<{
+	private async waitForBulkOperationCompletion(
+		bulkOperationId: string
+	): Promise<{
 		status: string;
 		objectCount: number;
 	}> {
@@ -1492,20 +1494,22 @@ export class ShopifyClient {
 
 		while (attempts < maxAttempts) {
 			const query = `
-				query {
-					currentBulkOperation {
-						id
-						status
-						errorCode
-						objectCount
-						createdAt
-						completedAt
+				query($id: ID!) {
+					node(id: $id) {
+						... on BulkOperation {
+							id
+							status
+							errorCode
+							objectCount
+							createdAt
+							completedAt
+						}
 					}
 				}
 			`;
 
 			const result = await this.makeGraphQLRequest<{
-				currentBulkOperation: {
+				node: {
 					id: string;
 					status: string;
 					errorCode?: string;
@@ -1513,13 +1517,13 @@ export class ShopifyClient {
 					createdAt: string;
 					completedAt?: string;
 				} | null;
-			}>(query);
+			}>(query, { id: bulkOperationId });
 
-			if (!result.currentBulkOperation) {
-				throw new Error("No current bulk operation found");
+			if (!result.node) {
+				throw new Error(`Bulk operation not found: ${bulkOperationId}`);
 			}
 
-			const operation = result.currentBulkOperation;
+			const operation = result.node;
 			console.log(
 				`Bulk operation status: ${operation.status}, objects: ${operation.objectCount}`
 			);
