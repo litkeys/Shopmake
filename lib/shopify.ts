@@ -1078,9 +1078,6 @@ export class ShopifyClient {
 				if (!product.status) product.status = "active";
 
 				products.push(product);
-				console.log(
-					`Added product: ${product.title} - $${product.price}`
-				);
 			} else {
 				console.log(`Skipped product - missing title or price:`, {
 					title: product.title,
