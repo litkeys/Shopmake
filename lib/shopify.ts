@@ -1725,7 +1725,7 @@ export class ShopifyClient {
 		publicationId: string
 	): Promise<void> {
 		const mutation = `
-			mutation publishablePublish($id: ID!, $input: [PublicationInput!]!) {
+			mutation publishablePublish($id: ID!, $input: [PublicationInput!]!, $publicationId: ID!) {
 				publishablePublish(id: $id, input: $input) {
 					publishable {
 						... on Product {
