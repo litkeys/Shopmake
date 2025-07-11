@@ -1596,6 +1596,16 @@ export class ShopifyClient {
 				} catch (error) {
 					console.error("Failed to add images:", error);
 				}
+
+				// Publish products to Online Store
+				try {
+					await this.publishProductsToOnlineStore();
+				} catch (error) {
+					console.error(
+						"Failed to publish products to Online Store:",
+						error
+					);
+				}
 			}
 
 			return baseProductCount;
@@ -1605,6 +1615,212 @@ export class ShopifyClient {
 				error instanceof Error ? error.message : String(error)
 			);
 			throw error;
+		}
+	}
+
+	// Publish recently imported products to the Online Store sales channel
+	private async publishProductsToOnlineStore(): Promise<number> {
+		try {
+			console.log("Publishing products to Online Store...");
+
+			// First, get the Online Store publication ID
+			const onlineStorePublicationId =
+				await this.getOnlineStorePublicationId();
+
+			if (!onlineStorePublicationId) {
+				console.log(
+					"Online Store publication not found, skipping publication"
+				);
+				return 0;
+			}
+
+			// Query recently created products
+			const productsQuery = `
+				query {
+					products(first: 250, sortKey: CREATED_AT, reverse: true) {
+						nodes {
+							id
+							title
+							createdAt
+						}
+					}
+				}
+			`;
+
+			const result = await this.makeGraphQLRequest<{
+				products: {
+					nodes: Array<{
+						id: string;
+						title: string;
+						createdAt: string;
+					}>;
+				};
+			}>(productsQuery);
+
+			// Filter products created in the last 10 minutes (recently imported)
+			const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+			const recentProducts = result.products.nodes.filter(
+				(product) => new Date(product.createdAt) > tenMinutesAgo
+			);
+
+			if (recentProducts.length === 0) {
+				console.log("No recent products found to publish");
+				return 0;
+			}
+
+			console.log(
+				`Publishing ${recentProducts.length} products to Online Store`
+			);
+
+			let publishedCount = 0;
+
+			// Publish products to Online Store (in batches to avoid rate limits)
+			for (const product of recentProducts) {
+				try {
+					await this.publishProductToChannel(
+						product.id,
+						onlineStorePublicationId
+					);
+					publishedCount++;
+					console.log(`Published: ${product.title}`);
+				} catch (error) {
+					console.error(
+						`Failed to publish product ${product.title}:`,
+						error
+					);
+				}
+			}
+
+			console.log(
+				`Successfully published ${publishedCount} products to Online Store`
+			);
+			return publishedCount;
+		} catch (error) {
+			console.error("Error publishing products to Online Store:", error);
+			return 0;
+		}
+	}
+
+	// Get the Online Store publication ID
+	private async getOnlineStorePublicationId(): Promise<string | null> {
+		try {
+			const publicationsQuery = `
+				query {
+					publications(first: 10) {
+						nodes {
+							id
+							name
+							app {
+								id
+							}
+						}
+					}
+				}
+			`;
+
+			const result = await this.makeGraphQLRequest<{
+				publications: {
+					nodes: Array<{
+						id: string;
+						name: string;
+						app?: {
+							id: string;
+						};
+					}>;
+				};
+			}>(publicationsQuery);
+
+			// Find the Online Store publication (usually named "Online Store" and has no app ID or is the built-in one)
+			const onlineStorePublication = result.publications.nodes.find(
+				(pub) =>
+					pub.name === "Online Store" ||
+					pub.name.toLowerCase().includes("online store") ||
+					!pub.app // Built-in publications typically don't have an app
+			);
+
+			if (onlineStorePublication) {
+				console.log(
+					`Found Online Store publication ID: ${onlineStorePublication.id}`
+				);
+				return onlineStorePublication.id;
+			}
+
+			// If not found by name, try to get the first publication without an app (likely the default Online Store)
+			const defaultPublication = result.publications.nodes.find(
+				(pub) => !pub.app
+			);
+			if (defaultPublication) {
+				console.log(
+					`Using default publication as Online Store: ${defaultPublication.id}`
+				);
+				return defaultPublication.id;
+			}
+
+			console.log("Online Store publication not found");
+			return null;
+		} catch (error) {
+			console.error("Error getting Online Store publication ID:", error);
+			return null;
+		}
+	}
+
+	// Publish a single product to a specific sales channel/publication
+	private async publishProductToChannel(
+		productId: string,
+		publicationId: string
+	): Promise<void> {
+		const mutation = `
+			mutation publishablePublish($id: ID!, $input: [PublicationInput!]!) {
+				publishablePublish(id: $id, input: $input) {
+					publishable {
+						... on Product {
+							id
+							title
+						}
+					}
+					shop {
+						id
+					}
+					userErrors {
+						field
+						message
+						code
+					}
+				}
+			}
+		`;
+
+		const variables = {
+			id: productId,
+			input: [
+				{
+					publicationId: publicationId,
+				},
+			],
+		};
+
+		const result = await this.makeGraphQLRequest<{
+			publishablePublish: {
+				publishable?: {
+					id: string;
+					title: string;
+				};
+				shop: {
+					id: string;
+				};
+				userErrors: Array<{
+					field: string;
+					message: string;
+					code?: string;
+				}>;
+			};
+		}>(mutation, variables);
+
+		if (result.publishablePublish.userErrors.length > 0) {
+			const errors = result.publishablePublish.userErrors
+				.map((error) => `${error.field}: ${error.message}`)
+				.join("; ");
+			throw new Error(`Publication errors: ${errors}`);
 		}
 	}
 
