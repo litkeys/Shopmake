@@ -697,10 +697,6 @@ export class ShopifyClient {
 	// Import products from CSV files using Shopify Bulk Operations
 	async importProductsFromCSV(storeId: string): Promise<number> {
 		try {
-			console.log(
-				"Importing products from CSV files using bulk operations..."
-			);
-
 			// Get CSV uploads for this store
 			const { getStoreUploads, supabaseAdmin } = await import(
 				"./supabase"
@@ -708,7 +704,6 @@ export class ShopifyClient {
 			const csvUploads = await getStoreUploads(storeId, "csv_products");
 
 			if (csvUploads.length === 0) {
-				console.log("No product CSV files found, skipping import");
 				return 0;
 			}
 
@@ -716,8 +711,6 @@ export class ShopifyClient {
 
 			for (const upload of csvUploads) {
 				try {
-					console.log(`Processing CSV file: ${upload.file_name}`);
-
 					// Download the CSV file from Supabase storage
 					const { data: csvData, error } = await supabaseAdmin.storage
 						.from("store-files")
@@ -735,25 +728,11 @@ export class ShopifyClient {
 					const products = this.parseProductCSV(csvText);
 
 					if (products.length === 0) {
-						console.log(
-							`No valid products found in ${upload.file_name}`
-						);
 						continue;
 					}
 
-					console.log(
-						`Found ${products.length} products in ${upload.file_name}`
-					);
-
 					// Convert products to JSONL format for bulk import
 					const jsonlContent = this.convertProductsToJSONL(products);
-					console.log(
-						`Generated JSONL content preview (first 500 chars):`,
-						jsonlContent.substring(0, 500)
-					);
-					console.log(
-						`Total JSONL content length: ${jsonlContent.length} characters`
-					);
 
 					// Use bulk operations to import products
 					const importedCount = await this.bulkImportProducts(
@@ -772,7 +751,6 @@ export class ShopifyClient {
 				}
 			}
 
-			console.log(`Total products imported: ${totalProductsCreated}`);
 			return totalProductsCreated;
 		} catch (error) {
 			console.error("Error importing products from CSV:", error);
@@ -804,8 +782,6 @@ export class ShopifyClient {
 		options?: Array<{ name: string; values: string[] }>;
 		status?: string;
 	}> {
-		console.log("Starting CSV parsing...");
-
 		// Proper CSV parsing that handles multi-line quoted fields
 		const parseCSV = (csvText: string): string[][] => {
 			const rows: string[][] = [];
@@ -870,24 +846,16 @@ export class ShopifyClient {
 
 		const rows = parseCSV(csvText);
 		if (rows.length <= 1) {
-			console.log("CSV file has no data rows");
 			return [];
 		}
 
 		const headers = rows[0];
-		console.log(
-			`Found ${headers.length} headers in CSV:`,
-			headers.slice(0, 10)
-		);
 
 		const products = [];
 
 		for (let i = 1; i < rows.length; i++) {
 			const values = rows[i];
 			if (values.length < headers.length / 2) {
-				console.log(
-					`Skipping malformed row ${i}: only ${values.length} values for ${headers.length} headers`
-				);
 				continue; // Skip malformed rows
 			}
 
@@ -1078,21 +1046,9 @@ export class ShopifyClient {
 				if (!product.status) product.status = "active";
 
 				products.push(product);
-			} else {
-				console.log(`Skipped product - missing title or price:`, {
-					title: product.title,
-					price: product.price,
-					hasTitle: !!product.title,
-					hasPrice: !!product.price,
-				});
 			}
 		}
 
-		console.log(
-			`CSV parsing completed. Found ${
-				products.length
-			} valid products out of ${rows.length - 1} total rows`
-		);
 		return products;
 	}
 
@@ -1222,91 +1178,410 @@ export class ShopifyClient {
 			return JSON.stringify({ input: cleanProductInput });
 		});
 
-		const result = jsonlLines.join("\n");
+		return jsonlLines.join("\n");
+	}
 
-		// Log first JSONL line for debugging
-		if (jsonlLines.length > 0) {
-			console.log("Sample JSONL line:", jsonlLines[0]);
+	// Add variants with pricing to recently created products
+	private async addVariantsToProducts(): Promise<number> {
+		try {
+			console.log("Adding variants and pricing to products...");
+
+			// Query recently created products with metafields
+			const productsQuery = `
+				query {
+					products(first: 250, sortKey: CREATED_AT, reverse: true) {
+						nodes {
+							id
+							title
+							variants(first: 1) {
+								nodes {
+									id
+								}
+							}
+							metafields(first: 10) {
+								nodes {
+									namespace
+									key
+									value
+								}
+							}
+						}
+					}
+				}
+			`;
+
+			const result = await this.makeGraphQLRequest<{
+				products: {
+					nodes: Array<{
+						id: string;
+						title: string;
+						variants: {
+							nodes: Array<{ id: string }>;
+						};
+						metafields: {
+							nodes: Array<{
+								namespace: string;
+								key: string;
+								value: string;
+							}>;
+						};
+					}>;
+				};
+			}>(productsQuery);
+
+			// Filter products created in the last 10 minutes that need variant updates
+			const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+			const recentProducts = result.products.nodes.filter((product) => {
+				// Check if product has pricing metafields
+				const hasPrice = product.metafields.nodes.some(
+					(meta) =>
+						meta.namespace === "custom" &&
+						meta.key === "original_price"
+				);
+				return hasPrice;
+			});
+
+			if (recentProducts.length === 0) {
+				return 0;
+			}
+
+			let updatedCount = 0;
+
+			// Update variants in batches to avoid rate limits
+			for (const product of recentProducts) {
+				try {
+					await this.updateProductVariant(product);
+					updatedCount++;
+				} catch (error) {
+					console.error(
+						`Failed to update variants for product ${product.title}:`,
+						error
+					);
+				}
+			}
+
+			console.log(
+				`Successfully updated variants for ${updatedCount} products`
+			);
+			return updatedCount;
+		} catch (error) {
+			console.error("Error adding variants to products:", error);
+			return 0;
+		}
+	}
+
+	// Update a single product's variant with pricing data from metafields
+	private async updateProductVariant(product: {
+		id: string;
+		title: string;
+		variants: { nodes: Array<{ id: string }> };
+		metafields: {
+			nodes: Array<{ namespace: string; key: string; value: string }>;
+		};
+	}): Promise<void> {
+		// Extract pricing data from metafields
+		const metafields = product.metafields.nodes;
+		const originalPrice = metafields.find(
+			(meta) =>
+				meta.namespace === "custom" && meta.key === "original_price"
+		)?.value;
+		const compareAtPrice = metafields.find(
+			(meta) =>
+				meta.namespace === "custom" && meta.key === "compare_at_price"
+		)?.value;
+		const inventoryQuantity = metafields.find(
+			(meta) =>
+				meta.namespace === "custom" && meta.key === "inventory_quantity"
+		)?.value;
+
+		if (!originalPrice) {
+			throw new Error("No original price found in metafields");
 		}
 
-		return result;
+		// Get the default variant ID
+		if (product.variants.nodes.length === 0) {
+			throw new Error("Product has no variants");
+		}
+		const variantId = product.variants.nodes[0].id;
+
+		// Update the variant with pricing
+		const mutation = `
+			mutation productVariantUpdate($input: ProductVariantInput!) {
+				productVariantUpdate(input: $input) {
+					productVariant {
+						id
+						price
+						compareAtPrice
+					}
+					userErrors {
+						field
+						message
+					}
+				}
+			}
+		`;
+
+		const variables = {
+			input: {
+				id: variantId,
+				price: parseFloat(originalPrice).toFixed(2),
+				compareAtPrice: compareAtPrice
+					? parseFloat(compareAtPrice).toFixed(2)
+					: null,
+				inventoryQuantities: inventoryQuantity
+					? [
+							{
+								availableQuantity: parseInt(inventoryQuantity),
+								locationId: "gid://shopify/Location/primary",
+							},
+					  ]
+					: undefined,
+			},
+		};
+
+		const result = await this.makeGraphQLRequest<{
+			productVariantUpdate: {
+				productVariant: {
+					id: string;
+					price: string;
+					compareAtPrice?: string;
+				};
+				userErrors: Array<{ field: string; message: string }>;
+			};
+		}>(mutation, variables);
+
+		if (result.productVariantUpdate.userErrors.length > 0) {
+			const errors = result.productVariantUpdate.userErrors
+				.map((error) => error.message)
+				.join("; ");
+			throw new Error(`Variant update errors: ${errors}`);
+		}
+	}
+
+	// Add images to recently created products
+	private async addImagesToProducts(): Promise<number> {
+		try {
+			console.log("Adding images to products...");
+
+			// Query recently created products with image metafields
+			const productsQuery = `
+				query {
+					products(first: 250, sortKey: CREATED_AT, reverse: true) {
+						nodes {
+							id
+							title
+							metafields(first: 10) {
+								nodes {
+									namespace
+									key
+									value
+								}
+							}
+						}
+					}
+				}
+			`;
+
+			const result = await this.makeGraphQLRequest<{
+				products: {
+					nodes: Array<{
+						id: string;
+						title: string;
+						metafields: {
+							nodes: Array<{
+								namespace: string;
+								key: string;
+								value: string;
+							}>;
+						};
+					}>;
+				};
+			}>(productsQuery);
+
+			// Filter products with image URLs
+			const productsWithImages = result.products.nodes.filter(
+				(product) => {
+					return product.metafields.nodes.some(
+						(meta) =>
+							meta.namespace === "custom" &&
+							meta.key === "image_urls"
+					);
+				}
+			);
+
+			if (productsWithImages.length === 0) {
+				return 0;
+			}
+
+			let updatedCount = 0;
+
+			// Add images to products
+			for (const product of productsWithImages) {
+				try {
+					await this.addImagesToProduct(product);
+					updatedCount++;
+				} catch (error) {
+					console.error(
+						`Failed to add images to product ${product.title}:`,
+						error
+					);
+				}
+			}
+
+			console.log(
+				`Successfully added images to ${updatedCount} products`
+			);
+			return updatedCount;
+		} catch (error) {
+			console.error("Error adding images to products:", error);
+			return 0;
+		}
+	}
+
+	// Add images to a single product
+	private async addImagesToProduct(product: {
+		id: string;
+		title: string;
+		metafields: {
+			nodes: Array<{ namespace: string; key: string; value: string }>;
+		};
+	}): Promise<void> {
+		// Extract image URLs from metafields
+		const imageUrlsMetafield = product.metafields.nodes.find(
+			(meta) => meta.namespace === "custom" && meta.key === "image_urls"
+		);
+
+		if (!imageUrlsMetafield?.value) {
+			throw new Error("No image URLs found in metafields");
+		}
+
+		const imageUrls = imageUrlsMetafield.value
+			.split(",")
+			.map((url) => url.trim())
+			.filter((url) => url);
+
+		if (imageUrls.length === 0) {
+			return;
+		}
+
+		// Create media inputs for the product
+		const mediaInputs = imageUrls.map((url) => ({
+			originalSource: url,
+			alt: `${product.title} image`,
+			mediaContentType: "IMAGE",
+		}));
+
+		// Use productUpdate mutation to add media
+		const mutation = `
+			mutation productUpdate($input: ProductInput!, $media: [CreateMediaInput!]) {
+				productUpdate(input: $input, media: $media) {
+					product {
+						id
+						media(first: 10) {
+							nodes {
+								... on MediaImage {
+									id
+									image {
+										url
+									}
+								}
+							}
+						}
+					}
+					userErrors {
+						field
+						message
+					}
+				}
+			}
+		`;
+
+		const variables = {
+			input: {
+				id: product.id,
+			},
+			media: mediaInputs,
+		};
+
+		const result = await this.makeGraphQLRequest<{
+			productUpdate: {
+				product: {
+					id: string;
+					media: {
+						nodes: Array<{
+							id: string;
+							image?: { url: string };
+						}>;
+					};
+				};
+				userErrors: Array<{ field: string; message: string }>;
+			};
+		}>(mutation, variables);
+
+		if (result.productUpdate.userErrors.length > 0) {
+			const errors = result.productUpdate.userErrors
+				.map((error) => error.message)
+				.join("; ");
+			throw new Error(`Image update errors: ${errors}`);
+		}
 	}
 
 	// Bulk import products using Shopify Bulk Operations
 	private async bulkImportProducts(jsonlContent: string): Promise<number> {
 		try {
-			console.log("Starting bulk import process...");
-			console.log(`JSONL content size: ${jsonlContent.length} bytes`);
+			console.log("Starting product import...");
 
-			// Step 1: Create staged upload
-			console.log("Step 1: Creating staged upload...");
+			// Create staged upload
 			const stagedUpload = await this.createStagedUpload();
-			console.log("Staged upload created successfully:", {
-				url: stagedUpload.url.substring(0, 50) + "...",
-				resourceUrl: stagedUpload.resourceUrl,
-				parameterCount: stagedUpload.parameters.length,
-			});
-			console.log("Full resourceUrl:", stagedUpload.resourceUrl);
 
-			// Step 2: Upload JSONL file to staged upload URL
-			console.log("Step 2: Uploading JSONL file...");
+			// Upload JSONL file
 			await this.uploadJSONLFile(
 				stagedUpload.url,
 				stagedUpload.parameters,
 				jsonlContent
 			);
-			console.log("JSONL file uploaded successfully");
 
-			// Step 3: Start bulk operation
-			console.log("Step 3: Starting bulk operation...");
-
-			// Extract the file key from the parameters for bulkOperationRunMutation
-			// The key parameter contains the full path needed for the bulk operation
+			// Extract key and start bulk operation
 			const keyParameter = stagedUpload.parameters.find(
 				(param) => param.name === "key"
 			);
 
-			if (!keyParameter || !keyParameter.value) {
-				console.error(
-					"No key parameter found in staged upload response:",
-					stagedUpload.parameters
-				);
-				throw new Error(
-					"Staged upload did not return a valid key parameter. Cannot proceed with bulk operation."
-				);
-			}
-
-			const stagedUploadPath = keyParameter.value;
-			console.log(
-				"Extracted staged upload path from key:",
-				stagedUploadPath
-			);
-
-			if (!stagedUploadPath || stagedUploadPath === "") {
-				throw new Error("Extracted key parameter is empty");
+			if (!keyParameter?.value) {
+				throw new Error("Invalid staged upload key parameter");
 			}
 
 			const bulkOperation = await this.startBulkProductImport(
-				stagedUploadPath
+				keyParameter.value
 			);
-			console.log("Bulk operation started successfully:", bulkOperation);
 
-			// Step 4: Wait for completion and return count
-			console.log("Step 4: Waiting for bulk operation completion...");
+			// Wait for completion and return count
 			const completedOperation =
 				await this.waitForBulkOperationCompletion(bulkOperation.id);
-			console.log("Bulk operation completed:", completedOperation);
 
-			return completedOperation.objectCount || 0;
+			const baseProductCount = completedOperation.objectCount || 0;
+
+			if (baseProductCount > 0) {
+				// Add variants with pricing
+				try {
+					await this.addVariantsToProducts();
+				} catch (error) {
+					console.error("Failed to add variants:", error);
+				}
+
+				// Add images to products
+				try {
+					await this.addImagesToProducts();
+				} catch (error) {
+					console.error("Failed to add images:", error);
+				}
+			}
+
+			return baseProductCount;
 		} catch (error) {
-			console.error("Error in bulk import:", error);
-			console.error("Error details:", {
-				message: error instanceof Error ? error.message : String(error),
-				stack:
-					error instanceof Error
-						? error.stack?.substring(0, 500)
-						: undefined,
-			});
+			console.error(
+				"Product import failed:",
+				error instanceof Error ? error.message : String(error)
+			);
 			throw error;
 		}
 	}
@@ -1358,11 +1633,6 @@ export class ShopifyClient {
 			};
 		}>(mutation, variables);
 
-		console.log(
-			"Full staged upload response:",
-			JSON.stringify(result, null, 2)
-		);
-
 		if (result.stagedUploadsCreate.userErrors.length > 0) {
 			const errors = result.stagedUploadsCreate.userErrors
 				.map((error) => error.message)
@@ -1374,14 +1644,7 @@ export class ShopifyClient {
 			throw new Error("No staged upload was created");
 		}
 
-		const stagedTarget = result.stagedUploadsCreate.stagedTargets[0];
-		console.log("Staged target details:", {
-			url: stagedTarget.url,
-			resourceUrl: stagedTarget.resourceUrl,
-			parameters: stagedTarget.parameters,
-		});
-
-		return stagedTarget;
+		return result.stagedUploadsCreate.stagedTargets[0];
 	}
 
 	// Upload JSONL file to staged upload URL
@@ -1412,16 +1675,6 @@ export class ShopifyClient {
 				`Failed to upload JSONL file: ${response.status} ${response.statusText} - ${errorText}`
 			);
 		}
-
-		// Log response details to see if we get a file key
-		const responseText = await response.text();
-		console.log("Upload response status:", response.status);
-		console.log(
-			"Upload response headers:",
-			Object.fromEntries(response.headers.entries())
-		);
-		console.log("Upload response body:", responseText);
-		console.log("JSONL file uploaded successfully");
 	}
 
 	// Start bulk product import operation
@@ -1528,15 +1781,9 @@ export class ShopifyClient {
 			}
 
 			const operation = result.node;
-			console.log(
-				`Bulk operation status: ${operation.status}, objects: ${operation.objectCount}`
-			);
 
 			if (operation.status === "COMPLETED") {
-				console.log("Bulk operation completed successfully");
-
-				// Always query Shopify directly for accurate product count
-				console.log("Counting products created by bulk operation...");
+				// Query Shopify directly for accurate product count
 				let actualProductCount = 0;
 
 				try {
@@ -1557,7 +1804,7 @@ export class ShopifyClient {
 						};
 					}>(productsQuery);
 
-					// Count products created in the last 10 minutes (bulk operation timeframe)
+					// Count products created in the last 10 minutes
 					const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
 					const recentProducts = productsResult.products.nodes.filter(
 						(product) => new Date(product.createdAt) > tenMinutesAgo
@@ -1572,7 +1819,6 @@ export class ShopifyClient {
 						"Could not count imported products:",
 						countError
 					);
-					// Return 0 if we can't count
 					actualProductCount = 0;
 				}
 
@@ -1586,12 +1832,6 @@ export class ShopifyClient {
 				operation.status === "FAILED" ||
 				operation.status === "CANCELED"
 			) {
-				console.error("Bulk operation failed/canceled:", {
-					errorCode: operation.errorCode,
-					resultUrl: operation.url,
-					partialDataUrl: operation.partialDataUrl,
-				});
-
 				throw new Error(
 					`Bulk operation ${operation.status.toLowerCase()}: ${
 						operation.errorCode || "Unknown error"
