@@ -1263,6 +1263,7 @@ export class ShopifyClient {
 				resourceUrl: stagedUpload.resourceUrl,
 				parameterCount: stagedUpload.parameters.length,
 			});
+			console.log("Full resourceUrl:", stagedUpload.resourceUrl);
 
 			// Step 2: Upload JSONL file to staged upload URL
 			console.log("Step 2: Uploading JSONL file...");
@@ -1275,8 +1276,26 @@ export class ShopifyClient {
 
 			// Step 3: Start bulk operation
 			console.log("Step 3: Starting bulk operation...");
+
+			// Extract the file key from resourceUrl for bulkOperationRunMutation
+			// The resourceUrl is a full URL but we need just the path part for stagedUploadPath
+			let stagedUploadPath = stagedUpload.resourceUrl;
+			try {
+				const url = new URL(stagedUpload.resourceUrl);
+				// Extract path without leading slash
+				stagedUploadPath = url.pathname.startsWith("/")
+					? url.pathname.substring(1)
+					: url.pathname;
+				console.log("Extracted staged upload path:", stagedUploadPath);
+			} catch (error) {
+				console.log(
+					"Using resourceUrl as-is:",
+					stagedUpload.resourceUrl
+				);
+			}
+
 			const bulkOperation = await this.startBulkProductImport(
-				stagedUpload.resourceUrl
+				stagedUploadPath
 			);
 			console.log("Bulk operation started successfully:", bulkOperation);
 
