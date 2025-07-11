@@ -1110,6 +1110,7 @@ export class ShopifyClient {
 	): string {
 		const jsonlLines = products.map((product) => {
 			// Convert product to ProductInput format for GraphQL according to latest schema
+			// Only include fields that are actually supported by ProductInput
 			const productInput: any = {
 				title: product.title,
 				descriptionHtml: product.description,
@@ -1147,71 +1148,10 @@ export class ShopifyClient {
 						  }))
 						: undefined,
 
-				// Variants array - each product needs at least one variant
-				variants: [
-					{
-						price: parseFloat(product.price).toFixed(2),
-						compareAtPrice: product.compare_at_price
-							? parseFloat(product.compare_at_price).toFixed(2)
-							: undefined,
-
-						// Inventory management
-						inventoryManagement: "SHOPIFY",
-						inventoryPolicy: "DENY", // Don't allow overselling by default
-						inventoryQuantities:
-							product.inventory_quantity !== undefined
-								? [
-										{
-											availableQuantity:
-												product.inventory_quantity,
-											locationId:
-												"gid://shopify/Location/primary", // Will be resolved by Shopify
-										},
-								  ]
-								: undefined,
-
-						// Physical properties
-						weight: product.weight || undefined,
-						weightUnit: product.weight ? "GRAMS" : undefined,
-						requiresShipping: product.requires_shipping !== false,
-
-						// Tax and identification
-						taxable: product.taxable !== false,
-						sku: product.sku || undefined,
-						barcode: product.barcode || undefined,
-
-						// If product has options, map the first variant to first option values
-						optionValues:
-							product.options && product.options.length > 0
-								? product.options.map((option) => ({
-										optionName: option.name,
-										name: option.values[0] || "Default",
-								  }))
-								: undefined,
-					},
-				],
-
-				// Images
-				images:
-					product.images && product.images.length > 0
-						? product.images.map((url) => ({
-								src: url,
-								altText: `${product.title} image`,
-						  }))
-						: undefined,
-
-				// Publication settings
-				published: product.published !== false,
-				publishedAt:
-					product.published !== false
-						? new Date().toISOString()
-						: undefined,
-
-				// Collections - could be added later based on product_type or tags
-				collectionsToJoin: undefined,
-
-				// Metafields for additional data
-				metafields: undefined,
+				// Note: variants and images are NOT supported in ProductInput
+				// They need to be handled separately after product creation
+				// For now, we'll create basic products without variants/images
+				// to get the bulk import working
 			};
 
 			// Clean up undefined fields to keep JSONL clean and valid
