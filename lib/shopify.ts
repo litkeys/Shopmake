@@ -1280,6 +1280,20 @@ export class ShopifyClient {
 			// Extract the file key from resourceUrl for bulkOperationRunMutation
 			// The resourceUrl is a full URL but we need just the path part for stagedUploadPath
 			let stagedUploadPath = stagedUpload.resourceUrl;
+
+			if (
+				!stagedUpload.resourceUrl ||
+				stagedUpload.resourceUrl.endsWith("/")
+			) {
+				console.error(
+					"Invalid resourceUrl received:",
+					stagedUpload.resourceUrl
+				);
+				throw new Error(
+					"Staged upload did not return a valid file path. The resourceUrl is empty or invalid."
+				);
+			}
+
 			try {
 				const url = new URL(stagedUpload.resourceUrl);
 				// Extract path without leading slash
@@ -1287,11 +1301,17 @@ export class ShopifyClient {
 					? url.pathname.substring(1)
 					: url.pathname;
 				console.log("Extracted staged upload path:", stagedUploadPath);
+
+				if (!stagedUploadPath || stagedUploadPath === "") {
+					throw new Error("Extracted path is empty");
+				}
 			} catch (error) {
+				console.log("Error extracting path:", error);
 				console.log(
 					"Using resourceUrl as-is:",
 					stagedUpload.resourceUrl
 				);
+				stagedUploadPath = stagedUpload.resourceUrl;
 			}
 
 			const bulkOperation = await this.startBulkProductImport(
@@ -1366,6 +1386,11 @@ export class ShopifyClient {
 			};
 		}>(mutation, variables);
 
+		console.log(
+			"Full staged upload response:",
+			JSON.stringify(result, null, 2)
+		);
+
 		if (result.stagedUploadsCreate.userErrors.length > 0) {
 			const errors = result.stagedUploadsCreate.userErrors
 				.map((error) => error.message)
@@ -1377,7 +1402,14 @@ export class ShopifyClient {
 			throw new Error("No staged upload was created");
 		}
 
-		return result.stagedUploadsCreate.stagedTargets[0];
+		const stagedTarget = result.stagedUploadsCreate.stagedTargets[0];
+		console.log("Staged target details:", {
+			url: stagedTarget.url,
+			resourceUrl: stagedTarget.resourceUrl,
+			parameters: stagedTarget.parameters,
+		});
+
+		return stagedTarget;
 	}
 
 	// Upload JSONL file to staged upload URL
@@ -1409,6 +1441,14 @@ export class ShopifyClient {
 			);
 		}
 
+		// Log response details to see if we get a file key
+		const responseText = await response.text();
+		console.log("Upload response status:", response.status);
+		console.log(
+			"Upload response headers:",
+			Object.fromEntries(response.headers.entries())
+		);
+		console.log("Upload response body:", responseText);
 		console.log("JSONL file uploaded successfully");
 	}
 
