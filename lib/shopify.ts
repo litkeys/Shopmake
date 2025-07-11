@@ -1533,126 +1533,52 @@ export class ShopifyClient {
 			);
 
 			if (operation.status === "COMPLETED") {
-				console.log("Bulk operation completed details:", {
-					objectCount: operation.objectCount,
-					resultUrl: operation.url,
-					partialDataUrl: operation.partialDataUrl,
-				});
+				console.log("Bulk operation completed successfully");
 
-				// Download and analyze the result URL to check for errors
-				if (operation.url) {
-					try {
-						console.log("Downloading bulk operation results...");
-						const resultResponse = await fetch(operation.url);
-						if (resultResponse.ok) {
-							const resultText = await resultResponse.text();
-							const resultLines = resultText
-								.trim()
-								.split("\n")
-								.filter((line) => line);
-							console.log(
-								`Result file contains ${resultLines.length} lines`
-							);
+				// Always query Shopify directly for accurate product count
+				console.log("Counting products created by bulk operation...");
+				let actualProductCount = 0;
 
-							// Parse first few lines to check for errors
-							const sampleResults = resultLines
-								.slice(0, 3)
-								.map((line) => {
-									try {
-										return JSON.parse(line);
-									} catch {
-										return line;
-									}
-								});
-							console.log(
-								"Sample result entries:",
-								sampleResults
-							);
-
-							// Count successful vs failed operations
-							let successCount = 0;
-							let errorCount = 0;
-							resultLines.forEach((line) => {
-								try {
-									const result = JSON.parse(line);
-									if (
-										result.userErrors &&
-										result.userErrors.length > 0
-									) {
-										errorCount++;
-									} else if (result.product || result.data) {
-										successCount++;
-									}
-								} catch {
-									// Skip unparseable lines
-								}
-							});
-
-							console.log(
-								`Bulk operation results: ${successCount} successful, ${errorCount} errors`
-							);
-						}
-					} catch (resultError) {
-						console.warn(
-							"Could not download bulk operation results:",
-							resultError
-						);
-					}
-				}
-
-				// If objectCount is 0 but we know products were created,
-				// fall back to counting products directly from Shopify
-				let finalObjectCount =
-					parseInt(operation.objectCount.toString()) || 0;
-
-				if (finalObjectCount === 0) {
-					console.log(
-						"Object count is 0, checking actual products created..."
-					);
-					try {
-						const productsQuery = `
-							query {
-								products(first: 250, sortKey: CREATED_AT, reverse: true) {
-									nodes {
-										id
-										createdAt
-									}
+				try {
+					const productsQuery = `
+						query {
+							products(first: 250, sortKey: CREATED_AT, reverse: true) {
+								nodes {
+									id
+									createdAt
 								}
 							}
-						`;
+						}
+					`;
 
-						const productsResult = await this.makeGraphQLRequest<{
-							products: {
-								nodes: Array<{ id: string; createdAt: string }>;
-							};
-						}>(productsQuery);
+					const productsResult = await this.makeGraphQLRequest<{
+						products: {
+							nodes: Array<{ id: string; createdAt: string }>;
+						};
+					}>(productsQuery);
 
-						// Count products created in the last 10 minutes (bulk operation timeframe)
-						const tenMinutesAgo = new Date(
-							Date.now() - 10 * 60 * 1000
-						);
-						const recentProducts =
-							productsResult.products.nodes.filter(
-								(product) =>
-									new Date(product.createdAt) > tenMinutesAgo
-							);
+					// Count products created in the last 10 minutes (bulk operation timeframe)
+					const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+					const recentProducts = productsResult.products.nodes.filter(
+						(product) => new Date(product.createdAt) > tenMinutesAgo
+					);
 
-						finalObjectCount = recentProducts.length;
-						console.log(
-							`Found ${finalObjectCount} products created in the last 10 minutes`
-						);
-					} catch (countError) {
-						console.warn(
-							"Could not count recent products:",
-							countError
-						);
-						// Use the bulk operation count even if it's 0
-					}
+					actualProductCount = recentProducts.length;
+					console.log(
+						`Successfully imported ${actualProductCount} products`
+					);
+				} catch (countError) {
+					console.error(
+						"Could not count imported products:",
+						countError
+					);
+					// Return 0 if we can't count
+					actualProductCount = 0;
 				}
 
 				return {
 					status: operation.status,
-					objectCount: finalObjectCount,
+					objectCount: actualProductCount,
 				};
 			}
 
