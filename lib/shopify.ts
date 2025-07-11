@@ -1242,7 +1242,7 @@ export class ShopifyClient {
 			console.log("Staged upload created successfully");
 
 			// Step 2: Upload JSONL file to staged upload URL
-			await this.uploadJSONLFile(
+			const uploadedFileKey = await this.uploadJSONLFile(
 				stagedUpload.url,
 				stagedUpload.parameters,
 				jsonlContent
@@ -1251,7 +1251,7 @@ export class ShopifyClient {
 
 			// Step 3: Start bulk operation
 			const bulkOperation = await this.startBulkProductImport(
-				stagedUpload.resourceUrl
+				uploadedFileKey
 			);
 			console.log("Bulk operation started:", bulkOperation);
 
@@ -1333,15 +1333,15 @@ export class ShopifyClient {
 		url: string,
 		parameters: Array<{ name: string; value: string }>,
 		jsonlContent: string
-	): Promise<void> {
+	): Promise<string> {
 		const formData = new FormData();
 
-		// Add parameters to form data
+		// Add parameters to form data first
 		parameters.forEach((param) => {
 			formData.append(param.name, param.value);
 		});
 
-		// Add the file content
+		// Add the file content last (this is required by most cloud storage providers)
 		const blob = new Blob([jsonlContent], { type: "application/jsonl" });
 		formData.append("file", blob, "products.jsonl");
 
@@ -1358,6 +1358,16 @@ export class ShopifyClient {
 		}
 
 		console.log("JSONL file uploaded successfully");
+
+		// Extract the file key from the parameters for use in bulk operation
+		const keyParam = parameters.find((p) => p.name === "key");
+		if (!keyParam) {
+			throw new Error(
+				"No 'key' parameter found in staged upload parameters"
+			);
+		}
+
+		return keyParam.value;
 	}
 
 	// Start bulk product import operation
