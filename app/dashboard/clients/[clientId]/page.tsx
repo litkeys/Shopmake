@@ -84,6 +84,9 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const [storeData, setStoreData] = useState<StoreData | null>(null);
 	const [uploads, setUploads] = useState<UploadType[]>([]);
 	const [locations, setLocations] = useState<StoreLocation[]>([]);
+	const [locationFormData, setLocationFormData] = useState<
+		Record<string, LocationFormData>
+	>({});
 	const [logoPreview, setLogoPreview] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [success, setSuccess] = useState<string | null>(null);
@@ -107,7 +110,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 	// Debounced form data for auto-save
 	const debouncedFormData = useDebounce(formData, 500);
-	const debouncedLocations = useDebounce(locations, 500);
+	const debouncedLocationFormData = useDebounce(locationFormData, 500);
 
 	// Load store data on mount
 	useEffect(() => {
@@ -152,11 +155,14 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 	// Auto-save effect for locations
 	useEffect(() => {
-		if (store && !isLoading && debouncedLocations.length > 0) {
-			// Auto-save is handled by individual location updates
-			// This effect is mainly for tracking changes
+		if (
+			store &&
+			!isLoading &&
+			Object.keys(debouncedLocationFormData).length > 0
+		) {
+			handleAutoSaveLocations();
 		}
-	}, [debouncedLocations, store, isLoading]);
+	}, [debouncedLocationFormData, store, isLoading]);
 
 	const loadStoreData = async () => {
 		try {
@@ -205,6 +211,20 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			// Load locations
 			const locationsResult = await getStoreLocationsAPI(params.clientId);
 			setLocations(locationsResult);
+
+			// Initialize location form data
+			const initialLocationFormData: Record<string, LocationFormData> =
+				{};
+			locationsResult.forEach((location) => {
+				initialLocationFormData[location.id] = {
+					name: location.name,
+					address: location.address || "",
+					city: location.city || "",
+					country: location.country || "",
+					phone: location.phone || "",
+				};
+			});
+			setLocationFormData(initialLocationFormData);
 		} catch (err) {
 			setError(
 				err instanceof Error ? err.message : "Failed to load store data"
@@ -233,6 +253,62 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			setIsSaving(false);
 		}
 	}, [store, debouncedFormData, isSaving]);
+
+	const handleAutoSaveLocations = useCallback(async () => {
+		if (!store || isSaving) return;
+
+		setIsSaving(true);
+		try {
+			// Update each location that has changes
+			const updatePromises = Object.entries(
+				debouncedLocationFormData
+			).map(async ([locationId, formData]) => {
+				const currentLocation = locations.find(
+					(loc) => loc.id === locationId
+				);
+				if (currentLocation) {
+					// Check if there are actual changes
+					const hasChanges =
+						currentLocation.name !== formData.name ||
+						(currentLocation.address || "") !== formData.address ||
+						(currentLocation.city || "") !== formData.city ||
+						(currentLocation.country || "") !== formData.country ||
+						(currentLocation.phone || "") !== formData.phone;
+
+					if (hasChanges) {
+						const updatedLocation = await updateStoreLocationAPI(
+							store.id,
+							locationId,
+							formData
+						);
+						return updatedLocation;
+					}
+				}
+				return null;
+			});
+
+			const results = await Promise.all(updatePromises);
+			const updatedLocations = results.filter(Boolean);
+
+			if (updatedLocations.length > 0) {
+				// Update locations state with the updated data
+				setLocations((prevLocations) =>
+					prevLocations.map((loc) => {
+						const updated = updatedLocations.find(
+							(u) => u && u.id === loc.id
+						);
+						return updated || loc;
+					})
+				);
+				setSuccess("Location changes saved automatically");
+				setTimeout(() => setSuccess(null), 2000);
+			}
+		} catch (err) {
+			console.error("Location auto-save failed:", err);
+		} finally {
+			setIsSaving(false);
+		}
+	}, [store, debouncedLocationFormData, locations, isSaving]);
 
 	const handleInputChange = (field: keyof StoreFormData, value: string) => {
 		setFormData((prev) => ({
@@ -409,6 +485,18 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				phone: "",
 			});
 			setLocations([...locations, newLocation]);
+
+			// Add to form data for immediate editing
+			setLocationFormData((prev) => ({
+				...prev,
+				[newLocation.id]: {
+					name: newLocation.name,
+					address: newLocation.address || "",
+					city: newLocation.city || "",
+					country: newLocation.country || "",
+					phone: newLocation.phone || "",
+				},
+			}));
 		} catch (err) {
 			setError(
 				err instanceof Error ? err.message : "Failed to add location"
@@ -416,26 +504,18 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		}
 	};
 
-	const handleUpdateLocation = async (
+	const handleLocationInputChange = (
 		locationId: string,
-		locationData: Partial<LocationFormData>
+		field: keyof LocationFormData,
+		value: string
 	) => {
-		if (!store) return;
-
-		try {
-			const updatedLocation = await updateStoreLocationAPI(
-				store.id,
-				locationId,
-				locationData
-			);
-			setLocations(
-				locations.map((loc) =>
-					loc.id === locationId ? updatedLocation : loc
-				)
-			);
-		} catch (err) {
-			console.error("Failed to update location:", err);
-		}
+		setLocationFormData((prev) => ({
+			...prev,
+			[locationId]: {
+				...prev[locationId],
+				[field]: value,
+			},
+		}));
 	};
 
 	const handleDeleteLocation = async (locationId: string) => {
@@ -444,6 +524,13 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		try {
 			await deleteStoreLocationAPI(store.id, locationId);
 			setLocations(locations.filter((loc) => loc.id !== locationId));
+
+			// Remove from form data
+			setLocationFormData((prev) => {
+				const updated = { ...prev };
+				delete updated[locationId];
+				return updated;
+			});
 		} catch (err) {
 			setError(
 				err instanceof Error ? err.message : "Failed to delete location"
@@ -1134,14 +1221,16 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 												<Input
 													id={`location-name-${location.id}`}
 													type="text"
-													value={location.name}
+													value={
+														locationFormData[
+															location.id
+														]?.name || location.name
+													}
 													onChange={(e) =>
-														handleUpdateLocation(
+														handleLocationInputChange(
 															location.id,
-															{
-																name: e.target
-																	.value,
-															}
+															"name",
+															e.target.value
 														)
 													}
 													placeholder="Main Store"
@@ -1156,14 +1245,18 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 												<Input
 													id={`location-phone-${location.id}`}
 													type="tel"
-													value={location.phone || ""}
+													value={
+														locationFormData[
+															location.id
+														]?.phone ||
+														location.phone ||
+														""
+													}
 													onChange={(e) =>
-														handleUpdateLocation(
+														handleLocationInputChange(
 															location.id,
-															{
-																phone: e.target
-																	.value,
-															}
+															"phone",
+															e.target.value
 														)
 													}
 													placeholder="+1 (555) 123-4567"
@@ -1179,16 +1272,17 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 													id={`location-address-${location.id}`}
 													type="text"
 													value={
-														location.address || ""
+														locationFormData[
+															location.id
+														]?.address ||
+														location.address ||
+														""
 													}
 													onChange={(e) =>
-														handleUpdateLocation(
+														handleLocationInputChange(
 															location.id,
-															{
-																address:
-																	e.target
-																		.value,
-															}
+															"address",
+															e.target.value
 														)
 													}
 													placeholder="123 Main Street"
@@ -1203,14 +1297,18 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 												<Input
 													id={`location-city-${location.id}`}
 													type="text"
-													value={location.city || ""}
+													value={
+														locationFormData[
+															location.id
+														]?.city ||
+														location.city ||
+														""
+													}
 													onChange={(e) =>
-														handleUpdateLocation(
+														handleLocationInputChange(
 															location.id,
-															{
-																city: e.target
-																	.value,
-															}
+															"city",
+															e.target.value
 														)
 													}
 													placeholder="New York"
@@ -1226,16 +1324,17 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 													id={`location-country-${location.id}`}
 													type="text"
 													value={
-														location.country || ""
+														locationFormData[
+															location.id
+														]?.country ||
+														location.country ||
+														""
 													}
 													onChange={(e) =>
-														handleUpdateLocation(
+														handleLocationInputChange(
 															location.id,
-															{
-																country:
-																	e.target
-																		.value,
-															}
+															"country",
+															e.target.value
 														)
 													}
 													placeholder="United States"
