@@ -2186,6 +2186,10 @@ export class ShopifyClient {
 
 	async deleteLocation(locationId: string): Promise<void> {
 		try {
+			// First, deactivate the location
+			await this.deactivateLocation(locationId);
+
+			// Then delete the location
 			const mutation = `
 				mutation locationDelete($locationId: ID!) {
 					locationDelete(locationId: $locationId) {
@@ -2219,6 +2223,56 @@ export class ShopifyClient {
 			console.log(`Location ${locationId} deleted successfully`);
 		} catch (error) {
 			console.error("Error deleting location:", error);
+			throw error;
+		}
+	}
+
+	async deactivateLocation(locationId: string): Promise<void> {
+		try {
+			const mutation = `
+				mutation locationDeactivate($locationId: ID!) {
+					locationDeactivate(locationId: $locationId) {
+						location {
+							id
+							name
+							isActive
+						}
+						locationDeactivateUserErrors {
+							field
+							message
+						}
+					}
+				}
+			`;
+
+			const result = await this.makeGraphQLRequest<{
+				locationDeactivate: {
+					location?: {
+						id: string;
+						name: string;
+						isActive: boolean;
+					};
+					locationDeactivateUserErrors: Array<{
+						field: string;
+						message: string;
+					}>;
+				};
+			}>(mutation, { locationId });
+
+			if (
+				result.locationDeactivate.locationDeactivateUserErrors.length >
+				0
+			) {
+				throw new Error(
+					`Failed to deactivate location: ${result.locationDeactivate.locationDeactivateUserErrors
+						.map((error) => error.message)
+						.join(", ")}`
+				);
+			}
+
+			console.log(`Location ${locationId} deactivated successfully`);
+		} catch (error) {
+			console.error("Error deactivating location:", error);
 			throw error;
 		}
 	}
