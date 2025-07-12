@@ -1,5 +1,5 @@
 import { SHOPIFY_CONFIG } from "./constants";
-import { ShopifyAdminToken, StoreData } from "@/types";
+import { ShopifyAdminToken, StoreData, StoreLocation } from "@/types";
 
 // Test Admin API connection
 export async function testShopifyConnection(
@@ -2131,6 +2131,568 @@ export class ShopifyClient {
 		};
 	}
 
+	// Location management methods
+	async getLocations(): Promise<
+		Array<{
+			id: string;
+			name: string;
+			address: {
+				address1?: string;
+				city?: string;
+				country?: string;
+				phone?: string;
+			};
+		}>
+	> {
+		try {
+			const query = `
+				query {
+					locations(first: 250) {
+						nodes {
+							id
+							name
+							address {
+								address1
+								city
+								country
+								phone
+							}
+						}
+					}
+				}
+			`;
+
+			const result = await this.makeGraphQLRequest<{
+				locations: {
+					nodes: Array<{
+						id: string;
+						name: string;
+						address: {
+							address1?: string;
+							city?: string;
+							country?: string;
+							phone?: string;
+						};
+					}>;
+				};
+			}>(query);
+
+			return result.locations.nodes;
+		} catch (error) {
+			console.error("Error fetching locations:", error);
+			throw error;
+		}
+	}
+
+	async deleteLocation(locationId: string): Promise<void> {
+		try {
+			const mutation = `
+				mutation locationDelete($id: ID!) {
+					locationDelete(id: $id) {
+						deletedLocationId
+						userErrors {
+							field
+							message
+						}
+					}
+				}
+			`;
+
+			const result = await this.makeGraphQLRequest<{
+				locationDelete: {
+					deletedLocationId?: string;
+					userErrors: Array<{ field: string; message: string }>;
+				};
+			}>(mutation, { id: locationId });
+
+			if (result.locationDelete.userErrors.length > 0) {
+				throw new Error(
+					`Failed to delete location: ${result.locationDelete.userErrors
+						.map((error) => error.message)
+						.join(", ")}`
+				);
+			}
+
+			console.log(`Location ${locationId} deleted successfully`);
+		} catch (error) {
+			console.error("Error deleting location:", error);
+			throw error;
+		}
+	}
+
+	async addLocation(location: StoreLocation): Promise<{
+		id: string;
+		name: string;
+	}> {
+		try {
+			const mutation = `
+				mutation locationAdd($input: LocationInput!) {
+					locationAdd(input: $input) {
+						location {
+							id
+							name
+						}
+						userErrors {
+							field
+							message
+						}
+					}
+				}
+			`;
+
+			const input = {
+				name: location.name,
+				address: {
+					address1: location.address || "",
+					city: location.city || "",
+					country: location.country || "",
+					phone: location.phone || "",
+				},
+			};
+
+			const result = await this.makeGraphQLRequest<{
+				locationAdd: {
+					location?: {
+						id: string;
+						name: string;
+					};
+					userErrors: Array<{ field: string; message: string }>;
+				};
+			}>(mutation, { input });
+
+			if (result.locationAdd.userErrors.length > 0) {
+				throw new Error(
+					`Failed to add location: ${result.locationAdd.userErrors
+						.map((error) => error.message)
+						.join(", ")}`
+				);
+			}
+
+			if (!result.locationAdd.location) {
+				throw new Error("Location was not created");
+			}
+
+			console.log(
+				`Location ${result.locationAdd.location.name} added successfully`
+			);
+			return result.locationAdd.location;
+		} catch (error) {
+			console.error("Error adding location:", error);
+			throw error;
+		}
+	}
+
+	async manageLocations(locations: StoreLocation[]): Promise<
+		Array<{
+			id: string;
+			name: string;
+			originalLocation: StoreLocation;
+		}>
+	> {
+		try {
+			console.log("Managing store locations...");
+
+			// 1. Get existing locations
+			const existingLocations = await this.getLocations();
+			console.log(`Found ${existingLocations.length} existing locations`);
+
+			// 2. Delete all existing locations (except the primary one which might be protected)
+			for (const location of existingLocations) {
+				try {
+					await this.deleteLocation(location.id);
+				} catch (error) {
+					console.log(
+						`Could not delete location ${location.name}:`,
+						error
+					);
+					// Continue with other locations
+				}
+			}
+
+			// 3. Add new locations
+			const createdLocations = [];
+			for (const location of locations) {
+				try {
+					const createdLocation = await this.addLocation(location);
+					createdLocations.push({
+						...createdLocation,
+						originalLocation: location,
+					});
+				} catch (error) {
+					console.error(
+						`Failed to create location ${location.name}:`,
+						error
+					);
+					// Continue with other locations
+				}
+			}
+
+			console.log(
+				`Successfully created ${createdLocations.length} locations`
+			);
+			return createdLocations;
+		} catch (error) {
+			console.error("Error managing locations:", error);
+			throw error;
+		}
+	}
+
+	// Inventory management methods
+	async setInventoryQuantities(
+		inventoryItems: Array<{
+			inventoryItemId: string;
+			locationId: string;
+			quantity: number;
+		}>
+	): Promise<void> {
+		try {
+			console.log(
+				`Setting inventory quantities for ${inventoryItems.length} items`
+			);
+
+			const mutation = `
+				mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
+					inventorySetQuantities(input: $input) {
+						inventoryAdjustmentGroup {
+							id
+						}
+						userErrors {
+							field
+							message
+						}
+					}
+				}
+			`;
+
+			const input = {
+				reason: "correction",
+				name: "Genesis Project Inventory Update",
+				quantities: inventoryItems.map((item) => ({
+					inventoryItemId: item.inventoryItemId,
+					locationId: item.locationId,
+					quantity: item.quantity,
+				})),
+			};
+
+			const result = await this.makeGraphQLRequest<{
+				inventorySetQuantities: {
+					inventoryAdjustmentGroup?: {
+						id: string;
+					};
+					userErrors: Array<{ field: string; message: string }>;
+				};
+			}>(mutation, { input });
+
+			if (result.inventorySetQuantities.userErrors.length > 0) {
+				throw new Error(
+					`Failed to set inventory quantities: ${result.inventorySetQuantities.userErrors
+						.map((error) => error.message)
+						.join(", ")}`
+				);
+			}
+
+			console.log("Inventory quantities set successfully");
+		} catch (error) {
+			console.error("Error setting inventory quantities:", error);
+			throw error;
+		}
+	}
+
+	async getProductInventoryItems(): Promise<
+		Array<{
+			productId: string;
+			productHandle: string;
+			variantId: string;
+			inventoryItemId: string;
+			sku?: string;
+		}>
+	> {
+		try {
+			const query = `
+				query {
+					products(first: 250) {
+						nodes {
+							id
+							handle
+							variants(first: 250) {
+								nodes {
+									id
+									sku
+									inventoryItem {
+										id
+									}
+								}
+							}
+						}
+					}
+				}
+			`;
+
+			const result = await this.makeGraphQLRequest<{
+				products: {
+					nodes: Array<{
+						id: string;
+						handle: string;
+						variants: {
+							nodes: Array<{
+								id: string;
+								sku?: string;
+								inventoryItem: {
+									id: string;
+								};
+							}>;
+						};
+					}>;
+				};
+			}>(query);
+
+			const inventoryItems = [];
+			for (const product of result.products.nodes) {
+				for (const variant of product.variants.nodes) {
+					inventoryItems.push({
+						productId: product.id,
+						productHandle: product.handle,
+						variantId: variant.id,
+						inventoryItemId: variant.inventoryItem.id,
+						sku: variant.sku,
+					});
+				}
+			}
+
+			return inventoryItems;
+		} catch (error) {
+			console.error("Error fetching product inventory items:", error);
+			throw error;
+		}
+	}
+
+	// CSV parsing methods
+	private parseInventoryCSV(csvText: string): Array<{
+		handle: string;
+		title: string;
+		optionName?: string;
+		optionValue?: string;
+		sku?: string;
+		location: string;
+		available: number;
+	}> {
+		const lines = csvText.trim().split("\n");
+		if (lines.length < 2) {
+			throw new Error(
+				"CSV must have at least a header row and one data row"
+			);
+		}
+
+		const headers = lines[0]
+			.split(",")
+			.map((h) => h.trim().replace(/"/g, ""));
+		const data = [];
+
+		for (let i = 1; i < lines.length; i++) {
+			const values = this.parseCSVLine(lines[i]);
+			if (values.length !== headers.length) {
+				console.warn(
+					`Row ${i + 1} has ${values.length} values but expected ${
+						headers.length
+					}`
+				);
+				continue;
+			}
+
+			const row: any = {};
+			headers.forEach((header, index) => {
+				row[header] = values[index];
+			});
+
+			// Map the CSV headers to our expected format
+			const inventoryItem = {
+				handle: row["Handle"] || "",
+				title: row["Title"] || "",
+				optionName: row["Option1 Name"] || row["Option Name"],
+				optionValue: row["Option1 Value"] || row["Option Value"],
+				sku: row["SKU"] || "",
+				location: row["Location"] || "",
+				available: parseInt(row["Available"] || "0", 10),
+			};
+
+			// Only include rows with valid data
+			if (
+				inventoryItem.handle &&
+				inventoryItem.location &&
+				!isNaN(inventoryItem.available)
+			) {
+				data.push(inventoryItem);
+			}
+		}
+
+		return data;
+	}
+
+	private parseCSVLine(line: string): string[] {
+		const values = [];
+		let current = "";
+		let inQuotes = false;
+
+		for (let i = 0; i < line.length; i++) {
+			const char = line[i];
+
+			if (char === '"') {
+				inQuotes = !inQuotes;
+			} else if (char === "," && !inQuotes) {
+				values.push(current.trim());
+				current = "";
+			} else {
+				current += char;
+			}
+		}
+
+		values.push(current.trim());
+		return values;
+	}
+
+	async processInventoryCSV(
+		storeId: string,
+		shopifyLocations: Array<{
+			id: string;
+			name: string;
+			originalLocation: StoreLocation;
+		}>
+	): Promise<{
+		inventoryUpdated: number;
+		errors: string[];
+	}> {
+		try {
+			console.log("Processing inventory CSV...");
+
+			// 1. Get inventory CSV file
+			const inventoryUploads = await this.getStoreUploads(
+				storeId,
+				"csv_inventory"
+			);
+			if (inventoryUploads.length === 0) {
+				console.log(
+					"No inventory CSV found, skipping inventory update"
+				);
+				return { inventoryUpdated: 0, errors: [] };
+			}
+
+			const inventoryUpload = inventoryUploads[0]; // Use the most recent upload
+			const csvText = await this.downloadFile(inventoryUpload.file_path);
+
+			// 2. Parse CSV
+			const inventoryData = this.parseInventoryCSV(csvText);
+			console.log(
+				`Parsed ${inventoryData.length} inventory items from CSV`
+			);
+
+			// 3. Get current product inventory items from Shopify
+			const productInventoryItems = await this.getProductInventoryItems();
+
+			// 4. Map CSV data to Shopify inventory items
+			const inventoryUpdates = [];
+			const errors = [];
+
+			for (const csvItem of inventoryData) {
+				// Find matching Shopify location
+				const shopifyLocation = shopifyLocations.find(
+					(loc) =>
+						loc.originalLocation.name.toLowerCase() ===
+						csvItem.location.toLowerCase()
+				);
+
+				if (!shopifyLocation) {
+					errors.push(
+						`Location "${csvItem.location}" not found in Shopify locations`
+					);
+					continue;
+				}
+
+				// Find matching product by handle and SKU
+				const productItem = productInventoryItems.find(
+					(item) =>
+						item.productHandle === csvItem.handle &&
+						(!csvItem.sku || item.sku === csvItem.sku)
+				);
+
+				if (!productItem) {
+					errors.push(
+						`Product with handle "${csvItem.handle}" ${
+							csvItem.sku ? `and SKU "${csvItem.sku}"` : ""
+						} not found`
+					);
+					continue;
+				}
+
+				inventoryUpdates.push({
+					inventoryItemId: productItem.inventoryItemId,
+					locationId: shopifyLocation.id,
+					quantity: csvItem.available,
+				});
+			}
+
+			// 5. Update inventory quantities in batches
+			const batchSize = 100; // Shopify API limit
+			let totalUpdated = 0;
+
+			for (let i = 0; i < inventoryUpdates.length; i += batchSize) {
+				const batch = inventoryUpdates.slice(i, i + batchSize);
+				try {
+					await this.setInventoryQuantities(batch);
+					totalUpdated += batch.length;
+				} catch (error) {
+					errors.push(
+						`Failed to update inventory batch ${
+							Math.floor(i / batchSize) + 1
+						}: ${error}`
+					);
+				}
+			}
+
+			console.log(`Successfully updated ${totalUpdated} inventory items`);
+			return { inventoryUpdated: totalUpdated, errors };
+		} catch (error) {
+			console.error("Error processing inventory CSV:", error);
+			throw error;
+		}
+	}
+
+	// Helper method to get store uploads
+	private async getStoreUploads(
+		storeId: string,
+		fileType: string
+	): Promise<
+		Array<{
+			file_path: string;
+			file_name: string;
+			uploaded_at: string;
+		}>
+	> {
+		// Import the getStoreUploads function from supabase
+		const { getStoreUploads } = await import("./supabase");
+		const uploads = await getStoreUploads(storeId, fileType);
+		return uploads.map((upload) => ({
+			file_path: upload.file_path,
+			file_name: upload.file_name,
+			uploaded_at: upload.uploaded_at,
+		}));
+	}
+
+	// Helper method to download file content
+	private async downloadFile(filePath: string): Promise<string> {
+		// Import supabase client
+		const { supabase } = await import("./supabase");
+
+		const { data, error } = await supabase.storage
+			.from("store-files")
+			.download(filePath);
+
+		if (error) {
+			throw new Error(`Failed to download file: ${error.message}`);
+		}
+
+		return await data.text();
+	}
+
 	// Generate full store
 	async generateStore(
 		storeData: StoreData,
@@ -2140,6 +2702,8 @@ export class ShopifyClient {
 		products_created: number;
 		logo_uploaded: boolean;
 		contact_email_set: boolean;
+		locations_created: number;
+		inventory_updated: number;
 	}> {
 		try {
 			// 1. Upload and publish theme
@@ -2147,21 +2711,67 @@ export class ShopifyClient {
 			const { theme_id } = await this.uploadTheme(themeName);
 			await this.publishTheme(theme_id);
 
-			// 2. Update store branding (including logo and contact email)
+			// 2. Manage store locations
+			const { getStoreLocations } = await import("./supabase");
+			const storeLocations = await getStoreLocations(storeId);
+			console.log(
+				`Found ${storeLocations.length} locations to create in Shopify`
+			);
+
+			let shopifyLocations: Array<{
+				id: string;
+				name: string;
+				originalLocation: StoreLocation;
+			}> = [];
+			let locations_created = 0;
+
+			if (storeLocations.length > 0) {
+				shopifyLocations = await this.manageLocations(storeLocations);
+				locations_created = shopifyLocations.length;
+				console.log(
+					`Successfully created ${locations_created} locations in Shopify`
+				);
+			}
+
+			// 3. Update store branding (including logo and contact email)
 			const brandingResult = await this.updateStoreBranding(
 				storeData,
 				storeId,
 				theme_id
 			);
 
-			// 3. Import products from CSV files
+			// 4. Import products from CSV files
 			const products_created = await this.importProductsFromCSV(storeId);
+
+			// 5. Process inventory CSV if available and locations were created
+			let inventory_updated = 0;
+			if (shopifyLocations.length > 0) {
+				try {
+					const inventoryResult = await this.processInventoryCSV(
+						storeId,
+						shopifyLocations
+					);
+					inventory_updated = inventoryResult.inventoryUpdated;
+
+					if (inventoryResult.errors.length > 0) {
+						console.warn(
+							"Inventory processing errors:",
+							inventoryResult.errors
+						);
+					}
+				} catch (error) {
+					console.error("Error processing inventory CSV:", error);
+					// Don't fail the entire store generation for inventory issues
+				}
+			}
 
 			return {
 				theme_id,
 				products_created,
 				logo_uploaded: brandingResult.logo_uploaded,
 				contact_email_set: brandingResult.contact_email_set,
+				locations_created,
+				inventory_updated,
 			};
 		} catch (error) {
 			console.error("Error generating store:", error);

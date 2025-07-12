@@ -1,6 +1,7 @@
 import {
 	Store,
 	StoreData,
+	StoreLocation,
 	ShopifyStoreGenerationRequest,
 	ShopifyCustomAppConnection,
 } from "@/types";
@@ -230,5 +231,96 @@ export async function deleteStoreAPI(storeId: string): Promise<void> {
 	if (!response.ok) {
 		const error = await response.json();
 		throw new Error(error.error || "Failed to delete store");
+	}
+}
+
+// Store locations API functions
+export async function getStoreLocationsAPI(
+	storeId: string
+): Promise<StoreLocation[]> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/stores/${storeId}/locations`
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to fetch store locations");
+	}
+
+	const result = await response.json();
+	return result.data;
+}
+
+export async function createStoreLocationAPI(
+	storeId: string,
+	locationData: Omit<
+		StoreLocation,
+		"id" | "store_id" | "created_at" | "updated_at"
+	>
+): Promise<StoreLocation> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/stores/${storeId}/locations`,
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(locationData),
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to create store location");
+	}
+
+	const result = await response.json();
+	return result.data;
+}
+
+export async function updateStoreLocationAPI(
+	storeId: string,
+	locationId: string,
+	locationData: Partial<
+		Omit<StoreLocation, "id" | "store_id" | "created_at" | "updated_at">
+	>
+): Promise<StoreLocation> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/stores/${storeId}/locations/${locationId}`,
+		{
+			method: "PUT",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(locationData),
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to update store location");
+	}
+
+	const result = await response.json();
+	return result.data;
+}
+
+export async function deleteStoreLocationAPI(
+	storeId: string,
+	locationId: string
+): Promise<void> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/stores/${storeId}/locations/${locationId}`,
+		{
+			method: "DELETE",
+			headers: {
+				"Content-Type": "application/json",
+			},
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to delete store location");
 	}
 }

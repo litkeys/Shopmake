@@ -33,9 +33,21 @@ export interface Upload {
 	store_id: string;
 	file_path: string;
 	file_name: string;
-	file_type: string; // 'csv_products', 'csv_customers', 'csv_orders', 'logo'
+	file_type: string; // 'csv_products', 'csv_customers', 'csv_orders', 'csv_inventory', 'logo'
 	file_size: number;
 	uploaded_at: string;
+}
+
+export interface StoreLocation {
+	id: string;
+	store_id: string;
+	name: string;
+	address?: string;
+	city?: string;
+	country?: string;
+	phone?: string;
+	created_at: string;
+	updated_at: string;
 }
 
 // Shopify-related types
@@ -71,7 +83,17 @@ export interface StoreFormData {
 		products?: File;
 		customers?: File;
 		orders?: File;
+		inventory?: File;
 	};
+}
+
+// Location form data (for frontend state management)
+export interface LocationFormData {
+	name: string;
+	address: string;
+	city: string;
+	country: string;
+	phone: string;
 }
 
 export interface ApiResponse<T = any> {

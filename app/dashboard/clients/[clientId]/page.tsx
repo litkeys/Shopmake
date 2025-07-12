@@ -22,6 +22,8 @@ import {
 	ExternalLink,
 	Store as StoreIcon,
 	Zap,
+	Plus,
+	MapPin,
 } from "lucide-react";
 import {
 	getStoreAPI,
@@ -33,8 +35,19 @@ import {
 	connectShopifyStoreAPI,
 	disconnectShopifyStoreAPI,
 	deleteStoreAPI,
+	getStoreLocationsAPI,
+	createStoreLocationAPI,
+	updateStoreLocationAPI,
+	deleteStoreLocationAPI,
 } from "@/lib/api";
-import { Store, StoreData, StoreFormData, Upload as UploadType } from "@/types";
+import {
+	Store,
+	StoreData,
+	StoreFormData,
+	Upload as UploadType,
+	StoreLocation,
+	LocationFormData,
+} from "@/types";
 import Link from "next/link";
 
 // Debounce hook
@@ -70,6 +83,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const [store, setStore] = useState<Store | null>(null);
 	const [storeData, setStoreData] = useState<StoreData | null>(null);
 	const [uploads, setUploads] = useState<UploadType[]>([]);
+	const [locations, setLocations] = useState<StoreLocation[]>([]);
 	const [logoPreview, setLogoPreview] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [success, setSuccess] = useState<string | null>(null);
@@ -93,6 +107,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 	// Debounced form data for auto-save
 	const debouncedFormData = useDebounce(formData, 500);
+	const debouncedLocations = useDebounce(locations, 500);
 
 	// Load store data on mount
 	useEffect(() => {
@@ -134,6 +149,14 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			handleAutoSave();
 		}
 	}, [debouncedFormData, store, isLoading]);
+
+	// Auto-save effect for locations
+	useEffect(() => {
+		if (store && !isLoading && debouncedLocations.length > 0) {
+			// Auto-save is handled by individual location updates
+			// This effect is mainly for tracking changes
+		}
+	}, [debouncedLocations, store, isLoading]);
 
 	const loadStoreData = async () => {
 		try {
@@ -178,6 +201,10 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			// Load uploads
 			const uploadsResult = await getStoreUploadsAPI(params.clientId);
 			setUploads(uploadsResult);
+
+			// Load locations
+			const locationsResult = await getStoreLocationsAPI(params.clientId);
+			setLocations(locationsResult);
 		} catch (err) {
 			setError(
 				err instanceof Error ? err.message : "Failed to load store data"
@@ -367,6 +394,61 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 	const getCsvUploads = (type: string) => {
 		return uploads.filter((upload) => upload.file_type === `csv_${type}`);
+	};
+
+	// Location management functions
+	const handleAddLocation = async () => {
+		if (!store) return;
+
+		try {
+			const newLocation = await createStoreLocationAPI(store.id, {
+				name: "New Location",
+				address: "",
+				city: "",
+				country: "",
+				phone: "",
+			});
+			setLocations([...locations, newLocation]);
+		} catch (err) {
+			setError(
+				err instanceof Error ? err.message : "Failed to add location"
+			);
+		}
+	};
+
+	const handleUpdateLocation = async (
+		locationId: string,
+		locationData: Partial<LocationFormData>
+	) => {
+		if (!store) return;
+
+		try {
+			const updatedLocation = await updateStoreLocationAPI(
+				store.id,
+				locationId,
+				locationData
+			);
+			setLocations(
+				locations.map((loc) =>
+					loc.id === locationId ? updatedLocation : loc
+				)
+			);
+		} catch (err) {
+			console.error("Failed to update location:", err);
+		}
+	};
+
+	const handleDeleteLocation = async (locationId: string) => {
+		if (!store) return;
+
+		try {
+			await deleteStoreLocationAPI(store.id, locationId);
+			setLocations(locations.filter((loc) => loc.id !== locationId));
+		} catch (err) {
+			setError(
+				err instanceof Error ? err.message : "Failed to delete location"
+			);
+		}
 	};
 
 	const handleShopifyConnect = async () => {
@@ -934,6 +1016,245 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 								</Button>
 							</div>
 						</div>
+
+						{/* Inventory CSV */}
+						<div>
+							<Label>Inventory CSV</Label>
+							{getCsvUploads("inventory").map((upload) => (
+								<div
+									key={upload.id}
+									className="mt-2 p-3 border rounded-lg bg-gray-50 flex items-center justify-between"
+								>
+									<div>
+										<p className="font-medium">
+											{upload.file_name}
+										</p>
+										<p className="text-sm text-muted-foreground">
+											Uploaded{" "}
+											{new Date(
+												upload.uploaded_at
+											).toLocaleDateString()}
+										</p>
+									</div>
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										onClick={() => handleDeleteFile(upload)}
+									>
+										<Trash2 className="h-4 w-4" />
+									</Button>
+								</div>
+							))}
+							<div className="mt-2">
+								<input
+									id="inventory_csv"
+									type="file"
+									accept=".csv"
+									onChange={(e) =>
+										handleCsvUpload(e, "inventory")
+									}
+									className="hidden"
+								/>
+								<Button
+									type="button"
+									variant="outline"
+									onClick={() =>
+										document
+											.getElementById("inventory_csv")
+											?.click()
+									}
+									disabled={isLoading}
+								>
+									<Upload className="h-4 w-4 mr-2" />
+									Upload Inventory CSV
+								</Button>
+								<p className="text-sm text-muted-foreground mt-1">
+									Shopify Inventory CSV export with location
+									and stock data
+								</p>
+							</div>
+						</div>
+					</CardContent>
+				</Card>
+
+				{/* Store Locations Section */}
+				<Card>
+					<CardHeader>
+						<CardTitle className="flex items-center">
+							<MapPin className="h-5 w-5 mr-2" />
+							Store Locations
+						</CardTitle>
+						<CardDescription>
+							Add one or more store locations for inventory
+							management
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						{locations.length === 0 ? (
+							<div className="text-center py-8 text-gray-500">
+								<MapPin className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+								<p>No locations added yet</p>
+								<p className="text-sm">
+									Add your first location to get started
+								</p>
+							</div>
+						) : (
+							<div className="space-y-4">
+								{locations.map((location) => (
+									<div
+										key={location.id}
+										className="p-4 border rounded-lg bg-gray-50 space-y-4"
+									>
+										<div className="flex items-center justify-between">
+											<h4 className="font-medium">
+												Location Details
+											</h4>
+											<Button
+												type="button"
+												variant="outline"
+												size="sm"
+												onClick={() =>
+													handleDeleteLocation(
+														location.id
+													)
+												}
+											>
+												<Trash2 className="h-4 w-4 mr-2" />
+												Remove
+											</Button>
+										</div>
+										<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+											<div>
+												<Label
+													htmlFor={`location-name-${location.id}`}
+												>
+													Location Name *
+												</Label>
+												<Input
+													id={`location-name-${location.id}`}
+													type="text"
+													value={location.name}
+													onChange={(e) =>
+														handleUpdateLocation(
+															location.id,
+															{
+																name: e.target
+																	.value,
+															}
+														)
+													}
+													placeholder="Main Store"
+												/>
+											</div>
+											<div>
+												<Label
+													htmlFor={`location-phone-${location.id}`}
+												>
+													Phone
+												</Label>
+												<Input
+													id={`location-phone-${location.id}`}
+													type="tel"
+													value={location.phone || ""}
+													onChange={(e) =>
+														handleUpdateLocation(
+															location.id,
+															{
+																phone: e.target
+																	.value,
+															}
+														)
+													}
+													placeholder="+1 (555) 123-4567"
+												/>
+											</div>
+											<div>
+												<Label
+													htmlFor={`location-address-${location.id}`}
+												>
+													Address
+												</Label>
+												<Input
+													id={`location-address-${location.id}`}
+													type="text"
+													value={
+														location.address || ""
+													}
+													onChange={(e) =>
+														handleUpdateLocation(
+															location.id,
+															{
+																address:
+																	e.target
+																		.value,
+															}
+														)
+													}
+													placeholder="123 Main Street"
+												/>
+											</div>
+											<div>
+												<Label
+													htmlFor={`location-city-${location.id}`}
+												>
+													City
+												</Label>
+												<Input
+													id={`location-city-${location.id}`}
+													type="text"
+													value={location.city || ""}
+													onChange={(e) =>
+														handleUpdateLocation(
+															location.id,
+															{
+																city: e.target
+																	.value,
+															}
+														)
+													}
+													placeholder="New York"
+												/>
+											</div>
+											<div>
+												<Label
+													htmlFor={`location-country-${location.id}`}
+												>
+													Country
+												</Label>
+												<Input
+													id={`location-country-${location.id}`}
+													type="text"
+													value={
+														location.country || ""
+													}
+													onChange={(e) =>
+														handleUpdateLocation(
+															location.id,
+															{
+																country:
+																	e.target
+																		.value,
+															}
+														)
+													}
+													placeholder="United States"
+												/>
+											</div>
+										</div>
+									</div>
+								))}
+							</div>
+						)}
+						<Button
+							type="button"
+							variant="outline"
+							onClick={handleAddLocation}
+							className="w-full"
+						>
+							<Plus className="h-4 w-4 mr-2" />
+							Add Location
+						</Button>
 					</CardContent>
 				</Card>
 

@@ -131,6 +131,8 @@ export async function POST(request: NextRequest) {
 				products_created: result.products_created,
 				logo_uploaded: result.logo_uploaded,
 				contact_email_set: result.contact_email_set,
+				locations_created: result.locations_created,
+				inventory_updated: result.inventory_updated,
 				store_url: `https://${shopifyToken.shopify_store_domain}.myshopify.com`,
 			},
 		});

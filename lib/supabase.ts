@@ -1,5 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
-import { Store, StoreData, Upload, ShopifyAdminToken } from "@/types";
+import {
+	Store,
+	StoreData,
+	Upload,
+	ShopifyAdminToken,
+	StoreLocation,
+} from "@/types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -288,4 +294,80 @@ export async function deleteFile(filePath: string): Promise<void> {
 
 	// Also remove from uploads table
 	await supabaseAdmin.from("uploads").delete().eq("file_path", filePath);
+}
+
+// Store locations operations
+export async function getStoreLocations(
+	storeId: string
+): Promise<StoreLocation[]> {
+	const { data, error } = await supabaseAdmin
+		.from("store_locations")
+		.select("*")
+		.eq("store_id", storeId)
+		.order("created_at", { ascending: true });
+
+	if (error) {
+		throw new Error(`Failed to fetch store locations: ${error.message}`);
+	}
+
+	return data || [];
+}
+
+export async function createStoreLocation(
+	storeId: string,
+	locationData: Omit<
+		StoreLocation,
+		"id" | "store_id" | "created_at" | "updated_at"
+	>
+): Promise<StoreLocation> {
+	const { data, error } = await supabaseAdmin
+		.from("store_locations")
+		.insert([
+			{
+				store_id: storeId,
+				...locationData,
+			},
+		])
+		.select()
+		.single();
+
+	if (error) {
+		throw new Error(`Failed to create store location: ${error.message}`);
+	}
+
+	return data;
+}
+
+export async function updateStoreLocation(
+	locationId: string,
+	locationData: Partial<
+		Omit<StoreLocation, "id" | "store_id" | "created_at" | "updated_at">
+	>
+): Promise<StoreLocation> {
+	const { data, error } = await supabaseAdmin
+		.from("store_locations")
+		.update({
+			...locationData,
+			updated_at: new Date().toISOString(),
+		})
+		.eq("id", locationId)
+		.select()
+		.single();
+
+	if (error) {
+		throw new Error(`Failed to update store location: ${error.message}`);
+	}
+
+	return data;
+}
+
+export async function deleteStoreLocation(locationId: string): Promise<void> {
+	const { error } = await supabaseAdmin
+		.from("store_locations")
+		.delete()
+		.eq("id", locationId);
+
+	if (error) {
+		throw new Error(`Failed to delete store location: ${error.message}`);
+	}
 }

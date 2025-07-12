@@ -70,7 +70,7 @@ CREATE TABLE uploads (
     store_id UUID REFERENCES stores(id) ON DELETE CASCADE,
     file_path TEXT NOT NULL,
     file_name TEXT NOT NULL,
-    file_type TEXT NOT NULL, -- 'logo', 'csv_products', 'csv_customers', 'csv_orders'
+    file_type TEXT NOT NULL, -- 'logo', 'csv_products', 'csv_customers', 'csv_orders', 'csv_inventory'
     file_size BIGINT NOT NULL,
     uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -112,7 +112,34 @@ CREATE POLICY "Users can access their shopify tokens" ON shopify_tokens
     );
 ```
 
-### 5. Add updated_at triggers
+### 5. store_locations
+
+```sql
+CREATE TABLE store_locations (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    store_id UUID REFERENCES stores(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    address TEXT,
+    city TEXT,
+    country TEXT,
+    phone TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Add RLS policies
+ALTER TABLE store_locations ENABLE ROW LEVEL SECURITY;
+
+-- Users can only access store_locations for their own stores
+CREATE POLICY "Users can access their store locations" ON store_locations
+    FOR ALL USING (
+        store_id IN (
+            SELECT id FROM stores WHERE created_by = (auth.jwt() ->> 'sub')::text
+        )
+    );
+```
+
+### 6. Add updated_at triggers
 
 ```sql
 -- Function to update updated_at timestamp
@@ -135,6 +162,10 @@ CREATE TRIGGER update_store_data_updated_at
 
 CREATE TRIGGER update_shopify_tokens_updated_at
     BEFORE UPDATE ON shopify_tokens
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_store_locations_updated_at
+    BEFORE UPDATE ON store_locations
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 ```
 
@@ -237,7 +268,9 @@ store-files/
 │   │   └── timestamp.csv
 │   ├── csv_customers/
 │   │   └── timestamp.csv
-│   └── csv_orders/
+│   ├── csv_orders/
+│   │   └── timestamp.csv
+│   └── csv_inventory/
 │       └── timestamp.csv
 ```
 
