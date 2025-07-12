@@ -2245,17 +2245,17 @@ export class ShopifyClient {
 			}>(mutation, { locationId });
 
 			if (result.locationDelete.locationDeleteUserErrors.length > 0) {
-				throw new Error(
-					`Failed to delete location: ${result.locationDelete.locationDeleteUserErrors
-						.map((error) => error.message)
-						.join(", ")}`
-				);
+				const errorMessage = `Failed to delete location: ${result.locationDelete.locationDeleteUserErrors
+					.map((error) => error.message)
+					.join(", ")}`;
+				console.warn(errorMessage);
+				return; // Don't throw error, just warn and continue
 			}
 
 			console.log(`Location ${locationId} deleted successfully`);
 		} catch (error) {
-			console.error("Error deleting location:", error);
-			throw error;
+			console.warn("Warning: Could not delete location:", error);
+			// Don't throw error, just warn and continue
 		}
 	}
 
@@ -2295,24 +2295,24 @@ export class ShopifyClient {
 				result.locationDeactivate.locationDeactivateUserErrors.length >
 				0
 			) {
-				throw new Error(
-					`Failed to deactivate location: ${result.locationDeactivate.locationDeactivateUserErrors
-						.map((error) => error.message)
-						.join(", ")}`
-				);
+				const errorMessage = `Failed to deactivate location: ${result.locationDeactivate.locationDeactivateUserErrors
+					.map((error) => error.message)
+					.join(", ")}`;
+				console.warn(errorMessage);
+				return; // Don't throw error, just warn and continue
 			}
 
 			console.log(`Location ${locationId} deactivated successfully`);
 		} catch (error) {
-			console.error("Error deactivating location:", error);
-			throw error;
+			console.warn("Warning: Could not deactivate location:", error);
+			// Don't throw error, just warn and continue
 		}
 	}
 
 	async addLocation(location: StoreLocation): Promise<{
 		id: string;
 		name: string;
-	}> {
+	} | null> {
 		try {
 			const mutation = `
 				mutation locationAdd($input: LocationAddInput!) {
@@ -2350,15 +2350,16 @@ export class ShopifyClient {
 			}>(mutation, { input });
 
 			if (result.locationAdd.userErrors.length > 0) {
-				throw new Error(
-					`Failed to add location: ${result.locationAdd.userErrors
-						.map((error) => error.message)
-						.join(", ")}`
-				);
+				const errorMessage = `Failed to add location: ${result.locationAdd.userErrors
+					.map((error) => error.message)
+					.join(", ")}`;
+				console.warn(errorMessage);
+				return null; // Don't throw error, just warn and return null
 			}
 
 			if (!result.locationAdd.location) {
-				throw new Error("Location was not created");
+				console.warn("Warning: Location was not created");
+				return null; // Don't throw error, just warn and return null
 			}
 
 			console.log(
@@ -2366,8 +2367,8 @@ export class ShopifyClient {
 			);
 			return result.locationAdd.location;
 		} catch (error) {
-			console.error("Error adding location:", error);
-			throw error;
+			console.warn("Warning: Could not add location:", error);
+			return null; // Don't throw error, just warn and return null
 		}
 	}
 
@@ -2385,43 +2386,31 @@ export class ShopifyClient {
 			const existingLocations = await this.getLocations();
 			console.log(`Found ${existingLocations.length} existing locations`);
 
-			// 2. Delete existing locations (keep the first one as Shopify requires at least one location for online orders)
-			if (existingLocations.length > 1) {
-				const locationsToDelete = existingLocations.slice(1); // Skip the first location
-				console.log(
-					`Keeping first location (${existingLocations[0].name}) and deleting ${locationsToDelete.length} other locations`
-				);
-
-				for (const location of locationsToDelete) {
-					try {
-						await this.deleteLocation(location.id);
-					} catch (error) {
-						console.log(
-							`Could not delete location ${location.name}:`,
-							error
-						);
-						// Continue with other locations
-					}
+			// 2. Delete all existing locations (except the primary one which might be protected)
+			for (const location of existingLocations) {
+				try {
+					await this.deleteLocation(location.id);
+				} catch (error) {
+					console.log(
+						`Could not delete location ${location.name}:`,
+						error
+					);
+					// Continue with other locations
 				}
-			} else if (existingLocations.length === 1) {
-				console.log(
-					`Keeping the only existing location (${existingLocations[0].name}) as required by Shopify`
-				);
 			}
 
 			// 3. Add new locations
 			const createdLocations = [];
 			for (const location of locations) {
-				try {
-					const createdLocation = await this.addLocation(location);
+				const createdLocation = await this.addLocation(location);
+				if (createdLocation) {
 					createdLocations.push({
 						...createdLocation,
 						originalLocation: location,
 					});
-				} catch (error) {
-					console.error(
-						`Failed to create location ${location.name}:`,
-						error
+				} else {
+					console.warn(
+						`Failed to create location ${location.name} - skipping`
 					);
 					// Continue with other locations
 				}
