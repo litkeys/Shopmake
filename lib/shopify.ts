@@ -2404,76 +2404,114 @@ export class ShopifyClient {
 	): Promise<void> {
 		try {
 			console.log(
-				`Setting inventory quantities for ${inventoryItems.length} items`
+				`Activating and setting inventory quantities for ${inventoryItems.length} items`
 			);
 
-			const mutation = `
-				mutation inventorySetQuantities($input: InventorySetQuantitiesInput!) {
-					inventorySetQuantities(input: $input) {
-						inventoryAdjustmentGroup {
-							id
-							createdAt
-							reason
-							changes {
-								name
-								delta
-							}
-						}
-						userErrors {
-							field
-							message
-						}
-					}
+			// Since we're generating stores from scratch, we need to activate (stock)
+			// each inventory item at each location before we can set quantities
+			let successCount = 0;
+			const errors: string[] = [];
+
+			for (const item of inventoryItems) {
+				try {
+					await this.activateInventoryItem(
+						item.inventoryItemId,
+						item.locationId,
+						item.quantity
+					);
+					successCount++;
+				} catch (error) {
+					const errorMessage = `Failed to activate inventory item ${item.inventoryItemId} at location ${item.locationId}: ${error}`;
+					console.error(errorMessage);
+					errors.push(errorMessage);
 				}
-			`;
-
-			const input = {
-				name: "available",
-				reason: "correction",
-				referenceDocumentUri: "genesis://inventory-import",
-				ignoreCompareQuantity: true,
-				quantities: inventoryItems.map((item) => ({
-					inventoryItemId: item.inventoryItemId,
-					locationId: item.locationId,
-					quantity: item.quantity,
-				})),
-			};
-
-			const result = await this.makeGraphQLRequest<{
-				inventorySetQuantities: {
-					inventoryAdjustmentGroup?: {
-						id: string;
-						createdAt: string;
-						reason: string;
-						changes: Array<{
-							name: string;
-							delta: number;
-						}>;
-					};
-					userErrors: Array<{ field: string; message: string }>;
-				};
-			}>(mutation, { input });
-
-			if (result.inventorySetQuantities.userErrors.length > 0) {
-				throw new Error(
-					`Failed to set inventory quantities: ${result.inventorySetQuantities.userErrors
-						.map((error) => error.message)
-						.join(", ")}`
-				);
 			}
 
-			console.log("Inventory quantities set successfully");
-			if (result.inventorySetQuantities.inventoryAdjustmentGroup) {
-				console.log(
-					`Created inventory adjustment group: ${result.inventorySetQuantities.inventoryAdjustmentGroup.id}`
+			console.log(
+				`Successfully activated ${successCount} inventory items`
+			);
+
+			if (errors.length > 0) {
+				console.warn(
+					`${errors.length} inventory items failed to activate`
 				);
-				console.log(
-					`Changes made: ${result.inventorySetQuantities.inventoryAdjustmentGroup.changes.length} inventory adjustments`
-				);
+				// Don't throw error if some items succeeded - log warnings instead
+				if (successCount === 0) {
+					throw new Error(
+						`All inventory activations failed: ${errors.join("; ")}`
+					);
+				}
 			}
 		} catch (error) {
 			console.error("Error setting inventory quantities:", error);
 			throw error;
+		}
+	}
+
+	private async activateInventoryItem(
+		inventoryItemId: string,
+		locationId: string,
+		availableQuantity: number
+	): Promise<void> {
+		const mutation = `
+			mutation inventoryActivate($inventoryItemId: ID!, $locationId: ID!, $available: Int) {
+				inventoryActivate(inventoryItemId: $inventoryItemId, locationId: $locationId, available: $available) {
+					inventoryLevel {
+						id
+						quantities(names: ["available"]) {
+							name
+							quantity
+						}
+						item {
+							id
+						}
+						location {
+							id
+						}
+					}
+					userErrors {
+						field
+						message
+					}
+				}
+			}
+		`;
+
+		const result = await this.makeGraphQLRequest<{
+			inventoryActivate: {
+				inventoryLevel?: {
+					id: string;
+					quantities: Array<{
+						name: string;
+						quantity: number;
+					}>;
+					item: {
+						id: string;
+					};
+					location: {
+						id: string;
+					};
+				};
+				userErrors: Array<{ field: string; message: string }>;
+			};
+		}>(mutation, {
+			inventoryItemId,
+			locationId,
+			available: availableQuantity,
+		});
+
+		if (result.inventoryActivate.userErrors.length > 0) {
+			throw new Error(
+				`Failed to activate inventory: ${result.inventoryActivate.userErrors
+					.map((error) => error.message)
+					.join(", ")}`
+			);
+		}
+
+		if (result.inventoryActivate.inventoryLevel) {
+			console.log(
+				`Activated inventory item ${inventoryItemId} at location ${locationId} with quantity ${availableQuantity}`
+			);
 		}
 	}
 
