@@ -2385,13 +2385,11 @@ export class ShopifyClient {
 			const existingLocations = await this.getLocations();
 			console.log(`Found ${existingLocations.length} existing locations`);
 
-			// 2. Delete existing locations (keep the last one as Shopify requires at least one location for online orders)
+			// 2. Delete existing locations (keep the first one as Shopify requires at least one location for online orders)
 			if (existingLocations.length > 1) {
-				const locationsToDelete = existingLocations.slice(0, -1); // Skip the last location
-				const lastLocation =
-					existingLocations[existingLocations.length - 1];
+				const locationsToDelete = existingLocations.slice(1); // Skip the first location
 				console.log(
-					`Keeping last location (${lastLocation.name}) and deleting ${locationsToDelete.length} other locations`
+					`Keeping first location (${existingLocations[0].name}) and deleting ${locationsToDelete.length} other locations`
 				);
 
 				for (const location of locationsToDelete) {

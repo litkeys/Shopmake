@@ -698,15 +698,13 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 						</Link>
 					</Button>
 				</div>
-				<div className="flex items-center justify-between">
-					<div>
-						<h1 className="text-3xl font-bold text-gray-900">
-							Edit {store?.name}
-						</h1>
-						<p className="text-gray-600">
-							Update client store information and files.
-						</p>
-					</div>
+				<div>
+					<h1 className="text-3xl font-bold text-gray-900">
+						Edit {store?.name}
+					</h1>
+					<p className="text-gray-600 mb-4">
+						Update client store information and files.
+					</p>
 					<div className="flex items-center space-x-2">
 						{store?.shopify_store_domain && (
 							<Button variant="outline" asChild>
