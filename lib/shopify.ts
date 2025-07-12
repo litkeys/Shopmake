@@ -2444,18 +2444,56 @@ export class ShopifyClient {
 			let successCount = 0;
 			const errors: string[] = [];
 
-			for (const item of inventoryItems) {
-				try {
-					await this.activateInventoryItem(
-						item.inventoryItemId,
-						item.locationId,
-						item.quantity
-					);
-					successCount++;
-				} catch (error) {
-					const errorMessage = `Failed to activate inventory item ${item.inventoryItemId} at location ${item.locationId}: ${error}`;
-					console.error(errorMessage);
-					errors.push(errorMessage);
+			// Process inventory items in parallel batches to avoid timeout
+			const batchSize = 10; // Process 10 items concurrently
+			const batches = [];
+
+			for (let i = 0; i < inventoryItems.length; i += batchSize) {
+				batches.push(inventoryItems.slice(i, i + batchSize));
+			}
+
+			console.log(
+				`Processing ${batches.length} batches of ${batchSize} items each`
+			);
+
+			for (
+				let batchIndex = 0;
+				batchIndex < batches.length;
+				batchIndex++
+			) {
+				const batch = batches[batchIndex];
+				console.log(
+					`Processing batch ${batchIndex + 1}/${batches.length} (${
+						batch.length
+					} items)`
+				);
+
+				// Process all items in this batch concurrently
+				const batchPromises = batch.map(async (item) => {
+					try {
+						await this.activateInventoryItem(
+							item.inventoryItemId,
+							item.locationId,
+							item.quantity
+						);
+						return { success: true, item };
+					} catch (error) {
+						const errorMessage = `Failed to activate inventory item ${item.inventoryItemId} at location ${item.locationId}: ${error}`;
+						console.error(errorMessage);
+						return { success: false, error: errorMessage, item };
+					}
+				});
+
+				// Wait for all items in this batch to complete
+				const batchResults = await Promise.all(batchPromises);
+
+				// Count successes and collect errors
+				for (const result of batchResults) {
+					if (result.success) {
+						successCount++;
+					} else {
+						errors.push(result.error || "Unknown error");
+					}
 				}
 			}
 
