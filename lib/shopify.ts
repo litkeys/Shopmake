@@ -2385,7 +2385,33 @@ export class ShopifyClient {
 			const existingLocations = await this.getLocations();
 			console.log(`Found ${existingLocations.length} existing locations`);
 
-			// 2. Add new locations first
+			// 2. Delete existing locations (keep the last one as Shopify requires at least one location for online orders)
+			if (existingLocations.length > 1) {
+				const locationsToDelete = existingLocations.slice(0, -1); // Skip the last location
+				const lastLocation =
+					existingLocations[existingLocations.length - 1];
+				console.log(
+					`Keeping last location (${lastLocation.name}) and deleting ${locationsToDelete.length} other locations`
+				);
+
+				for (const location of locationsToDelete) {
+					try {
+						await this.deleteLocation(location.id);
+					} catch (error) {
+						console.log(
+							`Could not delete location ${location.name}:`,
+							error
+						);
+						// Continue with other locations
+					}
+				}
+			} else if (existingLocations.length === 1) {
+				console.log(
+					`Keeping the only existing location (${existingLocations[0].name}) as required by Shopify`
+				);
+			}
+
+			// 3. Add new locations
 			const createdLocations = [];
 			for (const location of locations) {
 				try {
@@ -2406,20 +2432,6 @@ export class ShopifyClient {
 			console.log(
 				`Successfully created ${createdLocations.length} locations`
 			);
-
-			// 3. Delete old existing locations after new ones are created
-			for (const location of existingLocations) {
-				try {
-					await this.deleteLocation(location.id);
-				} catch (error) {
-					console.log(
-						`Could not delete location ${location.name}:`,
-						error
-					);
-					// Continue with other locations
-				}
-			}
-
 			return createdLocations;
 		} catch (error) {
 			console.error("Error managing locations:", error);
