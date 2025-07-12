@@ -1145,6 +1145,17 @@ export class ShopifyClient {
 								},
 						  ]
 						: []),
+					// Store SKU if available
+					...(product.sku
+						? [
+								{
+									namespace: "custom",
+									key: "sku",
+									value: product.sku,
+									type: "single_line_text_field",
+								},
+						  ]
+						: []),
 					// Store image URLs as metafield for later processing
 					...(product.images && product.images.length > 0
 						? [
@@ -1291,6 +1302,9 @@ export class ShopifyClient {
 			(meta) =>
 				meta.namespace === "custom" && meta.key === "inventory_quantity"
 		)?.value;
+		const sku = metafields.find(
+			(meta) => meta.namespace === "custom" && meta.key === "sku"
+		)?.value;
 
 		if (!originalPrice) {
 			throw new Error("No original price found in metafields");
@@ -1311,6 +1325,13 @@ export class ShopifyClient {
 		// Add compare at price if available
 		if (compareAtPrice) {
 			variantInput.compareAtPrice = parseFloat(compareAtPrice).toFixed(2);
+		}
+
+		// Add SKU if available
+		if (sku) {
+			variantInput.inventoryItem = {
+				sku: sku,
+			};
 		}
 
 		// Note: Skip inventory quantities for now as they require valid location IDs
@@ -1335,6 +1356,11 @@ export class ShopifyClient {
 						id
 						price
 						compareAtPrice
+						sku
+						inventoryItem {
+							id
+							sku
+						}
 					}
 					userErrors {
 						field
@@ -1358,6 +1384,11 @@ export class ShopifyClient {
 					id: string;
 					price: string;
 					compareAtPrice?: string;
+					sku?: string;
+					inventoryItem?: {
+						id: string;
+						sku?: string;
+					};
 				}>;
 				userErrors: Array<{ field: string; message: string }>;
 			};
