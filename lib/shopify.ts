@@ -2412,6 +2412,12 @@ export class ShopifyClient {
 					inventorySetQuantities(input: $input) {
 						inventoryAdjustmentGroup {
 							id
+							createdAt
+							reason
+							changes {
+								name
+								delta
+							}
 						}
 						userErrors {
 							field
@@ -2422,8 +2428,10 @@ export class ShopifyClient {
 			`;
 
 			const input = {
+				name: "available",
 				reason: "correction",
-				name: "Genesis Project Inventory Update",
+				referenceDocumentUri: "genesis://inventory-import",
+				ignoreCompareQuantity: true,
 				quantities: inventoryItems.map((item) => ({
 					inventoryItemId: item.inventoryItemId,
 					locationId: item.locationId,
@@ -2435,6 +2443,12 @@ export class ShopifyClient {
 				inventorySetQuantities: {
 					inventoryAdjustmentGroup?: {
 						id: string;
+						createdAt: string;
+						reason: string;
+						changes: Array<{
+							name: string;
+							delta: number;
+						}>;
 					};
 					userErrors: Array<{ field: string; message: string }>;
 				};
@@ -2449,6 +2463,14 @@ export class ShopifyClient {
 			}
 
 			console.log("Inventory quantities set successfully");
+			if (result.inventorySetQuantities.inventoryAdjustmentGroup) {
+				console.log(
+					`Created inventory adjustment group: ${result.inventorySetQuantities.inventoryAdjustmentGroup.id}`
+				);
+				console.log(
+					`Changes made: ${result.inventorySetQuantities.inventoryAdjustmentGroup.changes.length} inventory adjustments`
+				);
+			}
 		} catch (error) {
 			console.error("Error setting inventory quantities:", error);
 			throw error;
