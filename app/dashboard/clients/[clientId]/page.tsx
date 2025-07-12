@@ -1318,7 +1318,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 												<Label
 													htmlFor={`location-country-${location.id}`}
 												>
-													Country
+													Country Code
 												</Label>
 												<Input
 													id={`location-country-${location.id}`}

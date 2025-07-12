@@ -1327,12 +1327,11 @@ export class ShopifyClient {
 			variantInput.compareAtPrice = parseFloat(compareAtPrice).toFixed(2);
 		}
 
-		// Add SKU if available
-		if (sku) {
-			variantInput.inventoryItem = {
-				sku: sku,
-			};
-		}
+		// Add inventoryItem object with tracking enabled and SKU if available
+		variantInput.inventoryItem = {
+			tracked: true,
+			...(sku && { sku: sku }),
+		};
 
 		// Note: Skip inventory quantities for now as they require valid location IDs
 		// Inventory can be managed separately through the inventory API
@@ -1360,6 +1359,7 @@ export class ShopifyClient {
 						inventoryItem {
 							id
 							sku
+							tracked
 						}
 					}
 					userErrors {
@@ -1388,6 +1388,7 @@ export class ShopifyClient {
 					inventoryItem?: {
 						id: string;
 						sku?: string;
+						tracked?: boolean;
 					};
 				}>;
 				userErrors: Array<{ field: string; message: string }>;
@@ -2539,11 +2540,7 @@ export class ShopifyClient {
 			);
 		}
 
-		if (result.inventoryActivate.inventoryLevel) {
-			console.log(
-				`Activated inventory item ${inventoryItemId} at location ${locationId} with quantity ${availableQuantity}`
-			);
-		}
+		// Inventory item activated successfully (no individual logging to reduce noise)
 	}
 
 	async getProductInventoryItems(): Promise<
