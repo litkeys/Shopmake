@@ -2187,10 +2187,10 @@ export class ShopifyClient {
 	async deleteLocation(locationId: string): Promise<void> {
 		try {
 			const mutation = `
-				mutation locationDelete($id: ID!) {
-					locationDelete(id: $id) {
+				mutation locationDelete($locationId: ID!) {
+					locationDelete(locationId: $locationId) {
 						deletedLocationId
-						userErrors {
+						locationDeleteUserErrors {
 							field
 							message
 						}
@@ -2201,13 +2201,16 @@ export class ShopifyClient {
 			const result = await this.makeGraphQLRequest<{
 				locationDelete: {
 					deletedLocationId?: string;
-					userErrors: Array<{ field: string; message: string }>;
+					locationDeleteUserErrors: Array<{
+						field: string;
+						message: string;
+					}>;
 				};
-			}>(mutation, { id: locationId });
+			}>(mutation, { locationId });
 
-			if (result.locationDelete.userErrors.length > 0) {
+			if (result.locationDelete.locationDeleteUserErrors.length > 0) {
 				throw new Error(
-					`Failed to delete location: ${result.locationDelete.userErrors
+					`Failed to delete location: ${result.locationDelete.locationDeleteUserErrors
 						.map((error) => error.message)
 						.join(", ")}`
 				);
@@ -2226,7 +2229,7 @@ export class ShopifyClient {
 	}> {
 		try {
 			const mutation = `
-				mutation locationAdd($input: LocationInput!) {
+				mutation locationAdd($input: LocationAddInput!) {
 					locationAdd(input: $input) {
 						location {
 							id
@@ -2245,7 +2248,7 @@ export class ShopifyClient {
 				address: {
 					address1: location.address || "",
 					city: location.city || "",
-					country: location.country || "",
+					countryCode: location.country || "US",
 					phone: location.phone || "",
 				},
 			};
