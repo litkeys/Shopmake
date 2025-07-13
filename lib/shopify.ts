@@ -3185,10 +3185,9 @@ export class ShopifyClient {
 		}
 	}
 
-	// Generate products (import, variants, images, taxonomy)
+	// Generate products (import, images, taxonomy only - no variants or publishing)
 	async generateStoreProducts(storeId: string): Promise<{
 		products_created: number;
-		variants_updated: number;
 		images_added: number;
 		taxonomy_updated: number;
 	}> {
@@ -3198,26 +3197,18 @@ export class ShopifyClient {
 			// 1. Import products from CSV files
 			const products_created = await this.importProductsFromCSV(storeId);
 
-			let variants_updated = 0;
 			let images_added = 0;
 			let taxonomy_updated = 0;
 
 			if (products_created > 0) {
-				// 2. Add variants with pricing
-				try {
-					variants_updated = await this.addVariantsToProducts();
-				} catch (error) {
-					console.error("Failed to add variants:", error);
-				}
-
-				// 3. Add images to products
+				// 2. Add images to products
 				try {
 					images_added = await this.addImagesToProducts();
 				} catch (error) {
 					console.error("Failed to add images:", error);
 				}
 
-				// 4. Add taxonomy categories to products
+				// 3. Add taxonomy categories to products
 				try {
 					taxonomy_updated =
 						await this.addTaxonomyCategoriesToProducts();
@@ -3230,7 +3221,6 @@ export class ShopifyClient {
 
 			return {
 				products_created,
-				variants_updated,
 				images_added,
 				taxonomy_updated,
 			};
@@ -3240,15 +3230,23 @@ export class ShopifyClient {
 		}
 	}
 
-	// Publish products and process inventory
-	async finalizeStore(storeId: string): Promise<{
+	// Publish products (variants and publishing)
+	async generateStorePublish(): Promise<{
+		variants_updated: number;
 		products_published: number;
-		inventory_updated: number;
 	}> {
 		try {
-			console.log("Starting store finalization...");
+			console.log("Starting product publishing...");
 
-			// 1. Publish products to Online Store sales channel
+			// 1. Add variants with pricing
+			let variants_updated = 0;
+			try {
+				variants_updated = await this.addVariantsToProducts();
+			} catch (error) {
+				console.error("Failed to add variants:", error);
+			}
+
+			// 2. Publish products to Online Store sales channel
 			let products_published = 0;
 			try {
 				products_published = await this.publishProductsToOnlineStore();
@@ -3259,7 +3257,26 @@ export class ShopifyClient {
 				);
 			}
 
-			// 2. Process inventory CSV if available
+			console.log("Product publishing completed");
+
+			return {
+				variants_updated,
+				products_published,
+			};
+		} catch (error) {
+			console.error("Error publishing products:", error);
+			throw error;
+		}
+	}
+
+	// Finalize store (inventory processing only)
+	async finalizeStore(storeId: string): Promise<{
+		inventory_updated: number;
+	}> {
+		try {
+			console.log("Starting store finalization...");
+
+			// Process inventory CSV if available
 			let inventory_updated = 0;
 			try {
 				// Get all current locations from Shopify
@@ -3310,7 +3327,6 @@ export class ShopifyClient {
 			console.log("Store finalization completed");
 
 			return {
-				products_published,
 				inventory_updated,
 			};
 		} catch (error) {
@@ -3343,7 +3359,10 @@ export class ShopifyClient {
 			// Step 2: Products
 			const productsResult = await this.generateStoreProducts(storeId);
 
-			// Step 3: Finalization
+			// Step 3: Publish
+			const publishResult = await this.generateStorePublish();
+
+			// Step 4: Finalization
 			const finalizationResult = await this.finalizeStore(storeId);
 
 			return {

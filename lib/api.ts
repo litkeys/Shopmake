@@ -229,7 +229,6 @@ export async function generateStoreFoundationAPI(storeId: string): Promise<{
 
 export async function generateStoreProductsAPI(storeId: string): Promise<{
 	products_created: number;
-	variants_updated: number;
 	images_added: number;
 	taxonomy_updated: number;
 }> {
@@ -253,8 +252,31 @@ export async function generateStoreProductsAPI(storeId: string): Promise<{
 	return result.result;
 }
 
-export async function finalizeStoreAPI(storeId: string): Promise<{
+export async function generateStorePublishAPI(storeId: string): Promise<{
+	variants_updated: number;
 	products_published: number;
+}> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/shopify/generate/publish`,
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ storeId }),
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to publish store products");
+	}
+
+	const result = await response.json();
+	return result.result;
+}
+
+export async function finalizeStoreAPI(storeId: string): Promise<{
 	inventory_updated: number;
 }> {
 	const response = await fetch(

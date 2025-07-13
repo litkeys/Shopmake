@@ -34,6 +34,7 @@ import {
 	generateShopifyStoreAPI,
 	generateStoreFoundationAPI,
 	generateStoreProductsAPI,
+	generateStorePublishAPI,
 	finalizeStoreAPI,
 	connectShopifyStoreAPI,
 	disconnectShopifyStoreAPI,
@@ -85,7 +86,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [generationProgress, setGenerationProgress] = useState({
 		currentStep: 0,
-		totalSteps: 3,
+		totalSteps: 4,
 		stepName: "",
 		stepDescription: "",
 		percentage: 0,
@@ -95,6 +96,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const [generationResults, setGenerationResults] = useState<{
 		foundation?: any;
 		products?: any;
+		publish?: any;
 		finalization?: any;
 	}>({});
 	const [store, setStore] = useState<Store | null>(null);
@@ -616,7 +618,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 0) {
 				setGenerationProgress({
 					currentStep: 1,
-					totalSteps: 3,
+					totalSteps: 4,
 					stepName: "Foundation",
 					stepDescription:
 						"Setting up theme, locations, and branding...",
@@ -634,7 +636,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 					setGenerationProgress((prev) => ({
 						...prev,
-						percentage: 33,
+						percentage: 29,
 						lastCompletedStep: 0,
 						canResume: true,
 					}));
@@ -655,15 +657,15 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				}
 			}
 
-			// Step 2: Products (Import, Variants, Images, Taxonomy)
+			// Step 2: Products (Import, Images, Taxonomy)
 			if (startStep <= 1) {
 				setGenerationProgress({
 					currentStep: 2,
-					totalSteps: 3,
+					totalSteps: 4,
 					stepName: "Products",
 					stepDescription:
-						"Importing products, variants, images, and categories...",
-					percentage: 40,
+						"Importing products, images, and categories...",
+					percentage: 30,
 					canResume: true,
 					lastCompletedStep: 0,
 				});
@@ -677,7 +679,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 					setGenerationProgress((prev) => ({
 						...prev,
-						percentage: 66,
+						percentage: 59,
 						lastCompletedStep: 1,
 					}));
 
@@ -697,17 +699,59 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				}
 			}
 
-			// Step 3: Finalization (Publishing, Inventory)
+			// Step 3: Publish (Variants and Publishing)
 			if (startStep <= 2) {
 				setGenerationProgress({
 					currentStep: 3,
-					totalSteps: 3,
-					stepName: "Finalization",
+					totalSteps: 4,
+					stepName: "Publish",
 					stepDescription:
-						"Publishing products and updating inventory...",
-					percentage: 70,
+						"Adding variants and publishing products...",
+					percentage: 60,
 					canResume: true,
 					lastCompletedStep: 1,
+				});
+
+				try {
+					const publishResult = await generateStorePublishAPI(
+						store.id
+					);
+					currentResults.publish = publishResult;
+					setGenerationResults(currentResults);
+
+					setGenerationProgress((prev) => ({
+						...prev,
+						percentage: 99,
+						lastCompletedStep: 2,
+					}));
+
+					console.log("Publish completed:", publishResult);
+				} catch (err) {
+					console.error("Publish error:", err);
+					setGenerationProgress((prev) => ({
+						...prev,
+						canResume: true,
+						lastCompletedStep: 1,
+					}));
+					throw new Error(
+						`Product publishing failed: ${
+							err instanceof Error ? err.message : "Unknown error"
+						}`
+					);
+				}
+			}
+
+			// Step 4: Finalization (Inventory)
+			if (startStep <= 3) {
+				setGenerationProgress({
+					currentStep: 4,
+					totalSteps: 4,
+					stepName: "Finalization",
+					stepDescription:
+						"Taking your Shopify store out of the oven...",
+					percentage: 100,
+					canResume: true,
+					lastCompletedStep: 2,
 				});
 
 				try {
@@ -718,7 +762,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					setGenerationProgress((prev) => ({
 						...prev,
 						percentage: 100,
-						lastCompletedStep: 2,
+						lastCompletedStep: 3,
 					}));
 
 					console.log("Finalization completed:", finalizationResult);
@@ -727,7 +771,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					setGenerationProgress((prev) => ({
 						...prev,
 						canResume: true,
-						lastCompletedStep: 1,
+						lastCompletedStep: 2,
 					}));
 					throw new Error(
 						`Store finalization failed: ${
@@ -747,7 +791,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				// Reset progress after success
 				setGenerationProgress({
 					currentStep: 0,
-					totalSteps: 3,
+					totalSteps: 4,
 					stepName: "",
 					stepDescription: "",
 					percentage: 0,
@@ -815,7 +859,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const resetGenerationProgress = () => {
 		setGenerationProgress({
 			currentStep: 0,
-			totalSteps: 3,
+			totalSteps: 4,
 			stepName: "",
 			stepDescription: "",
 			percentage: 0,
@@ -1754,7 +1798,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 								{!isGenerating &&
 									generationProgress.canResume &&
 									generationProgress.lastCompletedStep <
-										2 && (
+										3 && (
 										<div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
 											<div className="flex items-center justify-between">
 												<div>
@@ -1836,6 +1880,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 								{/* Generation Results Summary */}
 								{(generationResults.foundation ||
 									generationResults.products ||
+									generationResults.publish ||
 									generationResults.finalization) && (
 									<div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
 										<h4 className="text-sm font-medium text-green-800 mb-2">
@@ -1887,9 +1932,37 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 													{
 														generationResults
 															.products
+															.images_added
+													}{" "}
+													images
+												</div>
+											)}
+											{generationResults.publish && (
+												<div className="flex items-center">
+													<svg
+														className="h-4 w-4 text-green-500 mr-2"
+														fill="currentColor"
+														viewBox="0 0 20 20"
+													>
+														<path
+															fillRule="evenodd"
+															d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+															clipRule="evenodd"
+														/>
+													</svg>
+													Publish:{" "}
+													{
+														generationResults
+															.publish
 															.variants_updated
 													}{" "}
-													variants
+													variants,{" "}
+													{
+														generationResults
+															.publish
+															.products_published
+													}{" "}
+													products published
 												</div>
 											)}
 											{generationResults.finalization && (
@@ -1909,9 +1982,9 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 													{
 														generationResults
 															.finalization
-															.products_published
+															.inventory_updated
 													}{" "}
-													products published
+													inventory updated
 												</div>
 											)}
 										</div>
