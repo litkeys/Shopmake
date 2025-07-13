@@ -3237,12 +3237,12 @@ export class ShopifyClient {
 		}
 	}
 
-	// Finalize store (inventory processing only)
-	async finalizeStore(storeId: string): Promise<{
+	// Process store inventory (inventory processing only)
+	async processStoreInventory(storeId: string): Promise<{
 		inventory_updated: number;
 	}> {
 		try {
-			console.log("Starting store finalization...");
+			console.log("Starting store inventory processing...");
 
 			// Process inventory CSV if available
 			let inventory_updated = 0;
@@ -3292,13 +3292,13 @@ export class ShopifyClient {
 				// Don't fail the entire store generation for inventory issues
 			}
 
-			console.log("Store finalization completed");
+			console.log("Store inventory processing completed");
 
 			return {
 				inventory_updated,
 			};
 		} catch (error) {
-			console.error("Error finalizing store:", error);
+			console.error("Error processing store inventory:", error);
 			throw error;
 		}
 	}
@@ -3330,8 +3330,8 @@ export class ShopifyClient {
 			// Step 3: Publish
 			const publishResult = await this.generateStorePublish();
 
-			// Step 4: Finalization
-			const finalizationResult = await this.finalizeStore(storeId);
+			// Step 4: Inventory Processing
+			const inventoryResult = await this.processStoreInventory(storeId);
 
 			return {
 				theme_id: foundationResult.theme_id,
@@ -3339,7 +3339,7 @@ export class ShopifyClient {
 				logo_uploaded: foundationResult.logo_uploaded,
 				contact_email_set: foundationResult.contact_email_set,
 				locations_created: foundationResult.locations_created,
-				inventory_updated: finalizationResult.inventory_updated,
+				inventory_updated: inventoryResult.inventory_updated,
 			};
 		} catch (error) {
 			console.error("Error generating store:", error);

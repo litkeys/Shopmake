@@ -38,19 +38,19 @@ export async function POST(request: NextRequest) {
 			shopifyToken.admin_api_token
 		);
 
-		// Finalize store
-		const result = await shopifyClient.finalizeStore(storeId);
+		// Process store inventory
+		const result = await shopifyClient.processStoreInventory(storeId);
 
 		return NextResponse.json({
 			success: true,
 			result,
-			message: "Store finalized successfully",
+			message: "Store inventory processed successfully",
 		});
 	} catch (error) {
-		console.error("Store finalization error:", error);
+		console.error("Store inventory processing error:", error);
 		return NextResponse.json(
 			{
-				error: "Failed to finalize store",
+				error: "Failed to process store inventory",
 				details: error instanceof Error ? error.message : String(error),
 			},
 			{ status: 500 }

@@ -276,11 +276,11 @@ export async function generateStorePublishAPI(storeId: string): Promise<{
 	return result.result;
 }
 
-export async function finalizeStoreAPI(storeId: string): Promise<{
+export async function processStoreInventoryAPI(storeId: string): Promise<{
 	inventory_updated: number;
 }> {
 	const response = await fetch(
-		`${getBaseUrl()}/api/shopify/generate/finalize`,
+		`${getBaseUrl()}/api/shopify/generate/inventory`,
 		{
 			method: "POST",
 			headers: {
@@ -292,7 +292,7 @@ export async function finalizeStoreAPI(storeId: string): Promise<{
 
 	if (!response.ok) {
 		const error = await response.json();
-		throw new Error(error.error || "Failed to finalize store");
+		throw new Error(error.error || "Failed to process store inventory");
 	}
 
 	const result = await response.json();
