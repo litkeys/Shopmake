@@ -1212,12 +1212,14 @@ export class ShopifyClient {
 			const query = `
 				query {
 					taxonomy {
-						categories {
-							id
-							name
-							fullName
-							level
-							parentId
+						categories(first: 250) {
+							nodes {
+								id
+								name
+								fullName
+								level
+								parentId
+							}
 						}
 					}
 				}
@@ -1225,20 +1227,22 @@ export class ShopifyClient {
 
 			const result = await this.makeGraphQLRequest<{
 				taxonomy: {
-					categories: Array<{
-						id: string;
-						name: string;
-						fullName: string;
-						level: number;
-						parentId?: string;
-					}>;
+					categories: {
+						nodes: Array<{
+							id: string;
+							name: string;
+							fullName: string;
+							level: number;
+							parentId?: string;
+						}>;
+					};
 				};
 			}>(query);
 
 			// Create a map of category names to IDs for fast lookup
 			const categoryMap = new Map<string, string>();
 
-			for (const category of result.taxonomy.categories) {
+			for (const category of result.taxonomy.categories.nodes) {
 				// Map both the name and full name for flexible matching
 				categoryMap.set(category.name.toLowerCase(), category.id);
 				categoryMap.set(category.fullName.toLowerCase(), category.id);
