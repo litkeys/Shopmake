@@ -2011,39 +2011,21 @@ export class ShopifyClient {
 			);
 
 			let publishedCount = 0;
-			const batchSize = 10;
 
-			// Process products in batches to avoid timeout
-			for (let i = 0; i < recentProducts.length; i += batchSize) {
-				const batch = recentProducts.slice(i, i + batchSize);
-				const batchNumber = Math.floor(i / batchSize) + 1;
-				const totalBatches = Math.ceil(
-					recentProducts.length / batchSize
-				);
-
-				console.log(
-					`Publishing batch ${batchNumber}/${totalBatches} (${batch.length} products)...`
-				);
-
-				// Publish each product in the current batch
-				for (const product of batch) {
-					try {
-						await this.publishProductToOnlineStore(
-							product.id,
-							publicationId
-						);
-						publishedCount++;
-					} catch (error) {
-						console.error(
-							`Failed to publish product ${product.title} to Online Store:`,
-							error
-						);
-					}
+			// Publish each product to Online Store
+			for (const product of recentProducts) {
+				try {
+					await this.publishProductToOnlineStore(
+						product.id,
+						publicationId
+					);
+					publishedCount++;
+				} catch (error) {
+					console.error(
+						`Failed to publish product ${product.title} to Online Store:`,
+						error
+					);
 				}
-
-				console.log(
-					`Batch ${batchNumber}/${totalBatches} completed. Published ${publishedCount}/${recentProducts.length} products so far.`
-				);
 			}
 
 			console.log(
@@ -2750,56 +2732,19 @@ export class ShopifyClient {
 			let successCount = 0;
 			const errors: string[] = [];
 
-			// Process inventory items in parallel batches to avoid timeout
-			const batchSize = 10; // Process 10 items concurrently
-			const batches = [];
-
-			for (let i = 0; i < inventoryItems.length; i += batchSize) {
-				batches.push(inventoryItems.slice(i, i + batchSize));
-			}
-
-			console.log(
-				`Processing ${batches.length} batches of ${batchSize} items each`
-			);
-
-			for (
-				let batchIndex = 0;
-				batchIndex < batches.length;
-				batchIndex++
-			) {
-				const batch = batches[batchIndex];
-				console.log(
-					`Processing batch ${batchIndex + 1}/${batches.length} (${
-						batch.length
-					} items)`
-				);
-
-				// Process all items in this batch concurrently
-				const batchPromises = batch.map(async (item) => {
-					try {
-						await this.activateInventoryItem(
-							item.inventoryItemId,
-							item.locationId,
-							item.quantity
-						);
-						return { success: true, item };
-					} catch (error) {
-						const errorMessage = `Failed to activate inventory item ${item.inventoryItemId} at location ${item.locationId}: ${error}`;
-						console.error(errorMessage);
-						return { success: false, error: errorMessage, item };
-					}
-				});
-
-				// Wait for all items in this batch to complete
-				const batchResults = await Promise.all(batchPromises);
-
-				// Count successes and collect errors
-				for (const result of batchResults) {
-					if (result.success) {
-						successCount++;
-					} else {
-						errors.push(result.error || "Unknown error");
-					}
+			// Process inventory items sequentially
+			for (const item of inventoryItems) {
+				try {
+					await this.activateInventoryItem(
+						item.inventoryItemId,
+						item.locationId,
+						item.quantity
+					);
+					successCount++;
+				} catch (error) {
+					const errorMessage = `Failed to activate inventory item ${item.inventoryItemId} at location ${item.locationId}: ${error}`;
+					console.error(errorMessage);
+					errors.push(errorMessage);
 				}
 			}
 
@@ -3182,19 +3127,19 @@ export class ShopifyClient {
 		return await data.text();
 	}
 
-	// Generate full store
-	async generateStore(
+	// Generate store foundation (theme, locations, branding)
+	async generateStoreFoundation(
 		storeData: StoreData,
 		storeId: string
 	): Promise<{
 		theme_id: number;
-		products_created: number;
+		locations_created: number;
 		logo_uploaded: boolean;
 		contact_email_set: boolean;
-		locations_created: number;
-		inventory_updated: number;
 	}> {
 		try {
+			console.log("Starting store foundation generation...");
+
 			// 1. Upload and publish theme
 			const themeName = `Genesis - ${storeData.brand_name || "Store"}`;
 			const { theme_id } = await this.uploadTheme(themeName);
@@ -3207,15 +3152,12 @@ export class ShopifyClient {
 				`Found ${storeLocations.length} locations to create in Shopify`
 			);
 
-			let shopifyLocations: Array<{
-				id: string;
-				name: string;
-				originalLocation: StoreLocation;
-			}> = [];
 			let locations_created = 0;
 
 			if (storeLocations.length > 0) {
-				shopifyLocations = await this.manageLocations(storeLocations);
+				const shopifyLocations = await this.manageLocations(
+					storeLocations
+				);
 				locations_created = shopifyLocations.length;
 				console.log(
 					`Successfully created ${locations_created} locations in Shopify`
@@ -3229,13 +3171,98 @@ export class ShopifyClient {
 				theme_id
 			);
 
-			// 4. Import products from CSV files
+			console.log("Store foundation generation completed");
+
+			return {
+				theme_id,
+				locations_created,
+				logo_uploaded: brandingResult.logo_uploaded,
+				contact_email_set: brandingResult.contact_email_set,
+			};
+		} catch (error) {
+			console.error("Error generating store foundation:", error);
+			throw error;
+		}
+	}
+
+	// Generate products (import, variants, images, taxonomy)
+	async generateStoreProducts(storeId: string): Promise<{
+		products_created: number;
+		variants_updated: number;
+		images_added: number;
+		taxonomy_updated: number;
+	}> {
+		try {
+			console.log("Starting product generation...");
+
+			// 1. Import products from CSV files
 			const products_created = await this.importProductsFromCSV(storeId);
 
-			// 5. Process inventory CSV if available - use all available locations (existing + newly created)
+			let variants_updated = 0;
+			let images_added = 0;
+			let taxonomy_updated = 0;
+
+			if (products_created > 0) {
+				// 2. Add variants with pricing
+				try {
+					variants_updated = await this.addVariantsToProducts();
+				} catch (error) {
+					console.error("Failed to add variants:", error);
+				}
+
+				// 3. Add images to products
+				try {
+					images_added = await this.addImagesToProducts();
+				} catch (error) {
+					console.error("Failed to add images:", error);
+				}
+
+				// 4. Add taxonomy categories to products
+				try {
+					taxonomy_updated =
+						await this.addTaxonomyCategoriesToProducts();
+				} catch (error) {
+					console.error("Failed to add taxonomy categories:", error);
+				}
+			}
+
+			console.log("Product generation completed");
+
+			return {
+				products_created,
+				variants_updated,
+				images_added,
+				taxonomy_updated,
+			};
+		} catch (error) {
+			console.error("Error generating products:", error);
+			throw error;
+		}
+	}
+
+	// Publish products and process inventory
+	async finalizeStore(storeId: string): Promise<{
+		products_published: number;
+		inventory_updated: number;
+	}> {
+		try {
+			console.log("Starting store finalization...");
+
+			// 1. Publish products to Online Store sales channel
+			let products_published = 0;
+			try {
+				products_published = await this.publishProductsToOnlineStore();
+			} catch (error) {
+				console.error(
+					"Failed to publish products to Online Store:",
+					error
+				);
+			}
+
+			// 2. Process inventory CSV if available
 			let inventory_updated = 0;
 			try {
-				// Get all current locations from Shopify (existing + newly created)
+				// Get all current locations from Shopify
 				const allShopifyLocations = await this.getLocations();
 
 				// Convert to the format expected by processInventoryCSV
@@ -3280,13 +3307,52 @@ export class ShopifyClient {
 				// Don't fail the entire store generation for inventory issues
 			}
 
+			console.log("Store finalization completed");
+
 			return {
-				theme_id,
-				products_created,
-				logo_uploaded: brandingResult.logo_uploaded,
-				contact_email_set: brandingResult.contact_email_set,
-				locations_created,
+				products_published,
 				inventory_updated,
+			};
+		} catch (error) {
+			console.error("Error finalizing store:", error);
+			throw error;
+		}
+	}
+
+	// Legacy method for backward compatibility (now uses chunked approach internally)
+	async generateStore(
+		storeData: StoreData,
+		storeId: string
+	): Promise<{
+		theme_id: number;
+		products_created: number;
+		logo_uploaded: boolean;
+		contact_email_set: boolean;
+		locations_created: number;
+		inventory_updated: number;
+	}> {
+		try {
+			console.log("Starting full store generation (legacy method)...");
+
+			// Step 1: Foundation
+			const foundationResult = await this.generateStoreFoundation(
+				storeData,
+				storeId
+			);
+
+			// Step 2: Products
+			const productsResult = await this.generateStoreProducts(storeId);
+
+			// Step 3: Finalization
+			const finalizationResult = await this.finalizeStore(storeId);
+
+			return {
+				theme_id: foundationResult.theme_id,
+				products_created: productsResult.products_created,
+				logo_uploaded: foundationResult.logo_uploaded,
+				contact_email_set: foundationResult.contact_email_set,
+				locations_created: foundationResult.locations_created,
+				inventory_updated: finalizationResult.inventory_updated,
 			};
 		} catch (error) {
 			console.error("Error generating store:", error);

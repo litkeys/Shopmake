@@ -200,6 +200,83 @@ export async function generateShopifyStoreAPI(
 	return result.data;
 }
 
+// Chunked store generation API functions
+export async function generateStoreFoundationAPI(storeId: string): Promise<{
+	theme_id: number;
+	locations_created: number;
+	logo_uploaded: boolean;
+	contact_email_set: boolean;
+}> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/shopify/generate/foundation`,
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ storeId }),
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to generate store foundation");
+	}
+
+	const result = await response.json();
+	return result.result;
+}
+
+export async function generateStoreProductsAPI(storeId: string): Promise<{
+	products_created: number;
+	variants_updated: number;
+	images_added: number;
+	taxonomy_updated: number;
+}> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/shopify/generate/products`,
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ storeId }),
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to generate store products");
+	}
+
+	const result = await response.json();
+	return result.result;
+}
+
+export async function finalizeStoreAPI(storeId: string): Promise<{
+	products_published: number;
+	inventory_updated: number;
+}> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/shopify/generate/finalize`,
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ storeId }),
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to finalize store");
+	}
+
+	const result = await response.json();
+	return result.result;
+}
+
 export async function disconnectShopifyStoreAPI(
 	storeId: string
 ): Promise<void> {

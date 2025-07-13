@@ -32,6 +32,9 @@ import {
 	getStoreUploadsAPI,
 	deleteFileAPI,
 	generateShopifyStoreAPI,
+	generateStoreFoundationAPI,
+	generateStoreProductsAPI,
+	finalizeStoreAPI,
 	connectShopifyStoreAPI,
 	disconnectShopifyStoreAPI,
 	deleteStoreAPI,
@@ -80,6 +83,20 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const [isLoading, setIsLoading] = useState(true);
 	const [isSaving, setIsSaving] = useState(false);
 	const [isGenerating, setIsGenerating] = useState(false);
+	const [generationProgress, setGenerationProgress] = useState({
+		currentStep: 0,
+		totalSteps: 3,
+		stepName: "",
+		stepDescription: "",
+		percentage: 0,
+		canResume: false,
+		lastCompletedStep: -1,
+	});
+	const [generationResults, setGenerationResults] = useState<{
+		foundation?: any;
+		products?: any;
+		finalization?: any;
+	}>({});
 	const [store, setStore] = useState<Store | null>(null);
 	const [storeData, setStoreData] = useState<StoreData | null>(null);
 	const [uploads, setUploads] = useState<UploadType[]>([]);
@@ -575,7 +592,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		}
 	};
 
-	const handleGenerateStore = async () => {
+	const handleGenerateStore = async (resumeFromStep?: number) => {
 		if (!store) return;
 
 		// Check if store has a Shopify domain (means it's connected)
@@ -585,18 +602,159 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			return;
 		}
 
-		// Store is already connected, proceed with generation
+		// Store is already connected, proceed with chunked generation
 		try {
 			setIsGenerating(true);
 			setError(null);
 
-			console.log("Starting store generation for store:", store.id);
-			const result = await generateShopifyStoreAPI(store.id);
+			const startStep = resumeFromStep || 0;
+			let currentResults = { ...generationResults };
 
+			console.log("Starting store generation for store:", store.id);
+
+			// Step 1: Foundation (Theme, Locations, Branding)
+			if (startStep <= 0) {
+				setGenerationProgress({
+					currentStep: 1,
+					totalSteps: 3,
+					stepName: "Foundation",
+					stepDescription:
+						"Setting up theme, locations, and branding...",
+					percentage: 10,
+					canResume: false,
+					lastCompletedStep: -1,
+				});
+
+				try {
+					const foundationResult = await generateStoreFoundationAPI(
+						store.id
+					);
+					currentResults.foundation = foundationResult;
+					setGenerationResults(currentResults);
+
+					setGenerationProgress((prev) => ({
+						...prev,
+						percentage: 33,
+						lastCompletedStep: 0,
+						canResume: true,
+					}));
+
+					console.log("Foundation completed:", foundationResult);
+				} catch (err) {
+					console.error("Foundation generation error:", err);
+					setGenerationProgress((prev) => ({
+						...prev,
+						canResume: true,
+						lastCompletedStep: -1,
+					}));
+					throw new Error(
+						`Foundation setup failed: ${
+							err instanceof Error ? err.message : "Unknown error"
+						}`
+					);
+				}
+			}
+
+			// Step 2: Products (Import, Variants, Images, Taxonomy)
+			if (startStep <= 1) {
+				setGenerationProgress({
+					currentStep: 2,
+					totalSteps: 3,
+					stepName: "Products",
+					stepDescription:
+						"Importing products, variants, images, and categories...",
+					percentage: 40,
+					canResume: true,
+					lastCompletedStep: 0,
+				});
+
+				try {
+					const productsResult = await generateStoreProductsAPI(
+						store.id
+					);
+					currentResults.products = productsResult;
+					setGenerationResults(currentResults);
+
+					setGenerationProgress((prev) => ({
+						...prev,
+						percentage: 66,
+						lastCompletedStep: 1,
+					}));
+
+					console.log("Products completed:", productsResult);
+				} catch (err) {
+					console.error("Products generation error:", err);
+					setGenerationProgress((prev) => ({
+						...prev,
+						canResume: true,
+						lastCompletedStep: 0,
+					}));
+					throw new Error(
+						`Product setup failed: ${
+							err instanceof Error ? err.message : "Unknown error"
+						}`
+					);
+				}
+			}
+
+			// Step 3: Finalization (Publishing, Inventory)
+			if (startStep <= 2) {
+				setGenerationProgress({
+					currentStep: 3,
+					totalSteps: 3,
+					stepName: "Finalization",
+					stepDescription:
+						"Publishing products and updating inventory...",
+					percentage: 70,
+					canResume: true,
+					lastCompletedStep: 1,
+				});
+
+				try {
+					const finalizationResult = await finalizeStoreAPI(store.id);
+					currentResults.finalization = finalizationResult;
+					setGenerationResults(currentResults);
+
+					setGenerationProgress((prev) => ({
+						...prev,
+						percentage: 100,
+						lastCompletedStep: 2,
+					}));
+
+					console.log("Finalization completed:", finalizationResult);
+				} catch (err) {
+					console.error("Finalization error:", err);
+					setGenerationProgress((prev) => ({
+						...prev,
+						canResume: true,
+						lastCompletedStep: 1,
+					}));
+					throw new Error(
+						`Store finalization failed: ${
+							err instanceof Error ? err.message : "Unknown error"
+						}`
+					);
+				}
+			}
+
+			// Success - all steps completed
+			const storeUrl = `https://${store.shopify_store_domain}.myshopify.com`;
 			setSuccess(
-				`Store generated successfully! Your store is now live at ${result.store_url}`
+				`Store generated successfully! Your store is now live at ${storeUrl}`
 			);
-			setTimeout(() => setSuccess(null), 10000);
+			setTimeout(() => {
+				setSuccess(null);
+				// Reset progress after success
+				setGenerationProgress({
+					currentStep: 0,
+					totalSteps: 3,
+					stepName: "",
+					stepDescription: "",
+					percentage: 0,
+					canResume: false,
+					lastCompletedStep: -1,
+				});
+			}, 10000);
 		} catch (err) {
 			console.error("Store generation error:", err);
 			setError(
@@ -652,6 +810,21 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			setIsDeleting(false);
 			setShowDeleteConfirm(false);
 		}
+	};
+
+	const resetGenerationProgress = () => {
+		setGenerationProgress({
+			currentStep: 0,
+			totalSteps: 3,
+			stepName: "",
+			stepDescription: "",
+			percentage: 0,
+			canResume: false,
+			lastCompletedStep: -1,
+		});
+		setGenerationResults({});
+		setError(null);
+		setSuccess(null);
 	};
 
 	if (isLoading && !store) {
@@ -1548,9 +1721,87 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 							)}
 
 							<div className="flex flex-col space-y-3">
+								{/* Progress Display */}
+								{isGenerating && (
+									<div className="space-y-3">
+										<div className="flex items-center justify-between">
+											<span className="text-sm font-medium">
+												Step{" "}
+												{generationProgress.currentStep}{" "}
+												of{" "}
+												{generationProgress.totalSteps}:{" "}
+												{generationProgress.stepName}
+											</span>
+											<span className="text-sm text-muted-foreground">
+												{generationProgress.percentage}%
+											</span>
+										</div>
+										<div className="w-full bg-gray-200 rounded-full h-2">
+											<div
+												className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+												style={{
+													width: `${generationProgress.percentage}%`,
+												}}
+											></div>
+										</div>
+										<p className="text-sm text-muted-foreground">
+											{generationProgress.stepDescription}
+										</p>
+									</div>
+								)}
+
+								{/* Resume Button for Failed Steps */}
+								{!isGenerating &&
+									generationProgress.canResume &&
+									generationProgress.lastCompletedStep <
+										2 && (
+										<div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+											<div className="flex items-center justify-between">
+												<div>
+													<p className="text-sm font-medium text-amber-800">
+														Generation Paused
+													</p>
+													<p className="text-sm text-amber-700">
+														You can resume from step{" "}
+														{generationProgress.lastCompletedStep +
+															2}
+													</p>
+												</div>
+												<div className="flex space-x-2">
+													<Button
+														type="button"
+														onClick={() =>
+															handleGenerateStore(
+																generationProgress.lastCompletedStep +
+																	1
+															)
+														}
+														size="sm"
+														variant="outline"
+														className="border-amber-300 text-amber-700 hover:bg-amber-100"
+													>
+														Resume
+													</Button>
+													<Button
+														type="button"
+														onClick={
+															resetGenerationProgress
+														}
+														size="sm"
+														variant="outline"
+														className="border-gray-300 text-gray-700 hover:bg-gray-100"
+													>
+														Reset
+													</Button>
+												</div>
+											</div>
+										</div>
+									)}
+
+								{/* Main Generation Button */}
 								<Button
 									type="button"
-									onClick={handleGenerateStore}
+									onClick={() => handleGenerateStore()}
 									disabled={
 										isGenerating ||
 										!formData.brand_name.trim()
@@ -1561,7 +1812,9 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 									{isGenerating ? (
 										<>
 											<div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-											Generating Store...
+											{generationProgress.stepName
+												? `${generationProgress.stepName}...`
+												: "Generating Store..."}
 										</>
 									) : (
 										<>
@@ -1578,6 +1831,91 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 										Please enter a brand name before
 										generating
 									</p>
+								)}
+
+								{/* Generation Results Summary */}
+								{(generationResults.foundation ||
+									generationResults.products ||
+									generationResults.finalization) && (
+									<div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+										<h4 className="text-sm font-medium text-green-800 mb-2">
+											Generation Progress
+										</h4>
+										<div className="space-y-1 text-sm text-green-700">
+											{generationResults.foundation && (
+												<div className="flex items-center">
+													<svg
+														className="h-4 w-4 text-green-500 mr-2"
+														fill="currentColor"
+														viewBox="0 0 20 20"
+													>
+														<path
+															fillRule="evenodd"
+															d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+															clipRule="evenodd"
+														/>
+													</svg>
+													Foundation: Theme installed,{" "}
+													{
+														generationResults
+															.foundation
+															.locations_created
+													}{" "}
+													locations created
+												</div>
+											)}
+											{generationResults.products && (
+												<div className="flex items-center">
+													<svg
+														className="h-4 w-4 text-green-500 mr-2"
+														fill="currentColor"
+														viewBox="0 0 20 20"
+													>
+														<path
+															fillRule="evenodd"
+															d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+															clipRule="evenodd"
+														/>
+													</svg>
+													Products:{" "}
+													{
+														generationResults
+															.products
+															.products_created
+													}{" "}
+													products,{" "}
+													{
+														generationResults
+															.products
+															.variants_updated
+													}{" "}
+													variants
+												</div>
+											)}
+											{generationResults.finalization && (
+												<div className="flex items-center">
+													<svg
+														className="h-4 w-4 text-green-500 mr-2"
+														fill="currentColor"
+														viewBox="0 0 20 20"
+													>
+														<path
+															fillRule="evenodd"
+															d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+															clipRule="evenodd"
+														/>
+													</svg>
+													Finalization:{" "}
+													{
+														generationResults
+															.finalization
+															.products_published
+													}{" "}
+													products published
+												</div>
+											)}
+										</div>
+									</div>
 								)}
 							</div>
 						</div>
