@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import {
@@ -34,28 +34,10 @@ import {
 import { StoreFormData, StoreLocation, LocationFormData } from "@/types";
 import Link from "next/link";
 
-// Debounce hook
-function useDebounce<T>(value: T, delay: number): T {
-	const [debouncedValue, setDebouncedValue] = useState<T>(value);
-
-	useEffect(() => {
-		const handler = setTimeout(() => {
-			setDebouncedValue(value);
-		}, delay);
-
-		return () => {
-			clearTimeout(handler);
-		};
-	}, [value, delay]);
-
-	return debouncedValue;
-}
-
 export default function NewClientPage() {
 	const router = useRouter();
 	const { userId } = useAuth();
 	const [isLoading, setIsLoading] = useState(false);
-	const [isSaving, setIsSaving] = useState(false);
 	const [storeId, setStoreId] = useState<string | null>(null);
 	const [logoPreview, setLogoPreview] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -64,6 +46,7 @@ export default function NewClientPage() {
 	const [locationFormData, setLocationFormData] = useState<
 		Record<string, LocationFormData>
 	>({});
+	const [tempLocationCounter, setTempLocationCounter] = useState(0);
 
 	const [formData, setFormData] = useState<StoreFormData>({
 		brand_name: "",
@@ -71,100 +54,6 @@ export default function NewClientPage() {
 		main_product_category: "",
 		contact_email: "",
 	});
-
-	// Debounced form data for auto-save
-	const debouncedFormData = useDebounce(formData, 500);
-	const debouncedLocationFormData = useDebounce(locationFormData, 500);
-
-	// Auto-save effect
-	useEffect(() => {
-		if (storeId && debouncedFormData.brand_name.trim()) {
-			handleAutoSave();
-		}
-	}, [debouncedFormData, storeId]);
-
-	const handleAutoSave = useCallback(async () => {
-		if (!storeId || isSaving) return;
-
-		setIsSaving(true);
-		try {
-			await updateStoreDataAPI(storeId, {
-				brand_name: debouncedFormData.brand_name,
-				description: debouncedFormData.description,
-				main_product_category: debouncedFormData.main_product_category,
-				contact_email: debouncedFormData.contact_email,
-			});
-			setSuccess("Changes saved automatically");
-			setTimeout(() => setSuccess(null), 2000);
-		} catch (err) {
-			console.error("Auto-save failed:", err);
-		} finally {
-			setIsSaving(false);
-		}
-	}, [storeId, debouncedFormData, isSaving]);
-
-	const handleAutoSaveLocations = useCallback(async () => {
-		if (!storeId || isSaving) return;
-
-		setIsSaving(true);
-		try {
-			// Update each location that has changes
-			const updatePromises = Object.entries(
-				debouncedLocationFormData
-			).map(async ([locationId, formData]) => {
-				const currentLocation = locations.find(
-					(loc) => loc.id === locationId
-				);
-				if (currentLocation) {
-					// Check if there are actual changes
-					const hasChanges =
-						currentLocation.name !== formData.name ||
-						(currentLocation.address || "") !== formData.address ||
-						(currentLocation.city || "") !== formData.city ||
-						(currentLocation.country || "") !== formData.country ||
-						(currentLocation.phone || "") !== formData.phone;
-
-					if (hasChanges) {
-						const updatedLocation = await updateStoreLocationAPI(
-							storeId,
-							locationId,
-							formData
-						);
-						return updatedLocation;
-					}
-				}
-				return null;
-			});
-
-			const results = await Promise.all(updatePromises);
-			const updatedLocations = results.filter(Boolean);
-
-			if (updatedLocations.length > 0) {
-				// Update locations state with the updated data
-				setLocations((prevLocations) =>
-					prevLocations.map((loc) => {
-						const updated = updatedLocations.find(
-							(u) => u && u.id === loc.id
-						);
-						return updated || loc;
-					})
-				);
-				setSuccess("Location changes saved automatically");
-				setTimeout(() => setSuccess(null), 2000);
-			}
-		} catch (err) {
-			console.error("Location auto-save failed:", err);
-		} finally {
-			setIsSaving(false);
-		}
-	}, [storeId, debouncedLocationFormData, locations, isSaving]);
-
-	// Auto-save effect for locations
-	useEffect(() => {
-		if (storeId && Object.keys(debouncedLocationFormData).length > 0) {
-			handleAutoSaveLocations();
-		}
-	}, [debouncedLocationFormData, storeId, handleAutoSaveLocations]);
 
 	const handleInputChange = (field: keyof StoreFormData, value: string) => {
 		setFormData((prev) => ({
@@ -252,35 +141,36 @@ export default function NewClientPage() {
 	};
 
 	// Location management functions
-	const handleAddLocation = async () => {
-		if (!storeId) return;
+	const handleAddLocation = () => {
+		// Store doesn't exist yet, create temporary location
+		const tempId = `temp_${tempLocationCounter}`;
+		setTempLocationCounter(tempLocationCounter + 1);
 
-		try {
-			const newLocation = await createStoreLocationAPI(storeId, {
+		const tempLocation: StoreLocation = {
+			id: tempId,
+			store_id: "", // Will be set when store is created
+			name: "New Location",
+			address: "",
+			city: "",
+			country: "",
+			phone: "",
+			created_at: new Date().toISOString(),
+			updated_at: new Date().toISOString(),
+		};
+
+		setLocations([...locations, tempLocation]);
+
+		// Add to form data for immediate editing
+		setLocationFormData((prev) => ({
+			...prev,
+			[tempId]: {
 				name: "New Location",
 				address: "",
 				city: "",
 				country: "",
 				phone: "",
-			});
-			setLocations([...locations, newLocation]);
-
-			// Add to form data for immediate editing
-			setLocationFormData((prev) => ({
-				...prev,
-				[newLocation.id]: {
-					name: newLocation.name,
-					address: newLocation.address || "",
-					city: newLocation.city || "",
-					country: newLocation.country || "",
-					phone: newLocation.phone || "",
-				},
-			}));
-		} catch (err) {
-			setError(
-				err instanceof Error ? err.message : "Failed to add location"
-			);
-		}
+			},
+		}));
 	};
 
 	const handleLocationInputChange = (
@@ -297,24 +187,16 @@ export default function NewClientPage() {
 		}));
 	};
 
-	const handleDeleteLocation = async (locationId: string) => {
-		if (!storeId) return;
+	const handleDeleteLocation = (locationId: string) => {
+		// All locations in create form are temporary, just remove from state
+		setLocations(locations.filter((loc) => loc.id !== locationId));
 
-		try {
-			await deleteStoreLocationAPI(storeId, locationId);
-			setLocations(locations.filter((loc) => loc.id !== locationId));
-
-			// Remove from form data
-			setLocationFormData((prev) => {
-				const updated = { ...prev };
-				delete updated[locationId];
-				return updated;
-			});
-		} catch (err) {
-			setError(
-				err instanceof Error ? err.message : "Failed to delete location"
-			);
-		}
+		// Remove from form data
+		setLocationFormData((prev) => {
+			const updated = { ...prev };
+			delete updated[locationId];
+			return updated;
+		});
 	};
 
 	const handleSubmit = async (e: React.FormEvent) => {
@@ -350,6 +232,17 @@ export default function NewClientPage() {
 				main_product_category: formData.main_product_category,
 				contact_email: formData.contact_email,
 			});
+
+			// Create any temporary locations
+			const tempLocations = locations.filter((loc) =>
+				loc.id.startsWith("temp_")
+			);
+			for (const tempLocation of tempLocations) {
+				const locationData = locationFormData[tempLocation.id];
+				if (locationData) {
+					await createStoreLocationAPI(currentStoreId, locationData);
+				}
+			}
 
 			setSuccess("Client store created successfully!");
 
@@ -868,13 +761,7 @@ export default function NewClientPage() {
 				</Card>
 
 				<div className="flex items-center justify-between">
-					<div className="flex items-center space-x-2">
-						{isSaving && (
-							<p className="text-sm text-muted-foreground">
-								Saving...
-							</p>
-						)}
-					</div>
+					<div className="flex items-center space-x-2"></div>
 					<div className="flex space-x-3">
 						<Button type="button" variant="outline" asChild>
 							<Link href="/dashboard/clients">Cancel</Link>
