@@ -2927,13 +2927,35 @@ export class ShopifyClient {
 			// 4. Import products from CSV files
 			const products_created = await this.importProductsFromCSV(storeId);
 
-			// 5. Process inventory CSV if available and locations were created
+			// 5. Process inventory CSV if available - use all available locations (existing + newly created)
 			let inventory_updated = 0;
-			if (shopifyLocations.length > 0) {
-				try {
+			try {
+				// Get all current locations from Shopify (existing + newly created)
+				const allShopifyLocations = await this.getLocations();
+
+				// Convert to the format expected by processInventoryCSV
+				const locationsForInventory = allShopifyLocations.map(
+					(location) => ({
+						id: location.id,
+						name: location.name,
+						originalLocation: {
+							id: location.id,
+							store_id: storeId,
+							name: location.name,
+							address: location.address.address1 || "",
+							city: location.address.city || "",
+							country: location.address.country || "",
+							phone: location.address.phone || "",
+							created_at: new Date().toISOString(),
+							updated_at: new Date().toISOString(),
+						},
+					})
+				);
+
+				if (locationsForInventory.length > 0) {
 					const inventoryResult = await this.processInventoryCSV(
 						storeId,
-						shopifyLocations
+						locationsForInventory
 					);
 					inventory_updated = inventoryResult.inventoryUpdated;
 
@@ -2943,10 +2965,14 @@ export class ShopifyClient {
 							inventoryResult.errors
 						);
 					}
-				} catch (error) {
-					console.error("Error processing inventory CSV:", error);
-					// Don't fail the entire store generation for inventory issues
+				} else {
+					console.log(
+						"No locations available for inventory processing"
+					);
 				}
+			} catch (error) {
+				console.error("Error processing inventory CSV:", error);
+				// Don't fail the entire store generation for inventory issues
 			}
 
 			return {
