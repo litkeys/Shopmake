@@ -756,6 +756,7 @@ export class ShopifyClient {
 		description: string;
 		vendor?: string;
 		product_type?: string;
+		product_category?: string;
 		price: string;
 		compare_at_price?: string;
 		inventory_quantity?: number;
@@ -882,9 +883,11 @@ export class ShopifyClient {
 						product.vendor = cleanValue;
 						break;
 					case "product category":
+					case "category":
+						product.product_category = cleanValue;
+						break;
 					case "product_type":
 					case "type":
-					case "category":
 						product.product_type = cleanValue;
 						break;
 					case "tags":
@@ -1051,6 +1054,7 @@ export class ShopifyClient {
 			description: string;
 			vendor?: string;
 			product_type?: string;
+			product_category?: string;
 			price: string;
 			compare_at_price?: string;
 			inventory_quantity?: number;
@@ -1167,6 +1171,17 @@ export class ShopifyClient {
 								},
 						  ]
 						: []),
+					// Store product category for taxonomy mapping
+					...(product.product_category
+						? [
+								{
+									namespace: "custom",
+									key: "product_category",
+									value: product.product_category,
+									type: "single_line_text_field",
+								},
+						  ]
+						: []),
 				].filter(Boolean),
 			};
 
@@ -1182,6 +1197,270 @@ export class ShopifyClient {
 		});
 
 		return jsonlLines.join("\n");
+	}
+
+	// Fetch and cache Shopify taxonomy categories
+	private taxonomyCache: Map<string, string> | null = null;
+
+	private async getTaxonomyCategories(): Promise<Map<string, string>> {
+		if (this.taxonomyCache) {
+			return this.taxonomyCache;
+		}
+
+		try {
+			console.log("Fetching Shopify taxonomy categories...");
+			const query = `
+				query {
+					taxonomy {
+						categories {
+							id
+							name
+							fullName
+							level
+							parentId
+						}
+					}
+				}
+			`;
+
+			const result = await this.makeGraphQLRequest<{
+				taxonomy: {
+					categories: Array<{
+						id: string;
+						name: string;
+						fullName: string;
+						level: number;
+						parentId?: string;
+					}>;
+				};
+			}>(query);
+
+			// Create a map of category names to IDs for fast lookup
+			const categoryMap = new Map<string, string>();
+
+			for (const category of result.taxonomy.categories) {
+				// Map both the name and full name for flexible matching
+				categoryMap.set(category.name.toLowerCase(), category.id);
+				categoryMap.set(category.fullName.toLowerCase(), category.id);
+			}
+
+			this.taxonomyCache = categoryMap;
+			console.log(`Cached ${categoryMap.size} taxonomy categories`);
+			return categoryMap;
+		} catch (error) {
+			console.error("Error fetching taxonomy categories:", error);
+			// Return empty map if taxonomy fetch fails
+			return new Map<string, string>();
+		}
+	}
+
+	// Find best matching taxonomy category ID for a given category name
+	private async findTaxonomyCategoryId(
+		categoryName: string
+	): Promise<string | null> {
+		if (!categoryName) return null;
+
+		const taxonomyMap = await this.getTaxonomyCategories();
+		const lowerCategoryName = categoryName.toLowerCase();
+
+		// Try exact match first
+		let categoryId = taxonomyMap.get(lowerCategoryName);
+		if (categoryId) return categoryId;
+
+		// Try partial matching for common category variations
+		for (const [key, value] of Array.from(taxonomyMap.entries())) {
+			if (
+				key.includes(lowerCategoryName) ||
+				lowerCategoryName.includes(key)
+			) {
+				return value;
+			}
+		}
+
+		console.warn(`No taxonomy category found for: ${categoryName}`);
+		return null;
+	}
+
+	// Add taxonomy categories to recently created products
+	private async addTaxonomyCategoriesToProducts(): Promise<number> {
+		try {
+			console.log("Adding taxonomy categories to products...");
+
+			// Query recently created products with category metafields
+			const productsQuery = `
+				query {
+					products(first: 250, sortKey: CREATED_AT, reverse: true) {
+						nodes {
+							id
+							title
+							category {
+								id
+								name
+							}
+							metafields(first: 15) {
+								nodes {
+									namespace
+									key
+									value
+								}
+							}
+						}
+					}
+				}
+			`;
+
+			const result = await this.makeGraphQLRequest<{
+				products: {
+					nodes: Array<{
+						id: string;
+						title: string;
+						category?: {
+							id: string;
+							name: string;
+						};
+						metafields: {
+							nodes: Array<{
+								namespace: string;
+								key: string;
+								value: string;
+							}>;
+						};
+					}>;
+				};
+			}>(productsQuery);
+
+			// Filter products that need taxonomy category updates
+			const productsNeedingCategories = result.products.nodes.filter(
+				(product) => {
+					// Check if product has category metafield but no taxonomy category set
+					const hasCategory = product.metafields.nodes.some(
+						(meta) =>
+							meta.namespace === "custom" &&
+							meta.key === "product_category"
+					);
+					const hasExistingTaxonomy = product.category?.id;
+					return hasCategory && !hasExistingTaxonomy;
+				}
+			);
+
+			if (productsNeedingCategories.length === 0) {
+				console.log(
+					"No products found that need taxonomy category updates"
+				);
+				return 0;
+			}
+
+			console.log(
+				`Found ${productsNeedingCategories.length} products that need taxonomy category updates`
+			);
+
+			let updatedCount = 0;
+
+			// Update products with taxonomy categories
+			for (const product of productsNeedingCategories) {
+				try {
+					await this.updateProductTaxonomyCategory(product);
+					updatedCount++;
+				} catch (error) {
+					console.error(
+						`Failed to update taxonomy category for product ${product.title}:`,
+						error
+					);
+				}
+			}
+
+			console.log(
+				`Successfully updated taxonomy categories for ${updatedCount} products`
+			);
+			return updatedCount;
+		} catch (error) {
+			console.error(
+				"Error adding taxonomy categories to products:",
+				error
+			);
+			return 0;
+		}
+	}
+
+	// Update a single product's taxonomy category
+	private async updateProductTaxonomyCategory(product: {
+		id: string;
+		title: string;
+		metafields: {
+			nodes: Array<{ namespace: string; key: string; value: string }>;
+		};
+	}): Promise<void> {
+		// Extract category from metafields
+		const categoryMetafield = product.metafields.nodes.find(
+			(meta) =>
+				meta.namespace === "custom" && meta.key === "product_category"
+		);
+
+		if (!categoryMetafield?.value) {
+			throw new Error("No product category found in metafields");
+		}
+
+		// Find matching taxonomy category ID
+		const taxonomyCategoryId = await this.findTaxonomyCategoryId(
+			categoryMetafield.value
+		);
+
+		if (!taxonomyCategoryId) {
+			console.warn(
+				`No taxonomy category found for "${categoryMetafield.value}" in product ${product.title}`
+			);
+			return; // Skip this product instead of throwing error
+		}
+
+		// Update the product with taxonomy category
+		const mutation = `
+			mutation productUpdate($input: ProductInput!) {
+				productUpdate(input: $input) {
+					product {
+						id
+						title
+						category {
+							id
+							name
+						}
+					}
+					userErrors {
+						field
+						message
+					}
+				}
+			}
+		`;
+
+		const variables = {
+			input: {
+				id: product.id,
+				category: {
+					id: taxonomyCategoryId,
+				},
+			},
+		};
+
+		const result = await this.makeGraphQLRequest<{
+			productUpdate: {
+				product: {
+					id: string;
+					title: string;
+					category?: {
+						id: string;
+						name: string;
+					};
+				};
+				userErrors: Array<{ field: string; message: string }>;
+			};
+		}>(mutation, variables);
+
+		if (result.productUpdate.userErrors.length > 0) {
+			const errors = result.productUpdate.userErrors
+				.map((error) => error.message)
+				.join("; ");
+			throw new Error(`Taxonomy category update errors: ${errors}`);
+		}
 	}
 
 	// Add variants with pricing to recently created products
@@ -1618,6 +1897,13 @@ export class ShopifyClient {
 					await this.addImagesToProducts();
 				} catch (error) {
 					console.error("Failed to add images:", error);
+				}
+
+				// Add taxonomy categories to products
+				try {
+					await this.addTaxonomyCategoriesToProducts();
+				} catch (error) {
+					console.error("Failed to add taxonomy categories:", error);
 				}
 
 				// Publish products to Online Store sales channel
