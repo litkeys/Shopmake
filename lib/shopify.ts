@@ -1439,9 +1439,7 @@ export class ShopifyClient {
 		const variables = {
 			input: {
 				id: product.id,
-				category: {
-					id: taxonomyCategoryId,
-				},
+				category: taxonomyCategoryId,
 			},
 		};
 
