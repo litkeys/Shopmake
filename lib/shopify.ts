@@ -1885,39 +1885,7 @@ export class ShopifyClient {
 
 			const baseProductCount = completedOperation.objectCount || 0;
 
-			if (baseProductCount > 0) {
-				// Add variants with pricing
-				try {
-					await this.addVariantsToProducts();
-				} catch (error) {
-					console.error("Failed to add variants:", error);
-				}
-
-				// Add images to products
-				try {
-					await this.addImagesToProducts();
-				} catch (error) {
-					console.error("Failed to add images:", error);
-				}
-
-				// Add taxonomy categories to products
-				try {
-					await this.addTaxonomyCategoriesToProducts();
-				} catch (error) {
-					console.error("Failed to add taxonomy categories:", error);
-				}
-
-				// Publish products to Online Store sales channel
-				try {
-					await this.publishProductsToOnlineStore();
-				} catch (error) {
-					console.error(
-						"Failed to publish products to Online Store:",
-						error
-					);
-				}
-			}
-
+			// Just return the count - other steps are handled by separate methods
 			return baseProductCount;
 		} catch (error) {
 			console.error(
