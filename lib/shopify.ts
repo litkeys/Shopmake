@@ -2011,21 +2011,39 @@ export class ShopifyClient {
 			);
 
 			let publishedCount = 0;
+			const batchSize = 10;
 
-			// Publish each product to Online Store
-			for (const product of recentProducts) {
-				try {
-					await this.publishProductToOnlineStore(
-						product.id,
-						publicationId
-					);
-					publishedCount++;
-				} catch (error) {
-					console.error(
-						`Failed to publish product ${product.title} to Online Store:`,
-						error
-					);
+			// Process products in batches to avoid timeout
+			for (let i = 0; i < recentProducts.length; i += batchSize) {
+				const batch = recentProducts.slice(i, i + batchSize);
+				const batchNumber = Math.floor(i / batchSize) + 1;
+				const totalBatches = Math.ceil(
+					recentProducts.length / batchSize
+				);
+
+				console.log(
+					`Publishing batch ${batchNumber}/${totalBatches} (${batch.length} products)...`
+				);
+
+				// Publish each product in the current batch
+				for (const product of batch) {
+					try {
+						await this.publishProductToOnlineStore(
+							product.id,
+							publicationId
+						);
+						publishedCount++;
+					} catch (error) {
+						console.error(
+							`Failed to publish product ${product.title} to Online Store:`,
+							error
+						);
+					}
 				}
+
+				console.log(
+					`Batch ${batchNumber}/${totalBatches} completed. Published ${publishedCount}/${recentProducts.length} products so far.`
+				);
 			}
 
 			console.log(
