@@ -2387,17 +2387,18 @@ export class ShopifyClient {
 			console.log(`Found ${existingLocations.length} existing locations`);
 
 			// 2. Delete all existing locations (except the primary one which might be protected)
-			for (const location of existingLocations) {
-				try {
-					await this.deleteLocation(location.id);
-				} catch (error) {
-					console.log(
-						`Could not delete location ${location.name}:`,
-						error
-					);
-					// Continue with other locations
-				}
-			}
+			// COMMENTED OUT: No longer deleting existing locations
+			// for (const location of existingLocations) {
+			// 	try {
+			// 		await this.deleteLocation(location.id);
+			// 	} catch (error) {
+			// 		console.log(
+			// 			`Could not delete location ${location.name}:`,
+			// 			error
+			// 		);
+			// 		// Continue with other locations
+			// 	}
+			// }
 
 			// 3. Add new locations
 			const createdLocations = [];
