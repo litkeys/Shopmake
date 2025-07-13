@@ -1333,6 +1333,9 @@ export class ShopifyClient {
 				};
 			}>(productsQuery);
 
+			// Debug logging: Check what we found
+			console.log(`Found ${result.products.nodes.length} total products`);
+
 			// Filter products that need taxonomy category updates
 			const productsNeedingCategories = result.products.nodes.filter(
 				(product) => {
@@ -1343,6 +1346,22 @@ export class ShopifyClient {
 							meta.key === "product_category"
 					);
 					const hasExistingTaxonomy = product.category?.id;
+
+					// Debug logging for each product
+					const categoryMetafield = product.metafields.nodes.find(
+						(meta) =>
+							meta.namespace === "custom" &&
+							meta.key === "product_category"
+					);
+
+					console.log(`Product "${product.title}":`, {
+						hasCategory,
+						hasExistingTaxonomy,
+						categoryValue: categoryMetafield?.value || "none",
+						existingTaxonomy: product.category?.name || "none",
+						metafieldsCount: product.metafields.nodes.length,
+					});
+
 					return hasCategory && !hasExistingTaxonomy;
 				}
 			);
