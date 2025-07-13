@@ -14,9 +14,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Save, Upload, Image as ImageIcon } from "lucide-react";
-import { createStoreAPI, updateStoreDataAPI, uploadFileAPI } from "@/lib/api";
-import { StoreFormData } from "@/types";
+import {
+	ArrowLeft,
+	Save,
+	Upload,
+	Image as ImageIcon,
+	Plus,
+	MapPin,
+	Trash2,
+} from "lucide-react";
+import {
+	createStoreAPI,
+	updateStoreDataAPI,
+	uploadFileAPI,
+	createStoreLocationAPI,
+	deleteStoreLocationAPI,
+	updateStoreLocationAPI,
+} from "@/lib/api";
+import { StoreFormData, StoreLocation, LocationFormData } from "@/types";
 import Link from "next/link";
 
 // Debounce hook
@@ -45,6 +60,10 @@ export default function NewClientPage() {
 	const [logoPreview, setLogoPreview] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [success, setSuccess] = useState<string | null>(null);
+	const [locations, setLocations] = useState<StoreLocation[]>([]);
+	const [locationFormData, setLocationFormData] = useState<
+		Record<string, LocationFormData>
+	>({});
 
 	const [formData, setFormData] = useState<StoreFormData>({
 		brand_name: "",
@@ -55,6 +74,7 @@ export default function NewClientPage() {
 
 	// Debounced form data for auto-save
 	const debouncedFormData = useDebounce(formData, 500);
+	const debouncedLocationFormData = useDebounce(locationFormData, 500);
 
 	// Auto-save effect
 	useEffect(() => {
@@ -82,6 +102,69 @@ export default function NewClientPage() {
 			setIsSaving(false);
 		}
 	}, [storeId, debouncedFormData, isSaving]);
+
+	const handleAutoSaveLocations = useCallback(async () => {
+		if (!storeId || isSaving) return;
+
+		setIsSaving(true);
+		try {
+			// Update each location that has changes
+			const updatePromises = Object.entries(
+				debouncedLocationFormData
+			).map(async ([locationId, formData]) => {
+				const currentLocation = locations.find(
+					(loc) => loc.id === locationId
+				);
+				if (currentLocation) {
+					// Check if there are actual changes
+					const hasChanges =
+						currentLocation.name !== formData.name ||
+						(currentLocation.address || "") !== formData.address ||
+						(currentLocation.city || "") !== formData.city ||
+						(currentLocation.country || "") !== formData.country ||
+						(currentLocation.phone || "") !== formData.phone;
+
+					if (hasChanges) {
+						const updatedLocation = await updateStoreLocationAPI(
+							storeId,
+							locationId,
+							formData
+						);
+						return updatedLocation;
+					}
+				}
+				return null;
+			});
+
+			const results = await Promise.all(updatePromises);
+			const updatedLocations = results.filter(Boolean);
+
+			if (updatedLocations.length > 0) {
+				// Update locations state with the updated data
+				setLocations((prevLocations) =>
+					prevLocations.map((loc) => {
+						const updated = updatedLocations.find(
+							(u) => u && u.id === loc.id
+						);
+						return updated || loc;
+					})
+				);
+				setSuccess("Location changes saved automatically");
+				setTimeout(() => setSuccess(null), 2000);
+			}
+		} catch (err) {
+			console.error("Location auto-save failed:", err);
+		} finally {
+			setIsSaving(false);
+		}
+	}, [storeId, debouncedLocationFormData, locations, isSaving]);
+
+	// Auto-save effect for locations
+	useEffect(() => {
+		if (storeId && Object.keys(debouncedLocationFormData).length > 0) {
+			handleAutoSaveLocations();
+		}
+	}, [debouncedLocationFormData, storeId, handleAutoSaveLocations]);
 
 	const handleInputChange = (field: keyof StoreFormData, value: string) => {
 		setFormData((prev) => ({
@@ -165,6 +248,72 @@ export default function NewClientPage() {
 			);
 		} finally {
 			setIsLoading(false);
+		}
+	};
+
+	// Location management functions
+	const handleAddLocation = async () => {
+		if (!storeId) return;
+
+		try {
+			const newLocation = await createStoreLocationAPI(storeId, {
+				name: "New Location",
+				address: "",
+				city: "",
+				country: "",
+				phone: "",
+			});
+			setLocations([...locations, newLocation]);
+
+			// Add to form data for immediate editing
+			setLocationFormData((prev) => ({
+				...prev,
+				[newLocation.id]: {
+					name: newLocation.name,
+					address: newLocation.address || "",
+					city: newLocation.city || "",
+					country: newLocation.country || "",
+					phone: newLocation.phone || "",
+				},
+			}));
+		} catch (err) {
+			setError(
+				err instanceof Error ? err.message : "Failed to add location"
+			);
+		}
+	};
+
+	const handleLocationInputChange = (
+		locationId: string,
+		field: keyof LocationFormData,
+		value: string
+	) => {
+		setLocationFormData((prev) => ({
+			...prev,
+			[locationId]: {
+				...prev[locationId],
+				[field]: value,
+			},
+		}));
+	};
+
+	const handleDeleteLocation = async (locationId: string) => {
+		if (!storeId) return;
+
+		try {
+			await deleteStoreLocationAPI(storeId, locationId);
+			setLocations(locations.filter((loc) => loc.id !== locationId));
+
+			// Remove from form data
+			setLocationFormData((prev) => {
+				const updated = { ...prev };
+				delete updated[locationId];
+				return updated;
+			});
+		} catch (err) {
+			setError(
+				err instanceof Error ? err.message : "Failed to delete location"
+			);
 		}
 	};
 
@@ -491,6 +640,230 @@ export default function NewClientPage() {
 								</Button>
 							</div>
 						</div>
+
+						<div>
+							<Label htmlFor="inventory_csv">Inventory CSV</Label>
+							<div className="mt-2">
+								<input
+									id="inventory_csv"
+									type="file"
+									accept=".csv"
+									onChange={(e) =>
+										handleCsvUpload(e, "inventory")
+									}
+									className="hidden"
+								/>
+								<Button
+									type="button"
+									variant="outline"
+									onClick={() =>
+										document
+											.getElementById("inventory_csv")
+											?.click()
+									}
+									disabled={isLoading}
+								>
+									<Upload className="h-4 w-4 mr-2" />
+									Upload Inventory CSV
+								</Button>
+								<p className="text-sm text-muted-foreground mt-1">
+									Shopify Inventory CSV export with location
+									and stock data
+								</p>
+							</div>
+						</div>
+					</CardContent>
+				</Card>
+
+				{/* Store Locations Section */}
+				<Card>
+					<CardHeader>
+						<CardTitle className="flex items-center">
+							<MapPin className="h-5 w-5 mr-2" />
+							Store Locations
+						</CardTitle>
+						<CardDescription>
+							Add one or more store locations for inventory
+							management
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						{locations.length === 0 ? (
+							<div className="text-center py-8 text-gray-500">
+								<MapPin className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+								<p>No locations added yet</p>
+								<p className="text-sm">
+									Add your first location to get started
+								</p>
+							</div>
+						) : (
+							<div className="space-y-4">
+								{locations.map((location) => (
+									<div
+										key={location.id}
+										className="p-4 border rounded-lg bg-gray-50 space-y-4"
+									>
+										<div className="flex items-center justify-between">
+											<h4 className="font-medium">
+												Location Details
+											</h4>
+											<Button
+												type="button"
+												variant="outline"
+												size="sm"
+												onClick={() =>
+													handleDeleteLocation(
+														location.id
+													)
+												}
+											>
+												<Trash2 className="h-4 w-4 mr-2" />
+												Remove
+											</Button>
+										</div>
+										<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+											<div>
+												<Label
+													htmlFor={`location-name-${location.id}`}
+												>
+													Location Name *
+												</Label>
+												<Input
+													id={`location-name-${location.id}`}
+													type="text"
+													value={
+														locationFormData[
+															location.id
+														]?.name || location.name
+													}
+													onChange={(e) =>
+														handleLocationInputChange(
+															location.id,
+															"name",
+															e.target.value
+														)
+													}
+													placeholder="Main Store"
+												/>
+											</div>
+											<div>
+												<Label
+													htmlFor={`location-phone-${location.id}`}
+												>
+													Phone
+												</Label>
+												<Input
+													id={`location-phone-${location.id}`}
+													type="tel"
+													value={
+														locationFormData[
+															location.id
+														]?.phone ||
+														location.phone ||
+														""
+													}
+													onChange={(e) =>
+														handleLocationInputChange(
+															location.id,
+															"phone",
+															e.target.value
+														)
+													}
+													placeholder="+1 (555) 123-4567"
+												/>
+											</div>
+											<div>
+												<Label
+													htmlFor={`location-address-${location.id}`}
+												>
+													Address
+												</Label>
+												<Input
+													id={`location-address-${location.id}`}
+													type="text"
+													value={
+														locationFormData[
+															location.id
+														]?.address ||
+														location.address ||
+														""
+													}
+													onChange={(e) =>
+														handleLocationInputChange(
+															location.id,
+															"address",
+															e.target.value
+														)
+													}
+													placeholder="123 Main Street"
+												/>
+											</div>
+											<div>
+												<Label
+													htmlFor={`location-city-${location.id}`}
+												>
+													City
+												</Label>
+												<Input
+													id={`location-city-${location.id}`}
+													type="text"
+													value={
+														locationFormData[
+															location.id
+														]?.city ||
+														location.city ||
+														""
+													}
+													onChange={(e) =>
+														handleLocationInputChange(
+															location.id,
+															"city",
+															e.target.value
+														)
+													}
+													placeholder="New York"
+												/>
+											</div>
+											<div>
+												<Label
+													htmlFor={`location-country-${location.id}`}
+												>
+													Country Code
+												</Label>
+												<Input
+													id={`location-country-${location.id}`}
+													type="text"
+													value={
+														locationFormData[
+															location.id
+														]?.country ||
+														location.country ||
+														""
+													}
+													onChange={(e) =>
+														handleLocationInputChange(
+															location.id,
+															"country",
+															e.target.value
+														)
+													}
+													placeholder="United States"
+												/>
+											</div>
+										</div>
+									</div>
+								))}
+							</div>
+						)}
+						<Button
+							type="button"
+							variant="outline"
+							onClick={handleAddLocation}
+							className="w-full"
+						>
+							<Plus className="h-4 w-4 mr-2" />
+							Add Location
+						</Button>
 					</CardContent>
 				</Card>
 
