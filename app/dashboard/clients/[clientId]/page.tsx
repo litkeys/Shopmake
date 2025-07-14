@@ -1904,7 +1904,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 															clipRule="evenodd"
 														/>
 													</svg>
-													Foundation: Theme installed,{" "}
+													Foundation: theme installed,{" "}
 													{
 														generationResults
 															.foundation
