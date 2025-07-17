@@ -384,7 +384,7 @@ export async function getStoreCollections(
 		.from("store_collections")
 		.select("*")
 		.eq("store_id", storeId)
-		.order("created_at", { ascending: false });
+		.order("created_at", { ascending: true });
 
 	if (collectionsError) {
 		throw new Error(
