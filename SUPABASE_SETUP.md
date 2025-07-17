@@ -139,7 +139,59 @@ CREATE POLICY "Users can access their store locations" ON store_locations
     );
 ```
 
-### 6. Add updated_at triggers
+### 6. store_collections
+
+```sql
+CREATE TABLE store_collections (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    store_id UUID REFERENCES stores(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT,
+    shopify_collection_id BIGINT, -- Shopify collection ID when created
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Add RLS policies
+ALTER TABLE store_collections ENABLE ROW LEVEL SECURITY;
+
+-- Users can only access store_collections for their own stores
+CREATE POLICY "Users can access their store collections" ON store_collections
+    FOR ALL USING (
+        store_id IN (
+            SELECT id FROM stores WHERE created_by = (auth.jwt() ->> 'sub')::text
+        )
+    );
+```
+
+### 7. collection_mappings
+
+```sql
+CREATE TABLE collection_mappings (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    collection_id UUID REFERENCES store_collections(id) ON DELETE CASCADE,
+    mapping_type TEXT NOT NULL CHECK (mapping_type IN ('product_tag', 'product_type', 'product_category')),
+    mapping_value TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(collection_id, mapping_type, mapping_value)
+);
+
+-- Add RLS policies
+ALTER TABLE collection_mappings ENABLE ROW LEVEL SECURITY;
+
+-- Users can only access collection_mappings for their own collections
+CREATE POLICY "Users can access their collection mappings" ON collection_mappings
+    FOR ALL USING (
+        collection_id IN (
+            SELECT id FROM store_collections WHERE store_id IN (
+                SELECT id FROM stores WHERE created_by = (auth.jwt() ->> 'sub')::text
+            )
+        )
+    );
+```
+
+### 8. Add updated_at triggers
 
 ```sql
 -- Function to update updated_at timestamp
@@ -166,6 +218,14 @@ CREATE TRIGGER update_shopify_tokens_updated_at
 
 CREATE TRIGGER update_store_locations_updated_at
     BEFORE UPDATE ON store_locations
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_store_collections_updated_at
+    BEFORE UPDATE ON store_collections
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_collection_mappings_updated_at
+    BEFORE UPDATE ON collection_mappings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 ```
 

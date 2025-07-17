@@ -96,6 +96,40 @@ export interface LocationFormData {
 	phone: string;
 }
 
+// Collection related types
+export interface StoreCollection {
+	id: string;
+	store_id: string;
+	title: string;
+	description?: string;
+	shopify_collection_id?: number;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface CollectionMapping {
+	id: string;
+	collection_id: string;
+	mapping_type: "product_tag" | "product_type" | "product_category";
+	mapping_value: string;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface CollectionWithMappings extends StoreCollection {
+	mappings: CollectionMapping[];
+}
+
+export interface CollectionFormData {
+	title: string;
+	description: string;
+}
+
+export interface MappingFormData {
+	mapping_type: "product_tag" | "product_type" | "product_category";
+	mapping_value: string;
+}
+
 export interface ApiResponse<T = any> {
 	data: T;
 	success: boolean;

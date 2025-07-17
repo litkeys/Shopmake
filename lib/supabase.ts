@@ -5,6 +5,9 @@ import {
 	Upload,
 	ShopifyAdminToken,
 	StoreLocation,
+	StoreCollection,
+	CollectionMapping,
+	CollectionWithMappings,
 } from "@/types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -369,5 +372,162 @@ export async function deleteStoreLocation(locationId: string): Promise<void> {
 
 	if (error) {
 		throw new Error(`Failed to delete store location: ${error.message}`);
+	}
+}
+
+// Collection operations
+export async function getStoreCollections(
+	storeId: string
+): Promise<CollectionWithMappings[]> {
+	// First get collections
+	const { data: collections, error: collectionsError } = await supabaseAdmin
+		.from("store_collections")
+		.select("*")
+		.eq("store_id", storeId)
+		.order("created_at", { ascending: false });
+
+	if (collectionsError) {
+		throw new Error(
+			`Failed to fetch store collections: ${collectionsError.message}`
+		);
+	}
+
+	if (!collections || collections.length === 0) {
+		return [];
+	}
+
+	// Get mappings for all collections
+	const collectionIds = collections.map((c) => c.id);
+	const { data: mappings, error: mappingsError } = await supabaseAdmin
+		.from("collection_mappings")
+		.select("*")
+		.in("collection_id", collectionIds)
+		.order("created_at", { ascending: true });
+
+	if (mappingsError) {
+		throw new Error(
+			`Failed to fetch collection mappings: ${mappingsError.message}`
+		);
+	}
+
+	// Combine collections with their mappings
+	const collectionsWithMappings: CollectionWithMappings[] = collections.map(
+		(collection) => ({
+			...collection,
+			mappings:
+				mappings?.filter((m) => m.collection_id === collection.id) ||
+				[],
+		})
+	);
+
+	return collectionsWithMappings;
+}
+
+export async function createStoreCollection(
+	storeId: string,
+	collectionData: { title: string; description?: string }
+): Promise<StoreCollection> {
+	const { data, error } = await supabaseAdmin
+		.from("store_collections")
+		.insert({
+			store_id: storeId,
+			...collectionData,
+		})
+		.select()
+		.single();
+
+	if (error) {
+		throw new Error(`Failed to create store collection: ${error.message}`);
+	}
+
+	return data;
+}
+
+export async function updateStoreCollection(
+	collectionId: string,
+	collectionData: Partial<{ title: string; description?: string }>
+): Promise<StoreCollection> {
+	const { data, error } = await supabaseAdmin
+		.from("store_collections")
+		.update(collectionData)
+		.eq("id", collectionId)
+		.select()
+		.single();
+
+	if (error) {
+		throw new Error(`Failed to update store collection: ${error.message}`);
+	}
+
+	return data;
+}
+
+export async function deleteStoreCollection(
+	collectionId: string
+): Promise<void> {
+	const { error } = await supabaseAdmin
+		.from("store_collections")
+		.delete()
+		.eq("id", collectionId);
+
+	if (error) {
+		throw new Error(`Failed to delete store collection: ${error.message}`);
+	}
+}
+
+// Collection mapping operations
+export async function createCollectionMapping(
+	collectionId: string,
+	mappingData: { mapping_type: string; mapping_value: string }
+): Promise<CollectionMapping> {
+	const { data, error } = await supabaseAdmin
+		.from("collection_mappings")
+		.insert({
+			collection_id: collectionId,
+			...mappingData,
+		})
+		.select()
+		.single();
+
+	if (error) {
+		throw new Error(
+			`Failed to create collection mapping: ${error.message}`
+		);
+	}
+
+	return data;
+}
+
+export async function updateCollectionMapping(
+	mappingId: string,
+	mappingData: Partial<{ mapping_type: string; mapping_value: string }>
+): Promise<CollectionMapping> {
+	const { data, error } = await supabaseAdmin
+		.from("collection_mappings")
+		.update(mappingData)
+		.eq("id", mappingId)
+		.select()
+		.single();
+
+	if (error) {
+		throw new Error(
+			`Failed to update collection mapping: ${error.message}`
+		);
+	}
+
+	return data;
+}
+
+export async function deleteCollectionMapping(
+	mappingId: string
+): Promise<void> {
+	const { error } = await supabaseAdmin
+		.from("collection_mappings")
+		.delete()
+		.eq("id", mappingId);
+
+	if (error) {
+		throw new Error(
+			`Failed to delete collection mapping: ${error.message}`
+		);
 	}
 }

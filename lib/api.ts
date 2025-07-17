@@ -2,6 +2,11 @@ import {
 	Store,
 	StoreData,
 	StoreLocation,
+	StoreCollection,
+	CollectionMapping,
+	CollectionWithMappings,
+	CollectionFormData,
+	MappingFormData,
 	ShopifyStoreGenerationRequest,
 	ShopifyCustomAppConnection,
 } from "@/types";
@@ -421,5 +426,164 @@ export async function deleteStoreLocationAPI(
 	if (!response.ok) {
 		const error = await response.json();
 		throw new Error(error.error || "Failed to delete store location");
+	}
+}
+
+// Store collections API functions
+export async function getStoreCollectionsAPI(
+	storeId: string
+): Promise<CollectionWithMappings[]> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/stores/${storeId}/collections`
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to fetch store collections");
+	}
+
+	const result = await response.json();
+	return result.data;
+}
+
+export async function createStoreCollectionAPI(
+	storeId: string,
+	collectionData: CollectionFormData
+): Promise<StoreCollection> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/stores/${storeId}/collections`,
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(collectionData),
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to create store collection");
+	}
+
+	const result = await response.json();
+	return result.data;
+}
+
+export async function updateStoreCollectionAPI(
+	storeId: string,
+	collectionId: string,
+	collectionData: Partial<CollectionFormData>
+): Promise<StoreCollection> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/stores/${storeId}/collections/${collectionId}`,
+		{
+			method: "PUT",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(collectionData),
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to update store collection");
+	}
+
+	const result = await response.json();
+	return result.data;
+}
+
+export async function deleteStoreCollectionAPI(
+	storeId: string,
+	collectionId: string
+): Promise<void> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/stores/${storeId}/collections/${collectionId}`,
+		{
+			method: "DELETE",
+			headers: {
+				"Content-Type": "application/json",
+			},
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to delete store collection");
+	}
+}
+
+// Collection mappings API functions
+export async function createCollectionMappingAPI(
+	storeId: string,
+	collectionId: string,
+	mappingData: MappingFormData
+): Promise<CollectionMapping> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/stores/${storeId}/collections/${collectionId}/mappings`,
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(mappingData),
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to create collection mapping");
+	}
+
+	const result = await response.json();
+	return result.data;
+}
+
+export async function updateCollectionMappingAPI(
+	storeId: string,
+	collectionId: string,
+	mappingId: string,
+	mappingData: Partial<MappingFormData>
+): Promise<CollectionMapping> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/stores/${storeId}/collections/${collectionId}/mappings/${mappingId}`,
+		{
+			method: "PUT",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(mappingData),
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to update collection mapping");
+	}
+
+	const result = await response.json();
+	return result.data;
+}
+
+export async function deleteCollectionMappingAPI(
+	storeId: string,
+	collectionId: string,
+	mappingId: string
+): Promise<void> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/stores/${storeId}/collections/${collectionId}/mappings/${mappingId}`,
+		{
+			method: "DELETE",
+			headers: {
+				"Content-Type": "application/json",
+			},
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to delete collection mapping");
 	}
 }

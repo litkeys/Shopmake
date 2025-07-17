@@ -24,6 +24,11 @@ import {
 	Zap,
 	Plus,
 	MapPin,
+	Package,
+	ChevronDown,
+	ChevronUp,
+	Edit,
+	Tag,
 } from "lucide-react";
 import {
 	getStoreAPI,
@@ -43,6 +48,13 @@ import {
 	createStoreLocationAPI,
 	updateStoreLocationAPI,
 	deleteStoreLocationAPI,
+	getStoreCollectionsAPI,
+	createStoreCollectionAPI,
+	updateStoreCollectionAPI,
+	deleteStoreCollectionAPI,
+	createCollectionMappingAPI,
+	updateCollectionMappingAPI,
+	deleteCollectionMappingAPI,
 } from "@/lib/api";
 import {
 	Store,
@@ -51,6 +63,9 @@ import {
 	Upload as UploadType,
 	StoreLocation,
 	LocationFormData,
+	CollectionWithMappings,
+	CollectionFormData,
+	MappingFormData,
 } from "@/types";
 import Link from "next/link";
 
@@ -106,6 +121,18 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const [locationFormData, setLocationFormData] = useState<
 		Record<string, LocationFormData>
 	>({});
+	const [collections, setCollections] = useState<CollectionWithMappings[]>(
+		[]
+	);
+	const [collectionFormData, setCollectionFormData] = useState<
+		Record<string, CollectionFormData>
+	>({});
+	const [mappingFormData, setMappingFormData] = useState<
+		Record<string, Record<string, MappingFormData>>
+	>({});
+	const [expandedCollections, setExpandedCollections] = useState<
+		Record<string, boolean>
+	>({});
 	const [logoPreview, setLogoPreview] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [success, setSuccess] = useState<string | null>(null);
@@ -130,6 +157,8 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	// Debounced form data for auto-save
 	const debouncedFormData = useDebounce(formData, 500);
 	const debouncedLocationFormData = useDebounce(locationFormData, 500);
+	const debouncedCollectionFormData = useDebounce(collectionFormData, 500);
+	const debouncedMappingFormData = useDebounce(mappingFormData, 500);
 
 	// Load store data on mount
 	useEffect(() => {
@@ -182,6 +211,28 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			handleAutoSaveLocations();
 		}
 	}, [debouncedLocationFormData, store, isLoading]);
+
+	// Auto-save effect for collections
+	useEffect(() => {
+		if (
+			store &&
+			!isLoading &&
+			Object.keys(debouncedCollectionFormData).length > 0
+		) {
+			handleAutoSaveCollections();
+		}
+	}, [debouncedCollectionFormData, store, isLoading]);
+
+	// Auto-save effect for mappings
+	useEffect(() => {
+		if (
+			store &&
+			!isLoading &&
+			Object.keys(debouncedMappingFormData).length > 0
+		) {
+			handleAutoSaveMappings();
+		}
+	}, [debouncedMappingFormData, store, isLoading]);
 
 	const loadStoreData = async () => {
 		try {
@@ -244,6 +295,41 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				};
 			});
 			setLocationFormData(initialLocationFormData);
+
+			// Load collections
+			const collectionsResult = await getStoreCollectionsAPI(
+				params.clientId
+			);
+			setCollections(collectionsResult);
+
+			// Initialize collection form data
+			const initialCollectionFormData: Record<
+				string,
+				CollectionFormData
+			> = {};
+			const initialMappingFormData: Record<
+				string,
+				Record<string, MappingFormData>
+			> = {};
+
+			collectionsResult.forEach((collection) => {
+				initialCollectionFormData[collection.id] = {
+					title: collection.title,
+					description: collection.description || "",
+				};
+
+				// Initialize mapping form data for this collection
+				initialMappingFormData[collection.id] = {};
+				collection.mappings.forEach((mapping) => {
+					initialMappingFormData[collection.id][mapping.id] = {
+						mapping_type: mapping.mapping_type,
+						mapping_value: mapping.mapping_value,
+					};
+				});
+			});
+
+			setCollectionFormData(initialCollectionFormData);
+			setMappingFormData(initialMappingFormData);
 		} catch (err) {
 			setError(
 				err instanceof Error ? err.message : "Failed to load store data"
@@ -328,6 +414,139 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			setIsSaving(false);
 		}
 	}, [store, debouncedLocationFormData, locations, isSaving]);
+
+	const handleAutoSaveCollections = useCallback(async () => {
+		if (!store || isSaving) return;
+
+		setIsSaving(true);
+		try {
+			// Update each collection that has changes
+			const updatePromises = Object.entries(
+				debouncedCollectionFormData
+			).map(async ([collectionId, formData]) => {
+				const currentCollection = collections.find(
+					(col) => col.id === collectionId
+				);
+				if (currentCollection) {
+					// Check if there are actual changes
+					const hasChanges =
+						currentCollection.title !== formData.title ||
+						(currentCollection.description || "") !==
+							formData.description;
+
+					if (hasChanges) {
+						const updatedCollection =
+							await updateStoreCollectionAPI(
+								store.id,
+								collectionId,
+								formData
+							);
+						return updatedCollection;
+					}
+				}
+				return null;
+			});
+
+			const results = await Promise.all(updatePromises);
+			const updatedCollections = results.filter(Boolean);
+
+			if (updatedCollections.length > 0) {
+				// Update collections state with the updated data
+				setCollections((prevCollections) =>
+					prevCollections.map((col) => {
+						const updated = updatedCollections.find(
+							(u) => u && u.id === col.id
+						);
+						return updated ? { ...col, ...updated } : col;
+					})
+				);
+				setSuccess("Collection changes saved automatically");
+				setTimeout(() => setSuccess(null), 2000);
+			}
+		} catch (err) {
+			console.error("Collection auto-save failed:", err);
+		} finally {
+			setIsSaving(false);
+		}
+	}, [store, debouncedCollectionFormData, collections, isSaving]);
+
+	const handleAutoSaveMappings = useCallback(async () => {
+		if (!store || isSaving) return;
+
+		setIsSaving(true);
+		try {
+			// Update each mapping that has changes
+			const updatePromises = Object.entries(
+				debouncedMappingFormData
+			).flatMap(([collectionId, mappings]) =>
+				Object.entries(mappings).map(async ([mappingId, formData]) => {
+					const currentCollection = collections.find(
+						(col) => col.id === collectionId
+					);
+					const currentMapping = currentCollection?.mappings.find(
+						(mapping) => mapping.id === mappingId
+					);
+
+					if (currentMapping) {
+						// Check if there are actual changes
+						const hasChanges =
+							currentMapping.mapping_type !==
+								formData.mapping_type ||
+							currentMapping.mapping_value !==
+								formData.mapping_value;
+
+						if (hasChanges) {
+							const updatedMapping =
+								await updateCollectionMappingAPI(
+									store.id,
+									collectionId,
+									mappingId,
+									formData
+								);
+							return { collectionId, updatedMapping };
+						}
+					}
+					return null;
+				})
+			);
+
+			const results = await Promise.all(updatePromises);
+			const updatedMappings = results.filter(Boolean);
+
+			if (updatedMappings.length > 0) {
+				// Update collections state with the updated mapping data
+				setCollections((prevCollections) =>
+					prevCollections.map((col) => {
+						const collectionUpdates = updatedMappings.filter(
+							(u) => u && u.collectionId === col.id
+						);
+						if (collectionUpdates.length > 0) {
+							return {
+								...col,
+								mappings: col.mappings.map((mapping) => {
+									const updated = collectionUpdates.find(
+										(u) =>
+											u &&
+											u.updatedMapping.id === mapping.id
+									);
+									return updated
+										? updated.updatedMapping
+										: mapping;
+								}),
+							};
+						}
+						return col;
+					})
+				);
+				setSuccess("Mapping changes saved automatically");
+				setTimeout(() => setSuccess(null), 2000);
+			}
+		} catch (err) {
+			console.error("Mapping auto-save failed:", err);
+		} finally {
+			setIsSaving(false);
+		}
+	}, [store, debouncedMappingFormData, collections, isSaving]);
 
 	const handleInputChange = (field: keyof StoreFormData, value: string) => {
 		setFormData((prev) => ({
@@ -553,6 +772,207 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		} catch (err) {
 			setError(
 				err instanceof Error ? err.message : "Failed to delete location"
+			);
+		}
+	};
+
+	// Collection management functions
+	const handleAddCollection = async () => {
+		if (!store) return;
+
+		try {
+			const newCollection = await createStoreCollectionAPI(store.id, {
+				title: "New Collection",
+				description: "",
+			});
+
+			// Add to collections state
+			const newCollectionWithMappings = {
+				...newCollection,
+				mappings: [],
+			};
+			setCollections([...collections, newCollectionWithMappings]);
+
+			// Add to form data for immediate editing
+			setCollectionFormData((prev) => ({
+				...prev,
+				[newCollection.id]: {
+					title: newCollection.title,
+					description: newCollection.description || "",
+				},
+			}));
+
+			// Initialize empty mapping form data
+			setMappingFormData((prev) => ({
+				...prev,
+				[newCollection.id]: {},
+			}));
+
+			// Auto-expand the new collection
+			setExpandedCollections((prev) => ({
+				...prev,
+				[newCollection.id]: true,
+			}));
+		} catch (err) {
+			setError(
+				err instanceof Error ? err.message : "Failed to add collection"
+			);
+		}
+	};
+
+	const handleCollectionInputChange = (
+		collectionId: string,
+		field: keyof CollectionFormData,
+		value: string
+	) => {
+		setCollectionFormData((prev) => ({
+			...prev,
+			[collectionId]: {
+				...prev[collectionId],
+				[field]: value,
+			},
+		}));
+	};
+
+	const handleDeleteCollection = async (collectionId: string) => {
+		if (!store) return;
+
+		try {
+			await deleteStoreCollectionAPI(store.id, collectionId);
+			setCollections(
+				collections.filter((col) => col.id !== collectionId)
+			);
+
+			// Remove from form data
+			setCollectionFormData((prev) => {
+				const updated = { ...prev };
+				delete updated[collectionId];
+				return updated;
+			});
+
+			// Remove from mapping form data
+			setMappingFormData((prev) => {
+				const updated = { ...prev };
+				delete updated[collectionId];
+				return updated;
+			});
+
+			// Remove from expanded collections
+			setExpandedCollections((prev) => {
+				const updated = { ...prev };
+				delete updated[collectionId];
+				return updated;
+			});
+		} catch (err) {
+			setError(
+				err instanceof Error
+					? err.message
+					: "Failed to delete collection"
+			);
+		}
+	};
+
+	const handleToggleCollection = (collectionId: string) => {
+		setExpandedCollections((prev) => ({
+			...prev,
+			[collectionId]: !prev[collectionId],
+		}));
+	};
+
+	const handleAddMapping = async (collectionId: string) => {
+		if (!store) return;
+
+		try {
+			const newMapping = await createCollectionMappingAPI(
+				store.id,
+				collectionId,
+				{
+					mapping_type: "product_tag",
+					mapping_value: "",
+				}
+			);
+
+			// Update collections state
+			setCollections((prevCollections) =>
+				prevCollections.map((col) =>
+					col.id === collectionId
+						? { ...col, mappings: [...col.mappings, newMapping] }
+						: col
+				)
+			);
+
+			// Add to mapping form data
+			setMappingFormData((prev) => ({
+				...prev,
+				[collectionId]: {
+					...prev[collectionId],
+					[newMapping.id]: {
+						mapping_type: newMapping.mapping_type,
+						mapping_value: newMapping.mapping_value,
+					},
+				},
+			}));
+		} catch (err) {
+			setError(
+				err instanceof Error ? err.message : "Failed to add mapping"
+			);
+		}
+	};
+
+	const handleMappingInputChange = (
+		collectionId: string,
+		mappingId: string,
+		field: keyof MappingFormData,
+		value: string
+	) => {
+		setMappingFormData((prev) => ({
+			...prev,
+			[collectionId]: {
+				...prev[collectionId],
+				[mappingId]: {
+					...prev[collectionId]?.[mappingId],
+					[field]: value,
+				},
+			},
+		}));
+	};
+
+	const handleDeleteMapping = async (
+		collectionId: string,
+		mappingId: string
+	) => {
+		if (!store) return;
+
+		try {
+			await deleteCollectionMappingAPI(store.id, collectionId, mappingId);
+
+			// Update collections state
+			setCollections((prevCollections) =>
+				prevCollections.map((col) =>
+					col.id === collectionId
+						? {
+								...col,
+								mappings: col.mappings.filter(
+									(mapping) => mapping.id !== mappingId
+								),
+						  }
+						: col
+				)
+			);
+
+			// Remove from mapping form data
+			setMappingFormData((prev) => {
+				const updated = { ...prev };
+				if (updated[collectionId]) {
+					const updatedCollection = { ...updated[collectionId] };
+					delete updatedCollection[mappingId];
+					updated[collectionId] = updatedCollection;
+				}
+				return updated;
+			});
+		} catch (err) {
+			setError(
+				err instanceof Error ? err.message : "Failed to delete mapping"
 			);
 		}
 	};
@@ -1381,6 +1801,306 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 								</p>
 							</div>
 						</div>
+					</CardContent>
+				</Card>
+
+				{/* Product Collections Section */}
+				<Card>
+					<CardHeader>
+						<CardTitle className="flex items-center">
+							<Package className="h-5 w-5 mr-2" />
+							Product Collections
+						</CardTitle>
+						<CardDescription>
+							Create and manage product collections with mapping
+							rules
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						{collections.length === 0 ? (
+							<div className="text-center py-8 text-gray-500">
+								<Package className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+								<p>No collections created yet</p>
+								<p className="text-sm">
+									Add your first collection to get started
+								</p>
+							</div>
+						) : (
+							<div className="space-y-4">
+								{collections.map((collection) => (
+									<div
+										key={collection.id}
+										className="border rounded-lg bg-gray-50"
+									>
+										<div className="p-4">
+											<div className="flex items-center justify-between mb-4">
+												<div className="flex items-center space-x-2">
+													<button
+														type="button"
+														onClick={() =>
+															handleToggleCollection(
+																collection.id
+															)
+														}
+														className="p-1 hover:bg-gray-200 rounded"
+													>
+														{expandedCollections[
+															collection.id
+														] ? (
+															<ChevronUp className="h-4 w-4" />
+														) : (
+															<ChevronDown className="h-4 w-4" />
+														)}
+													</button>
+													<h4 className="font-medium">
+														{collectionFormData[
+															collection.id
+														]?.title ||
+															collection.title}
+													</h4>
+												</div>
+												<Button
+													type="button"
+													variant="outline"
+													size="sm"
+													onClick={() =>
+														handleDeleteCollection(
+															collection.id
+														)
+													}
+												>
+													<Trash2 className="h-4 w-4 mr-2" />
+													Remove
+												</Button>
+											</div>
+
+											{expandedCollections[
+												collection.id
+											] && (
+												<div className="space-y-4">
+													<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+														<div>
+															<Label
+																htmlFor={`collection-title-${collection.id}`}
+															>
+																Collection Title
+																*
+															</Label>
+															<Input
+																id={`collection-title-${collection.id}`}
+																type="text"
+																value={
+																	collectionFormData[
+																		collection
+																			.id
+																	]?.title ||
+																	collection.title
+																}
+																onChange={(e) =>
+																	handleCollectionInputChange(
+																		collection.id,
+																		"title",
+																		e.target
+																			.value
+																	)
+																}
+																placeholder="Collection Name"
+															/>
+														</div>
+														<div>
+															<Label
+																htmlFor={`collection-description-${collection.id}`}
+															>
+																Description
+															</Label>
+															<Input
+																id={`collection-description-${collection.id}`}
+																type="text"
+																value={
+																	collectionFormData[
+																		collection
+																			.id
+																	]
+																		?.description ||
+																	collection.description ||
+																	""
+																}
+																onChange={(e) =>
+																	handleCollectionInputChange(
+																		collection.id,
+																		"description",
+																		e.target
+																			.value
+																	)
+																}
+																placeholder="Collection description"
+															/>
+														</div>
+													</div>
+
+													<div className="border-t pt-4">
+														<div className="flex items-center justify-between mb-3">
+															<Label className="text-sm font-medium">
+																Mapping Rules
+															</Label>
+															<Button
+																type="button"
+																variant="outline"
+																size="sm"
+																onClick={() =>
+																	handleAddMapping(
+																		collection.id
+																	)
+																}
+															>
+																<Plus className="h-4 w-4 mr-2" />
+																Add Mapping
+															</Button>
+														</div>
+
+														{collection.mappings
+															.length === 0 ? (
+															<div className="text-center py-4 text-gray-500 text-sm">
+																<Tag className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+																<p>
+																	No mappings
+																	added yet
+																</p>
+																<p className="text-xs">
+																	Add mapping
+																	rules to
+																	define which
+																	products
+																	belong to
+																	this
+																	collection
+																</p>
+															</div>
+														) : (
+															<div className="space-y-3">
+																{collection.mappings.map(
+																	(
+																		mapping
+																	) => (
+																		<div
+																			key={
+																				mapping.id
+																			}
+																			className="flex items-center space-x-3 p-3 bg-white rounded border"
+																		>
+																			<div className="flex-1">
+																				<Label className="text-xs text-gray-500">
+																					Mapping
+																					Type
+																				</Label>
+																				<select
+																					value={
+																						mappingFormData[
+																							collection
+																								.id
+																						]?.[
+																							mapping
+																								.id
+																						]
+																							?.mapping_type ||
+																						mapping.mapping_type
+																					}
+																					onChange={(
+																						e
+																					) =>
+																						handleMappingInputChange(
+																							collection.id,
+																							mapping.id,
+																							"mapping_type",
+																							e
+																								.target
+																								.value
+																						)
+																					}
+																					className="w-full mt-1 px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+																				>
+																					<option value="product_tag">
+																						Product
+																						Tag
+																					</option>
+																					<option value="product_type">
+																						Product
+																						Type
+																					</option>
+																					<option value="product_category">
+																						Product
+																						Category
+																					</option>
+																				</select>
+																			</div>
+																			<div className="flex-1">
+																				<Label className="text-xs text-gray-500">
+																					Value
+																				</Label>
+																				<Input
+																					type="text"
+																					value={
+																						mappingFormData[
+																							collection
+																								.id
+																						]?.[
+																							mapping
+																								.id
+																						]
+																							?.mapping_value ||
+																						mapping.mapping_value
+																					}
+																					onChange={(
+																						e
+																					) =>
+																						handleMappingInputChange(
+																							collection.id,
+																							mapping.id,
+																							"mapping_value",
+																							e
+																								.target
+																								.value
+																						)
+																					}
+																					placeholder="Enter value"
+																					className="mt-1 text-sm"
+																				/>
+																			</div>
+																			<Button
+																				type="button"
+																				variant="outline"
+																				size="sm"
+																				onClick={() =>
+																					handleDeleteMapping(
+																						collection.id,
+																						mapping.id
+																					)
+																				}
+																			>
+																				<Trash2 className="h-4 w-4" />
+																			</Button>
+																		</div>
+																	)
+																)}
+															</div>
+														)}
+													</div>
+												</div>
+											)}
+										</div>
+									</div>
+								))}
+							</div>
+						)}
+						<Button
+							type="button"
+							variant="outline"
+							onClick={handleAddCollection}
+							className="w-full"
+						>
+							<Plus className="h-4 w-4 mr-2" />
+							Add Collection
+						</Button>
 					</CardContent>
 				</Card>
 
