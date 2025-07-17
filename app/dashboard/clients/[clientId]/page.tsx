@@ -888,7 +888,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				collectionId,
 				{
 					mapping_type: "product_tag",
-					mapping_value: "new-tag",
+					mapping_value: "",
 				}
 			);
 

@@ -36,9 +36,13 @@ export async function POST(
 		const body = await request.json();
 		const { mapping_type, mapping_value } = body;
 
-		if (!mapping_type || !mapping_value) {
+		if (
+			!mapping_type ||
+			mapping_value === undefined ||
+			mapping_value === null
+		) {
 			return NextResponse.json(
-				{ error: "Mapping type and value are required" },
+				{ error: "Mapping type is required" },
 				{ status: 400 }
 			);
 		}
@@ -53,7 +57,7 @@ export async function POST(
 
 		const mapping = await createCollectionMapping(collectionId, {
 			mapping_type,
-			mapping_value: mapping_value.trim(),
+			mapping_value: mapping_value || "",
 		});
 
 		return NextResponse.json({ data: mapping });

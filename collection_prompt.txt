@@ -22,21 +22,6 @@ You may reference the following collection strategy patterns:
 - Install Kits
 - Add-ons & Accessories
 
-⚙️ By Product Type:
-- Pumps
-- Motors
-- Control Panels
-
-🏷️ By Attribute:
-- High-Capacity
-- Energy Efficient
-- Industrial Grade
-
-🔧 By Compatibility:
-- Compatible with Brand A
-- Fits Model Series B
-- Standard Size C
-
 🧭 By Buyer Intent:
 - For Field Technicians
 - For Resellers

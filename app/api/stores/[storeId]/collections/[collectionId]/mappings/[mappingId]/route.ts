@@ -58,13 +58,7 @@ export async function PUT(
 			updateData.mapping_type = mapping_type;
 		}
 		if (mapping_value !== undefined) {
-			if (!mapping_value.trim()) {
-				return NextResponse.json(
-					{ error: "Mapping value is required" },
-					{ status: 400 }
-				);
-			}
-			updateData.mapping_value = mapping_value.trim();
+			updateData.mapping_value = mapping_value || "";
 		}
 
 		const mapping = await updateCollectionMapping(mappingId, updateData);
