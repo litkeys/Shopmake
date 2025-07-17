@@ -416,7 +416,8 @@ export default function NewClientPage() {
 					New Client Store
 				</h1>
 				<p className="text-gray-600">
-					Add a new client store and configure their data.
+					Add a new client store and configure their data. You will be
+					able to upload logo and data files after store creation.
 				</p>
 			</div>
 
