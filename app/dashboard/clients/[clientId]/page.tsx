@@ -569,8 +569,8 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		if (!file || !store) return;
 
 		// Validate file type
-		if (!file.type.startsWith("image/")) {
-			setError("Please upload an image file");
+		if (file.type !== "image/png") {
+			setError("Please upload a PNG file");
 			return;
 		}
 
@@ -1549,7 +1549,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 									<input
 										id="logo"
 										type="file"
-										accept="image/*"
+										accept="image/png"
 										onChange={handleLogoUpload}
 										className="hidden"
 									/>
@@ -1569,7 +1569,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 											: "Upload Logo"}
 									</Button>
 									<p className="text-sm text-muted-foreground mt-1">
-										PNG, JPG up to 5MB
+										PNG files only, up to 5MB
 									</p>
 								</div>
 							</div>
