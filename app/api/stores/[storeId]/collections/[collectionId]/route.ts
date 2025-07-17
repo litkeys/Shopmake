@@ -42,7 +42,7 @@ export async function PUT(
 
 		const updateData: any = {};
 		if (title !== undefined) {
-			if (!title.trim()) {
+			if (!title || !title.trim()) {
 				return NextResponse.json(
 					{ error: "Collection title is required" },
 					{ status: 400 }
@@ -51,7 +51,7 @@ export async function PUT(
 			updateData.title = title.trim();
 		}
 		if (description !== undefined) {
-			updateData.description = description?.trim() || "";
+			updateData.description = description || "";
 		}
 
 		const collection = await updateStoreCollection(

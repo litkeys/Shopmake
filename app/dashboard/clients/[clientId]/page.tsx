@@ -428,18 +428,21 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					(col) => col.id === collectionId
 				);
 				if (currentCollection) {
-					// Check if there are actual changes
+					// Check if there are actual changes (handle empty strings properly)
 					const hasChanges =
 						currentCollection.title !== formData.title ||
 						(currentCollection.description || "") !==
-							formData.description;
+							(formData.description || "");
 
 					if (hasChanges) {
 						const updatedCollection =
 							await updateStoreCollectionAPI(
 								store.id,
 								collectionId,
-								formData
+								{
+									title: formData.title || "",
+									description: formData.description || "",
+								}
 							);
 						return updatedCollection;
 					}
@@ -488,12 +491,12 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					);
 
 					if (currentMapping) {
-						// Check if there are actual changes
+						// Check if there are actual changes (handle empty strings properly)
 						const hasChanges =
 							currentMapping.mapping_type !==
 								formData.mapping_type ||
-							currentMapping.mapping_value !==
-								formData.mapping_value;
+							(currentMapping.mapping_value || "") !==
+								(formData.mapping_value || "");
 
 						if (hasChanges) {
 							const updatedMapping =
@@ -501,7 +504,11 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 									store.id,
 									collectionId,
 									mappingId,
-									formData
+									{
+										mapping_type: formData.mapping_type,
+										mapping_value:
+											formData.mapping_value || "",
+									}
 								);
 							return { collectionId, updatedMapping };
 						}
@@ -1893,7 +1900,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 																	collectionFormData[
 																		collection
 																			.id
-																	]?.title ||
+																	]?.title ??
 																	collection.title
 																}
 																onChange={(e) =>
@@ -1921,8 +1928,8 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 																		collection
 																			.id
 																	]
-																		?.description ||
-																	collection.description ||
+																		?.description ??
+																	collection.description ??
 																	""
 																}
 																onChange={(e) =>
@@ -2002,7 +2009,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 																							mapping
 																								.id
 																						]
-																							?.mapping_type ||
+																							?.mapping_type ??
 																						mapping.mapping_type
 																					}
 																					onChange={(
@@ -2047,8 +2054,9 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 																							mapping
 																								.id
 																						]
-																							?.mapping_value ||
-																						mapping.mapping_value
+																							?.mapping_value ??
+																						mapping.mapping_value ??
+																						""
 																					}
 																					onChange={(
 																						e
