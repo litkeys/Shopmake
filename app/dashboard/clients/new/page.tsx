@@ -17,21 +17,35 @@ import { Label } from "@/components/ui/label";
 import {
 	ArrowLeft,
 	Save,
-	Upload,
-	Image as ImageIcon,
 	Plus,
 	MapPin,
 	Trash2,
+	Package,
+	ChevronDown,
+	ChevronUp,
+	Tag,
 } from "lucide-react";
 import {
 	createStoreAPI,
 	updateStoreDataAPI,
-	uploadFileAPI,
 	createStoreLocationAPI,
 	deleteStoreLocationAPI,
 	updateStoreLocationAPI,
+	createStoreCollectionAPI,
+	updateStoreCollectionAPI,
+	deleteStoreCollectionAPI,
+	createCollectionMappingAPI,
+	updateCollectionMappingAPI,
+	deleteCollectionMappingAPI,
 } from "@/lib/api";
-import { StoreFormData, StoreLocation, LocationFormData } from "@/types";
+import {
+	StoreFormData,
+	StoreLocation,
+	LocationFormData,
+	CollectionWithMappings,
+	CollectionFormData,
+	MappingFormData,
+} from "@/types";
 import Link from "next/link";
 
 export default function NewClientPage() {
@@ -39,7 +53,6 @@ export default function NewClientPage() {
 	const { userId } = useAuth();
 	const [isLoading, setIsLoading] = useState(false);
 	const [storeId, setStoreId] = useState<string | null>(null);
-	const [logoPreview, setLogoPreview] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [success, setSuccess] = useState<string | null>(null);
 	const [locations, setLocations] = useState<StoreLocation[]>([]);
@@ -47,6 +60,20 @@ export default function NewClientPage() {
 		Record<string, LocationFormData>
 	>({});
 	const [tempLocationCounter, setTempLocationCounter] = useState(0);
+	const [collections, setCollections] = useState<CollectionWithMappings[]>(
+		[]
+	);
+	const [collectionFormData, setCollectionFormData] = useState<
+		Record<string, CollectionFormData>
+	>({});
+	const [mappingFormData, setMappingFormData] = useState<
+		Record<string, Record<string, MappingFormData>>
+	>({});
+	const [expandedCollections, setExpandedCollections] = useState<
+		Record<string, boolean>
+	>({});
+	const [tempCollectionCounter, setTempCollectionCounter] = useState(0);
+	const [tempMappingCounter, setTempMappingCounter] = useState(0);
 
 	const [formData, setFormData] = useState<StoreFormData>({
 		brand_name: "",
@@ -60,84 +87,6 @@ export default function NewClientPage() {
 			...prev,
 			[field]: value,
 		}));
-	};
-
-	const handleLogoUpload = async (
-		event: React.ChangeEvent<HTMLInputElement>
-	) => {
-		const file = event.target.files?.[0];
-		if (!file || !storeId) return;
-
-		// Validate file type
-		if (file.type !== "image/png") {
-			setError("Please upload a PNG file");
-			return;
-		}
-
-		// Validate file size (5MB limit)
-		if (file.size > 5 * 1024 * 1024) {
-			setError("Logo file must be less than 5MB");
-			return;
-		}
-
-		try {
-			setIsLoading(true);
-			setError(null);
-
-			// Create preview
-			const reader = new FileReader();
-			reader.onload = (e) => {
-				setLogoPreview(e.target?.result as string);
-			};
-			reader.readAsDataURL(file);
-
-			// Upload to Supabase
-			const { url } = await uploadFileAPI(storeId, file, "logo");
-
-			// Update store data with logo URL
-			await updateStoreDataAPI(storeId, {
-				logo_url: url,
-			});
-
-			setSuccess("Logo uploaded successfully");
-			setTimeout(() => setSuccess(null), 2000);
-		} catch (err) {
-			setError(
-				err instanceof Error ? err.message : "Failed to upload logo"
-			);
-		} finally {
-			setIsLoading(false);
-		}
-	};
-
-	const handleCsvUpload = async (
-		event: React.ChangeEvent<HTMLInputElement>,
-		type: string
-	) => {
-		const file = event.target.files?.[0];
-		if (!file || !storeId) return;
-
-		// Validate file type
-		if (!file.name.toLowerCase().endsWith(".csv")) {
-			setError("Please upload a CSV file");
-			return;
-		}
-
-		try {
-			setIsLoading(true);
-			setError(null);
-
-			await uploadFileAPI(storeId, file, `csv_${type}`);
-
-			setSuccess(`${type} CSV uploaded successfully`);
-			setTimeout(() => setSuccess(null), 2000);
-		} catch (err) {
-			setError(
-				err instanceof Error ? err.message : "Failed to upload CSV"
-			);
-		} finally {
-			setIsLoading(false);
-		}
 	};
 
 	// Location management functions
@@ -199,6 +148,171 @@ export default function NewClientPage() {
 		});
 	};
 
+	// Collection management functions
+	const handleAddCollection = () => {
+		const tempId = `temp_collection_${tempCollectionCounter}`;
+		setTempCollectionCounter(tempCollectionCounter + 1);
+
+		const tempCollection: CollectionWithMappings = {
+			id: tempId,
+			store_id: "", // Will be set when store is created
+			title: "New Collection",
+			description: "",
+			created_at: new Date().toISOString(),
+			updated_at: new Date().toISOString(),
+			mappings: [],
+		};
+
+		setCollections([...collections, tempCollection]);
+
+		// Add to form data for immediate editing
+		setCollectionFormData((prev) => ({
+			...prev,
+			[tempId]: {
+				title: "New Collection",
+				description: "",
+			},
+		}));
+
+		// Initialize empty mapping form data
+		setMappingFormData((prev) => ({
+			...prev,
+			[tempId]: {},
+		}));
+
+		// Auto-expand the new collection
+		setExpandedCollections((prev) => ({
+			...prev,
+			[tempId]: true,
+		}));
+	};
+
+	const handleCollectionInputChange = (
+		collectionId: string,
+		field: keyof CollectionFormData,
+		value: string
+	) => {
+		setCollectionFormData((prev) => ({
+			...prev,
+			[collectionId]: {
+				...prev[collectionId],
+				[field]: value,
+			},
+		}));
+	};
+
+	const handleDeleteCollection = (collectionId: string) => {
+		setCollections(collections.filter((col) => col.id !== collectionId));
+
+		// Remove from form data
+		setCollectionFormData((prev) => {
+			const updated = { ...prev };
+			delete updated[collectionId];
+			return updated;
+		});
+
+		// Remove from mapping form data
+		setMappingFormData((prev) => {
+			const updated = { ...prev };
+			delete updated[collectionId];
+			return updated;
+		});
+
+		// Remove from expanded collections
+		setExpandedCollections((prev) => {
+			const updated = { ...prev };
+			delete updated[collectionId];
+			return updated;
+		});
+	};
+
+	const handleToggleCollection = (collectionId: string) => {
+		setExpandedCollections((prev) => ({
+			...prev,
+			[collectionId]: !prev[collectionId],
+		}));
+	};
+
+	const handleAddMapping = (collectionId: string) => {
+		const tempMappingId = `temp_mapping_${tempMappingCounter}`;
+		setTempMappingCounter(tempMappingCounter + 1);
+
+		const newMapping = {
+			id: tempMappingId,
+			collection_id: collectionId,
+			mapping_type: "product_tag" as const,
+			mapping_value: "",
+			created_at: new Date().toISOString(),
+			updated_at: new Date().toISOString(),
+		};
+
+		// Update collections state
+		setCollections((prevCollections) =>
+			prevCollections.map((col) =>
+				col.id === collectionId
+					? { ...col, mappings: [...col.mappings, newMapping] }
+					: col
+			)
+		);
+
+		// Add to mapping form data
+		setMappingFormData((prev) => ({
+			...prev,
+			[collectionId]: {
+				...prev[collectionId],
+				[tempMappingId]: {
+					mapping_type: "product_tag" as const,
+					mapping_value: "",
+				},
+			},
+		}));
+	};
+
+	const handleMappingInputChange = (
+		collectionId: string,
+		mappingId: string,
+		field: keyof MappingFormData,
+		value: string
+	) => {
+		setMappingFormData((prev) => ({
+			...prev,
+			[collectionId]: {
+				...prev[collectionId],
+				[mappingId]: {
+					...prev[collectionId]?.[mappingId],
+					[field]: value,
+				},
+			},
+		}));
+	};
+
+	const handleDeleteMapping = (collectionId: string, mappingId: string) => {
+		// Update collections state
+		setCollections((prevCollections) =>
+			prevCollections.map((col) =>
+				col.id === collectionId
+					? {
+							...col,
+							mappings: col.mappings.filter(
+								(mapping) => mapping.id !== mappingId
+							),
+					  }
+					: col
+			)
+		);
+
+		// Remove from mapping form data
+		setMappingFormData((prev) => {
+			const updated = { ...prev };
+			if (updated[collectionId]) {
+				const updatedCollection = { ...updated[collectionId] };
+				delete updatedCollection[mappingId];
+				updated[collectionId] = updatedCollection;
+			}
+			return updated;
+		});
+	};
+
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 
@@ -241,6 +355,34 @@ export default function NewClientPage() {
 				const locationData = locationFormData[tempLocation.id];
 				if (locationData) {
 					await createStoreLocationAPI(currentStoreId, locationData);
+				}
+			}
+
+			// Create any temporary collections
+			const tempCollections = collections.filter((col) =>
+				col.id.startsWith("temp_collection_")
+			);
+			for (const tempCollection of tempCollections) {
+				const collectionData = collectionFormData[tempCollection.id];
+				if (collectionData) {
+					const newCollection = await createStoreCollectionAPI(
+						currentStoreId,
+						collectionData
+					);
+
+					// Create mappings for this collection
+					const mappings = tempCollection.mappings;
+					for (const mapping of mappings) {
+						const mappingData =
+							mappingFormData[tempCollection.id]?.[mapping.id];
+						if (mappingData) {
+							await createCollectionMappingAPI(
+								currentStoreId,
+								newCollection.id,
+								mappingData
+							);
+						}
+					}
 				}
 			}
 
@@ -384,186 +526,6 @@ export default function NewClientPage() {
 							<p className="text-sm text-muted-foreground mt-1">
 								Used in the footer and contact forms
 							</p>
-						</div>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<CardTitle>Logo Upload</CardTitle>
-						<CardDescription>
-							Upload the client's logo (optional)
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						<div className="space-y-4">
-							<div>
-								<Label htmlFor="logo">Logo</Label>
-								<div className="mt-2">
-									<input
-										id="logo"
-										type="file"
-										accept="image/png"
-										onChange={handleLogoUpload}
-										className="hidden"
-									/>
-									<Button
-										type="button"
-										variant="outline"
-										onClick={() =>
-											document
-												.getElementById("logo")
-												?.click()
-										}
-										disabled={isLoading}
-									>
-										<Upload className="h-4 w-4 mr-2" />
-										Upload Logo
-									</Button>
-									<p className="text-sm text-muted-foreground mt-1">
-										PNG files only, up to 5MB
-									</p>
-								</div>
-							</div>
-
-							{logoPreview && (
-								<div className="mt-4">
-									<Label>Logo Preview</Label>
-									<div className="mt-2 p-4 border rounded-lg bg-gray-50">
-										<img
-											src={logoPreview}
-											alt="Logo preview"
-											className="max-h-32 max-w-full object-contain"
-										/>
-									</div>
-								</div>
-							)}
-						</div>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<CardTitle>Data Files</CardTitle>
-						<CardDescription>
-							Upload existing CSV files (optional)
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="space-y-4">
-						<div>
-							<Label htmlFor="products_csv">Products CSV</Label>
-							<div className="mt-2">
-								<input
-									id="products_csv"
-									type="file"
-									accept=".csv"
-									onChange={(e) =>
-										handleCsvUpload(e, "products")
-									}
-									className="hidden"
-								/>
-								<Button
-									type="button"
-									variant="outline"
-									onClick={() =>
-										document
-											.getElementById("products_csv")
-											?.click()
-									}
-									disabled={isLoading}
-								>
-									<Upload className="h-4 w-4 mr-2" />
-									Upload Products CSV
-								</Button>
-							</div>
-						</div>
-
-						<div>
-							<Label htmlFor="customers_csv">Customers CSV</Label>
-							<div className="mt-2">
-								<input
-									id="customers_csv"
-									type="file"
-									accept=".csv"
-									onChange={(e) =>
-										handleCsvUpload(e, "customers")
-									}
-									className="hidden"
-								/>
-								<Button
-									type="button"
-									variant="outline"
-									onClick={() =>
-										document
-											.getElementById("customers_csv")
-											?.click()
-									}
-									disabled={isLoading}
-								>
-									<Upload className="h-4 w-4 mr-2" />
-									Upload Customers CSV
-								</Button>
-							</div>
-						</div>
-
-						<div>
-							<Label htmlFor="orders_csv">Orders CSV</Label>
-							<div className="mt-2">
-								<input
-									id="orders_csv"
-									type="file"
-									accept=".csv"
-									onChange={(e) =>
-										handleCsvUpload(e, "orders")
-									}
-									className="hidden"
-								/>
-								<Button
-									type="button"
-									variant="outline"
-									onClick={() =>
-										document
-											.getElementById("orders_csv")
-											?.click()
-									}
-									disabled={isLoading}
-								>
-									<Upload className="h-4 w-4 mr-2" />
-									Upload Orders CSV
-								</Button>
-							</div>
-						</div>
-
-						<div>
-							<Label htmlFor="inventory_csv">Inventory CSV</Label>
-							<div className="mt-2">
-								<input
-									id="inventory_csv"
-									type="file"
-									accept=".csv"
-									onChange={(e) =>
-										handleCsvUpload(e, "inventory")
-									}
-									className="hidden"
-								/>
-								<Button
-									type="button"
-									variant="outline"
-									onClick={() =>
-										document
-											.getElementById("inventory_csv")
-											?.click()
-									}
-									disabled={isLoading}
-								>
-									<Upload className="h-4 w-4 mr-2" />
-									Upload Inventory CSV
-								</Button>
-								<p className="text-sm text-muted-foreground mt-1">
-									Shopify Inventory CSV export with location
-									and stock data
-								</p>
-							</div>
 						</div>
 					</CardContent>
 				</Card>
@@ -756,6 +718,307 @@ export default function NewClientPage() {
 						>
 							<Plus className="h-4 w-4 mr-2" />
 							Add Location
+						</Button>
+					</CardContent>
+				</Card>
+
+				{/* Product Collections Section */}
+				<Card>
+					<CardHeader>
+						<CardTitle className="flex items-center">
+							<Package className="h-5 w-5 mr-2" />
+							Product Collections
+						</CardTitle>
+						<CardDescription>
+							Create and manage product collections with mapping
+							rules
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						{collections.length === 0 ? (
+							<div className="text-center py-8 text-gray-500">
+								<Package className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+								<p>No collections created yet</p>
+								<p className="text-sm">
+									Add your first collection to get started
+								</p>
+							</div>
+						) : (
+							<div className="space-y-4">
+								{collections.map((collection) => (
+									<div
+										key={collection.id}
+										className="border rounded-lg bg-gray-50"
+									>
+										<div className="p-4">
+											<div className="flex items-center justify-between mb-4">
+												<div className="flex items-center space-x-2">
+													<button
+														type="button"
+														onClick={() =>
+															handleToggleCollection(
+																collection.id
+															)
+														}
+														className="p-1 hover:bg-gray-200 rounded"
+													>
+														{expandedCollections[
+															collection.id
+														] ? (
+															<ChevronUp className="h-4 w-4" />
+														) : (
+															<ChevronDown className="h-4 w-4" />
+														)}
+													</button>
+													<h4 className="font-medium">
+														{collectionFormData[
+															collection.id
+														]?.title ||
+															collection.title}
+													</h4>
+												</div>
+												<Button
+													type="button"
+													variant="outline"
+													size="sm"
+													onClick={() =>
+														handleDeleteCollection(
+															collection.id
+														)
+													}
+												>
+													<Trash2 className="h-4 w-4 mr-2" />
+													Remove
+												</Button>
+											</div>
+
+											{expandedCollections[
+												collection.id
+											] && (
+												<div className="space-y-4">
+													<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+														<div>
+															<Label
+																htmlFor={`collection-title-${collection.id}`}
+															>
+																Collection Title
+																*
+															</Label>
+															<Input
+																id={`collection-title-${collection.id}`}
+																type="text"
+																value={
+																	collectionFormData[
+																		collection
+																			.id
+																	]?.title ??
+																	collection.title
+																}
+																onChange={(e) =>
+																	handleCollectionInputChange(
+																		collection.id,
+																		"title",
+																		e.target
+																			.value
+																	)
+																}
+																placeholder="Collection Name"
+															/>
+														</div>
+														<div>
+															<Label
+																htmlFor={`collection-description-${collection.id}`}
+															>
+																Description
+															</Label>
+															<Input
+																id={`collection-description-${collection.id}`}
+																type="text"
+																value={
+																	collectionFormData[
+																		collection
+																			.id
+																	]
+																		?.description ??
+																	collection.description ??
+																	""
+																}
+																onChange={(e) =>
+																	handleCollectionInputChange(
+																		collection.id,
+																		"description",
+																		e.target
+																			.value
+																	)
+																}
+																placeholder="Collection description"
+															/>
+														</div>
+													</div>
+
+													<div className="border-t pt-4">
+														<div className="flex items-center justify-between mb-3">
+															<Label className="text-sm font-medium">
+																Mapping Rules
+															</Label>
+															<Button
+																type="button"
+																variant="outline"
+																size="sm"
+																onClick={() =>
+																	handleAddMapping(
+																		collection.id
+																	)
+																}
+															>
+																<Plus className="h-4 w-4 mr-2" />
+																Add Mapping
+															</Button>
+														</div>
+
+														{collection.mappings
+															.length === 0 ? (
+															<div className="text-center py-4 text-gray-500 text-sm">
+																<Tag className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+																<p>
+																	No mappings
+																	added yet
+																</p>
+																<p className="text-xs">
+																	Add mapping
+																	rules to
+																	define which
+																	products
+																	belong to
+																	this
+																	collection
+																</p>
+															</div>
+														) : (
+															<div className="space-y-3">
+																{collection.mappings.map(
+																	(
+																		mapping
+																	) => (
+																		<div
+																			key={
+																				mapping.id
+																			}
+																			className="flex items-center space-x-3 p-3 bg-white rounded border"
+																		>
+																			<div className="flex-1">
+																				<Label className="text-xs text-gray-500">
+																					Mapping
+																					Type
+																				</Label>
+																				<select
+																					value={
+																						mappingFormData[
+																							collection
+																								.id
+																						]?.[
+																							mapping
+																								.id
+																						]
+																							?.mapping_type ??
+																						mapping.mapping_type
+																					}
+																					onChange={(
+																						e
+																					) =>
+																						handleMappingInputChange(
+																							collection.id,
+																							mapping.id,
+																							"mapping_type",
+																							e
+																								.target
+																								.value as any
+																						)
+																					}
+																					className="w-full mt-1 px-3 py-2 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+																				>
+																					<option value="product_tag">
+																						Product
+																						Tag
+																					</option>
+																					<option value="product_type">
+																						Product
+																						Type
+																					</option>
+																					<option value="product_category">
+																						Product
+																						Category
+																					</option>
+																				</select>
+																			</div>
+																			<div className="flex-1">
+																				<Label className="text-xs text-gray-500">
+																					Value
+																				</Label>
+																				<Input
+																					type="text"
+																					value={
+																						mappingFormData[
+																							collection
+																								.id
+																						]?.[
+																							mapping
+																								.id
+																						]
+																							?.mapping_value ??
+																						mapping.mapping_value ??
+																						""
+																					}
+																					onChange={(
+																						e
+																					) =>
+																						handleMappingInputChange(
+																							collection.id,
+																							mapping.id,
+																							"mapping_value",
+																							e
+																								.target
+																								.value
+																						)
+																					}
+																					placeholder="Enter value"
+																					className="mt-1 text-sm"
+																				/>
+																			</div>
+																			<Button
+																				type="button"
+																				variant="outline"
+																				size="sm"
+																				onClick={() =>
+																					handleDeleteMapping(
+																						collection.id,
+																						mapping.id
+																					)
+																				}
+																			>
+																				<Trash2 className="h-4 w-4" />
+																			</Button>
+																		</div>
+																	)
+																)}
+															</div>
+														)}
+													</div>
+												</div>
+											)}
+										</div>
+									</div>
+								))}
+							</div>
+						)}
+						<Button
+							type="button"
+							variant="outline"
+							onClick={handleAddCollection}
+							className="w-full"
+						>
+							<Plus className="h-4 w-4 mr-2" />
+							Add Collection
 						</Button>
 					</CardContent>
 				</Card>
