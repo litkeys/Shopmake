@@ -530,198 +530,6 @@ export default function NewClientPage() {
 					</CardContent>
 				</Card>
 
-				{/* Store Locations Section */}
-				<Card>
-					<CardHeader>
-						<CardTitle className="flex items-center">
-							<MapPin className="h-5 w-5 mr-2" />
-							Store Locations
-						</CardTitle>
-						<CardDescription>
-							Add one or more store locations for inventory
-							management
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="space-y-4">
-						{locations.length === 0 ? (
-							<div className="text-center py-8 text-gray-500">
-								<MapPin className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-								<p>No locations added yet</p>
-								<p className="text-sm">
-									Add your first location to get started
-								</p>
-							</div>
-						) : (
-							<div className="space-y-4">
-								{locations.map((location) => (
-									<div
-										key={location.id}
-										className="p-4 border rounded-lg bg-gray-50 space-y-4"
-									>
-										<div className="flex items-center justify-between">
-											<h4 className="font-medium">
-												Location Details
-											</h4>
-											<Button
-												type="button"
-												variant="outline"
-												size="sm"
-												onClick={() =>
-													handleDeleteLocation(
-														location.id
-													)
-												}
-											>
-												<Trash2 className="h-4 w-4 mr-2" />
-												Remove
-											</Button>
-										</div>
-										<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-											<div>
-												<Label
-													htmlFor={`location-name-${location.id}`}
-												>
-													Location Name *
-												</Label>
-												<Input
-													id={`location-name-${location.id}`}
-													type="text"
-													value={
-														locationFormData[
-															location.id
-														]?.name || location.name
-													}
-													onChange={(e) =>
-														handleLocationInputChange(
-															location.id,
-															"name",
-															e.target.value
-														)
-													}
-													placeholder="Main Store"
-												/>
-											</div>
-											<div>
-												<Label
-													htmlFor={`location-phone-${location.id}`}
-												>
-													Phone
-												</Label>
-												<Input
-													id={`location-phone-${location.id}`}
-													type="tel"
-													value={
-														locationFormData[
-															location.id
-														]?.phone ||
-														location.phone ||
-														""
-													}
-													onChange={(e) =>
-														handleLocationInputChange(
-															location.id,
-															"phone",
-															e.target.value
-														)
-													}
-													placeholder="+1 (555) 123-4567"
-												/>
-											</div>
-											<div>
-												<Label
-													htmlFor={`location-address-${location.id}`}
-												>
-													Address
-												</Label>
-												<Input
-													id={`location-address-${location.id}`}
-													type="text"
-													value={
-														locationFormData[
-															location.id
-														]?.address ||
-														location.address ||
-														""
-													}
-													onChange={(e) =>
-														handleLocationInputChange(
-															location.id,
-															"address",
-															e.target.value
-														)
-													}
-													placeholder="123 Main Street"
-												/>
-											</div>
-											<div>
-												<Label
-													htmlFor={`location-city-${location.id}`}
-												>
-													City
-												</Label>
-												<Input
-													id={`location-city-${location.id}`}
-													type="text"
-													value={
-														locationFormData[
-															location.id
-														]?.city ||
-														location.city ||
-														""
-													}
-													onChange={(e) =>
-														handleLocationInputChange(
-															location.id,
-															"city",
-															e.target.value
-														)
-													}
-													placeholder="New York"
-												/>
-											</div>
-											<div>
-												<Label
-													htmlFor={`location-country-${location.id}`}
-												>
-													Country Code
-												</Label>
-												<Input
-													id={`location-country-${location.id}`}
-													type="text"
-													value={
-														locationFormData[
-															location.id
-														]?.country ||
-														location.country ||
-														""
-													}
-													onChange={(e) =>
-														handleLocationInputChange(
-															location.id,
-															"country",
-															e.target.value
-														)
-													}
-													placeholder="United States"
-												/>
-											</div>
-										</div>
-									</div>
-								))}
-							</div>
-						)}
-						<Button
-							type="button"
-							variant="outline"
-							onClick={handleAddLocation}
-							className="w-full"
-						>
-							<Plus className="h-4 w-4 mr-2" />
-							Add Location
-						</Button>
-					</CardContent>
-				</Card>
-
 				{/* Product Collections Section */}
 				<Card>
 					<CardHeader>
@@ -1019,6 +827,198 @@ export default function NewClientPage() {
 						>
 							<Plus className="h-4 w-4 mr-2" />
 							Add Collection
+						</Button>
+					</CardContent>
+				</Card>
+
+				{/* Store Locations Section */}
+				<Card>
+					<CardHeader>
+						<CardTitle className="flex items-center">
+							<MapPin className="h-5 w-5 mr-2" />
+							Store Locations
+						</CardTitle>
+						<CardDescription>
+							Add one or more store locations for inventory
+							management
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						{locations.length === 0 ? (
+							<div className="text-center py-8 text-gray-500">
+								<MapPin className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+								<p>No locations added yet</p>
+								<p className="text-sm">
+									Add your first location to get started
+								</p>
+							</div>
+						) : (
+							<div className="space-y-4">
+								{locations.map((location) => (
+									<div
+										key={location.id}
+										className="p-4 border rounded-lg bg-gray-50 space-y-4"
+									>
+										<div className="flex items-center justify-between">
+											<h4 className="font-medium">
+												Location Details
+											</h4>
+											<Button
+												type="button"
+												variant="outline"
+												size="sm"
+												onClick={() =>
+													handleDeleteLocation(
+														location.id
+													)
+												}
+											>
+												<Trash2 className="h-4 w-4 mr-2" />
+												Remove
+											</Button>
+										</div>
+										<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+											<div>
+												<Label
+													htmlFor={`location-name-${location.id}`}
+												>
+													Location Name *
+												</Label>
+												<Input
+													id={`location-name-${location.id}`}
+													type="text"
+													value={
+														locationFormData[
+															location.id
+														]?.name || location.name
+													}
+													onChange={(e) =>
+														handleLocationInputChange(
+															location.id,
+															"name",
+															e.target.value
+														)
+													}
+													placeholder="Main Store"
+												/>
+											</div>
+											<div>
+												<Label
+													htmlFor={`location-phone-${location.id}`}
+												>
+													Phone
+												</Label>
+												<Input
+													id={`location-phone-${location.id}`}
+													type="tel"
+													value={
+														locationFormData[
+															location.id
+														]?.phone ||
+														location.phone ||
+														""
+													}
+													onChange={(e) =>
+														handleLocationInputChange(
+															location.id,
+															"phone",
+															e.target.value
+														)
+													}
+													placeholder="+1 (555) 123-4567"
+												/>
+											</div>
+											<div>
+												<Label
+													htmlFor={`location-address-${location.id}`}
+												>
+													Address
+												</Label>
+												<Input
+													id={`location-address-${location.id}`}
+													type="text"
+													value={
+														locationFormData[
+															location.id
+														]?.address ||
+														location.address ||
+														""
+													}
+													onChange={(e) =>
+														handleLocationInputChange(
+															location.id,
+															"address",
+															e.target.value
+														)
+													}
+													placeholder="123 Main Street"
+												/>
+											</div>
+											<div>
+												<Label
+													htmlFor={`location-city-${location.id}`}
+												>
+													City
+												</Label>
+												<Input
+													id={`location-city-${location.id}`}
+													type="text"
+													value={
+														locationFormData[
+															location.id
+														]?.city ||
+														location.city ||
+														""
+													}
+													onChange={(e) =>
+														handleLocationInputChange(
+															location.id,
+															"city",
+															e.target.value
+														)
+													}
+													placeholder="New York"
+												/>
+											</div>
+											<div>
+												<Label
+													htmlFor={`location-country-${location.id}`}
+												>
+													Country Code
+												</Label>
+												<Input
+													id={`location-country-${location.id}`}
+													type="text"
+													value={
+														locationFormData[
+															location.id
+														]?.country ||
+														location.country ||
+														""
+													}
+													onChange={(e) =>
+														handleLocationInputChange(
+															location.id,
+															"country",
+															e.target.value
+														)
+													}
+													placeholder="United States"
+												/>
+											</div>
+										</div>
+									</div>
+								))}
+							</div>
+						)}
+						<Button
+							type="button"
+							variant="outline"
+							onClick={handleAddLocation}
+							className="w-full"
+						>
+							<Plus className="h-4 w-4 mr-2" />
+							Add Location
 						</Button>
 					</CardContent>
 				</Card>
