@@ -278,24 +278,6 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			const uploadsResult = await getStoreUploadsAPI(params.clientId);
 			setUploads(uploadsResult);
 
-			// Load locations
-			const locationsResult = await getStoreLocationsAPI(params.clientId);
-			setLocations(locationsResult);
-
-			// Initialize location form data
-			const initialLocationFormData: Record<string, LocationFormData> =
-				{};
-			locationsResult.forEach((location) => {
-				initialLocationFormData[location.id] = {
-					name: location.name,
-					address: location.address || "",
-					city: location.city || "",
-					country: location.country || "",
-					phone: location.phone || "",
-				};
-			});
-			setLocationFormData(initialLocationFormData);
-
 			// Load collections
 			const collectionsResult = await getStoreCollectionsAPI(
 				params.clientId
@@ -330,6 +312,24 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 			setCollectionFormData(initialCollectionFormData);
 			setMappingFormData(initialMappingFormData);
+
+			// Load locations
+			const locationsResult = await getStoreLocationsAPI(params.clientId);
+			setLocations(locationsResult);
+
+			// Initialize location form data
+			const initialLocationFormData: Record<string, LocationFormData> =
+				{};
+			locationsResult.forEach((location) => {
+				initialLocationFormData[location.id] = {
+					name: location.name,
+					address: location.address || "",
+					city: location.city || "",
+					country: location.country || "",
+					phone: location.phone || "",
+				};
+			});
+			setLocationFormData(initialLocationFormData);
 		} catch (err) {
 			setError(
 				err instanceof Error ? err.message : "Failed to load store data"
@@ -888,7 +888,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				collectionId,
 				{
 					mapping_type: "product_tag",
-					mapping_value: "",
+					mapping_value: "new-tag",
 				}
 			);
 
