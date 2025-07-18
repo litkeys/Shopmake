@@ -3780,7 +3780,14 @@ export class ShopifyClient {
 		lastName?: string;
 		email: string;
 		phone?: string;
-		acceptsMarketing?: boolean;
+		emailMarketingConsent?: {
+			marketingState: string;
+			marketingOptInLevel: string;
+		};
+		smsMarketingConsent?: {
+			marketingState: string;
+			marketingOptInLevel: string;
+		};
 		tags?: string[];
 		note?: string;
 		addresses?: Array<{
@@ -3843,9 +3850,38 @@ export class ShopifyClient {
 					case "accepts marketing":
 					case "accepts_marketing":
 					case "marketing":
-						customer.acceptsMarketing =
+					case "email marketing":
+						const acceptsMarketing =
 							cleanValue.toLowerCase() === "true" ||
 							cleanValue.toLowerCase() === "yes";
+						if (acceptsMarketing) {
+							customer.emailMarketingConsent = {
+								marketingState: "SUBSCRIBED",
+								marketingOptInLevel: "SINGLE_OPT_IN",
+							};
+						} else {
+							customer.emailMarketingConsent = {
+								marketingState: "NOT_SUBSCRIBED",
+								marketingOptInLevel: "SINGLE_OPT_IN",
+							};
+						}
+						break;
+					case "sms marketing":
+					case "sms_marketing":
+						const acceptsSms =
+							cleanValue.toLowerCase() === "true" ||
+							cleanValue.toLowerCase() === "yes";
+						if (acceptsSms) {
+							customer.smsMarketingConsent = {
+								marketingState: "SUBSCRIBED",
+								marketingOptInLevel: "SINGLE_OPT_IN",
+							};
+						} else {
+							customer.smsMarketingConsent = {
+								marketingState: "NOT_SUBSCRIBED",
+								marketingOptInLevel: "SINGLE_OPT_IN",
+							};
+						}
 						break;
 					case "tags":
 						if (cleanValue) {
@@ -3923,7 +3959,14 @@ export class ShopifyClient {
 			lastName?: string;
 			email: string;
 			phone?: string;
-			acceptsMarketing?: boolean;
+			emailMarketingConsent?: {
+				marketingState: string;
+				marketingOptInLevel: string;
+			};
+			smsMarketingConsent?: {
+				marketingState: string;
+				marketingOptInLevel: string;
+			};
 			tags?: string[];
 			note?: string;
 			addresses?: Array<{
@@ -3946,7 +3989,9 @@ export class ShopifyClient {
 				lastName: customer.lastName || "",
 				email: customer.email,
 				phone: customer.phone || undefined,
-				acceptsMarketing: customer.acceptsMarketing || false,
+				emailMarketingConsent:
+					customer.emailMarketingConsent || undefined,
+				smsMarketingConsent: customer.smsMarketingConsent || undefined,
 				tags:
 					customer.tags && customer.tags.length > 0
 						? customer.tags
