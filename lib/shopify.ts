@@ -3116,22 +3116,6 @@ export class ShopifyClient {
 		}));
 	}
 
-	// Helper method to download file content
-	private async downloadFile(filePath: string): Promise<string> {
-		// Import supabase client
-		const { supabase } = await import("./supabase");
-
-		const { data, error } = await supabase.storage
-			.from("store-files")
-			.download(filePath);
-
-		if (error) {
-			throw new Error(`Failed to download file: ${error.message}`);
-		}
-
-		return await data.text();
-	}
-
 	// Check if a collection exists in Shopify by ID
 	async checkCollectionExists(collectionId: number): Promise<boolean> {
 		try {
@@ -3697,6 +3681,1110 @@ export class ShopifyClient {
 			};
 		} catch (error) {
 			console.error("Error generating store:", error);
+			throw error;
+		}
+	}
+
+	// Helper method to download file content
+	private async downloadFile(filePath: string): Promise<string> {
+		// Import supabase client
+		const { supabase } = await import("./supabase");
+
+		const { data, error } = await supabase.storage
+			.from("store-files")
+			.download(filePath);
+
+		if (error) {
+			throw new Error(`Failed to download file: ${error.message}`);
+		}
+
+		return await data.text();
+	}
+
+	// Import customers from CSV files using Shopify Bulk Operations
+	async importCustomersFromCSV(storeId: string): Promise<{
+		customers_created: number;
+		errors: string[];
+	}> {
+		try {
+			console.log("Starting customer import from CSV...");
+
+			// Get customer CSV uploads for this store
+			const customerUploads = await this.getStoreUploads(
+				storeId,
+				"csv_customers"
+			);
+
+			if (customerUploads.length === 0) {
+				console.log("No customer CSV found, skipping customer import");
+				return { customers_created: 0, errors: [] };
+			}
+
+			let totalCustomersCreated = 0;
+			const errors: string[] = [];
+
+			for (const upload of customerUploads) {
+				try {
+					console.log(`Processing customer CSV: ${upload.file_name}`);
+
+					// Download the CSV file
+					const csvText = await this.downloadFile(upload.file_path);
+
+					// Parse the CSV
+					const customers = this.parseCustomerCSV(csvText);
+
+					if (customers.length === 0) {
+						console.log(
+							`No valid customers found in ${upload.file_name}`
+						);
+						continue;
+					}
+
+					console.log(
+						`Found ${customers.length} customers to import`
+					);
+
+					// Convert to JSONL format for bulk import
+					const jsonlContent =
+						this.convertCustomersToJSONL(customers);
+
+					// Use bulk operations to import customers
+					const importedCount = await this.bulkImportCustomers(
+						jsonlContent
+					);
+					totalCustomersCreated += importedCount;
+
+					console.log(
+						`Successfully imported ${importedCount} customers from ${upload.file_name}`
+					);
+				} catch (fileError) {
+					const errorMessage = `Error processing customer CSV file ${upload.file_name}: ${fileError}`;
+					console.error(errorMessage);
+					errors.push(errorMessage);
+				}
+			}
+
+			console.log(
+				`Customer import completed. Total customers created: ${totalCustomersCreated}`
+			);
+			return { customers_created: totalCustomersCreated, errors };
+		} catch (error) {
+			console.error("Error importing customers from CSV:", error);
+			throw error;
+		}
+	}
+
+	// Parse customer CSV data
+	private parseCustomerCSV(csvText: string): Array<{
+		firstName?: string;
+		lastName?: string;
+		email: string;
+		phone?: string;
+		acceptsMarketing?: boolean;
+		tags?: string[];
+		note?: string;
+		addresses?: Array<{
+			firstName?: string;
+			lastName?: string;
+			company?: string;
+			address1?: string;
+			address2?: string;
+			city?: string;
+			province?: string;
+			country?: string;
+			zip?: string;
+			phone?: string;
+		}>;
+	}> {
+		const rows = this.parseCSVToRows(csvText);
+		if (rows.length <= 1) {
+			return [];
+		}
+
+		const headers = rows[0];
+		const customers = [];
+
+		for (let i = 1; i < rows.length; i++) {
+			const values = rows[i];
+			if (values.length < headers.length / 2) {
+				continue; // Skip malformed rows
+			}
+
+			const customer: any = {};
+			let address: any = {};
+
+			headers.forEach((header: string, index: number) => {
+				const value = values[index] || "";
+				const cleanValue = value.replace(/^"|"$/g, "").trim();
+				if (!cleanValue) return;
+
+				const lowerHeader = header.toLowerCase();
+
+				// Map CSV headers to customer fields
+				switch (lowerHeader) {
+					case "first name":
+					case "firstname":
+					case "first_name":
+						customer.firstName = cleanValue;
+						break;
+					case "last name":
+					case "lastname":
+					case "last_name":
+						customer.lastName = cleanValue;
+						break;
+					case "email":
+					case "email address":
+						customer.email = cleanValue;
+						break;
+					case "phone":
+					case "phone number":
+						customer.phone = cleanValue;
+						break;
+					case "accepts marketing":
+					case "accepts_marketing":
+					case "marketing":
+						customer.acceptsMarketing =
+							cleanValue.toLowerCase() === "true" ||
+							cleanValue.toLowerCase() === "yes";
+						break;
+					case "tags":
+						if (cleanValue) {
+							customer.tags = cleanValue
+								.split(",")
+								.map((tag: string) => tag.trim())
+								.filter((tag: string) => tag);
+						}
+						break;
+					case "note":
+					case "notes":
+						customer.note = cleanValue;
+						break;
+
+					// Address fields
+					case "address1":
+					case "address 1":
+					case "street":
+					case "street address":
+						address.address1 = cleanValue;
+						break;
+					case "address2":
+					case "address 2":
+					case "apartment":
+					case "unit":
+						address.address2 = cleanValue;
+						break;
+					case "city":
+						address.city = cleanValue;
+						break;
+					case "province":
+					case "state":
+					case "region":
+						address.province = cleanValue;
+						break;
+					case "country":
+						address.country = cleanValue;
+						break;
+					case "zip":
+					case "postal code":
+					case "postcode":
+						address.zip = cleanValue;
+						break;
+					case "company":
+						address.company = cleanValue;
+						break;
+				}
+			});
+
+			// Only include customers with valid email addresses
+			if (customer.email && this.isValidEmail(customer.email)) {
+				// Add address if any address fields are present
+				if (Object.keys(address).length > 0) {
+					// Use customer name for address if address name is not provided
+					if (!address.firstName && customer.firstName) {
+						address.firstName = customer.firstName;
+					}
+					if (!address.lastName && customer.lastName) {
+						address.lastName = customer.lastName;
+					}
+					customer.addresses = [address];
+				}
+
+				customers.push(customer);
+			}
+		}
+
+		return customers;
+	}
+
+	// Convert customers to JSONL format for bulk import
+	private convertCustomersToJSONL(
+		customers: Array<{
+			firstName?: string;
+			lastName?: string;
+			email: string;
+			phone?: string;
+			acceptsMarketing?: boolean;
+			tags?: string[];
+			note?: string;
+			addresses?: Array<{
+				firstName?: string;
+				lastName?: string;
+				company?: string;
+				address1?: string;
+				address2?: string;
+				city?: string;
+				province?: string;
+				country?: string;
+				zip?: string;
+				phone?: string;
+			}>;
+		}>
+	): string {
+		const jsonlLines = customers.map((customer) => {
+			const customerInput: any = {
+				firstName: customer.firstName || "",
+				lastName: customer.lastName || "",
+				email: customer.email,
+				phone: customer.phone || undefined,
+				acceptsMarketing: customer.acceptsMarketing || false,
+				tags:
+					customer.tags && customer.tags.length > 0
+						? customer.tags
+						: undefined,
+				note: customer.note || undefined,
+				addresses:
+					customer.addresses && customer.addresses.length > 0
+						? customer.addresses
+						: undefined,
+			};
+
+			// Clean up undefined fields
+			const cleanCustomerInput = JSON.parse(
+				JSON.stringify(customerInput, (key, value) => {
+					return value === undefined ? undefined : value;
+				})
+			);
+
+			return JSON.stringify({ input: cleanCustomerInput });
+		});
+
+		return jsonlLines.join("\n");
+	}
+
+	// Bulk import customers using Shopify Bulk Operations
+	private async bulkImportCustomers(jsonlContent: string): Promise<number> {
+		try {
+			console.log("Starting customer bulk import...");
+
+			// Create staged upload for customers
+			const stagedUpload = await this.createStagedUploadForCustomers();
+
+			// Upload JSONL file
+			await this.uploadJSONLFile(
+				stagedUpload.url,
+				stagedUpload.parameters,
+				jsonlContent
+			);
+
+			// Extract key and start bulk operation
+			const keyParameter = stagedUpload.parameters.find(
+				(param) => param.name === "key"
+			);
+
+			if (!keyParameter?.value) {
+				throw new Error("Invalid staged upload key parameter");
+			}
+
+			const bulkOperation = await this.startBulkCustomerImport(
+				keyParameter.value
+			);
+
+			// Wait for completion and return count
+			const completedOperation =
+				await this.waitForBulkOperationCompletion(bulkOperation.id);
+
+			return completedOperation.objectCount || 0;
+		} catch (error) {
+			console.error("Customer import failed:", error);
+			throw error;
+		}
+	}
+
+	// Import orders from CSV files using Shopify Bulk Operations
+	async importOrdersFromCSV(storeId: string): Promise<{
+		orders_created: number;
+		errors: string[];
+	}> {
+		try {
+			console.log("Starting order import from CSV...");
+
+			// Get order CSV uploads for this store
+			const orderUploads = await this.getStoreUploads(
+				storeId,
+				"csv_orders"
+			);
+
+			if (orderUploads.length === 0) {
+				console.log("No order CSV found, skipping order import");
+				return { orders_created: 0, errors: [] };
+			}
+
+			let totalOrdersCreated = 0;
+			const errors: string[] = [];
+
+			for (const upload of orderUploads) {
+				try {
+					console.log(`Processing order CSV: ${upload.file_name}`);
+
+					// Download the CSV file
+					const csvText = await this.downloadFile(upload.file_path);
+
+					// Parse the CSV
+					const orders = this.parseOrderCSV(csvText);
+
+					if (orders.length === 0) {
+						console.log(
+							`No valid orders found in ${upload.file_name}`
+						);
+						continue;
+					}
+
+					console.log(`Found ${orders.length} orders to import`);
+
+					// Convert to JSONL format for bulk import
+					const jsonlContent = this.convertOrdersToJSONL(orders);
+
+					// Use bulk operations to import orders
+					const importedCount = await this.bulkImportOrders(
+						jsonlContent
+					);
+					totalOrdersCreated += importedCount;
+
+					console.log(
+						`Successfully imported ${importedCount} orders from ${upload.file_name}`
+					);
+				} catch (fileError) {
+					const errorMessage = `Error processing order CSV file ${upload.file_name}: ${fileError}`;
+					console.error(errorMessage);
+					errors.push(errorMessage);
+				}
+			}
+
+			console.log(
+				`Order import completed. Total orders created: ${totalOrdersCreated}`
+			);
+			return { orders_created: totalOrdersCreated, errors };
+		} catch (error) {
+			console.error("Error importing orders from CSV:", error);
+			throw error;
+		}
+	}
+
+	// Parse order CSV data
+	private parseOrderCSV(csvText: string): Array<{
+		email?: string;
+		financialStatus?: string;
+		fulfillmentStatus?: string;
+		lineItems: Array<{
+			title: string;
+			quantity: number;
+			price: string;
+			sku?: string;
+		}>;
+		shippingAddress?: {
+			firstName?: string;
+			lastName?: string;
+			company?: string;
+			address1?: string;
+			address2?: string;
+			city?: string;
+			province?: string;
+			country?: string;
+			zip?: string;
+			phone?: string;
+		};
+		billingAddress?: {
+			firstName?: string;
+			lastName?: string;
+			company?: string;
+			address1?: string;
+			address2?: string;
+			city?: string;
+			province?: string;
+			country?: string;
+			zip?: string;
+			phone?: string;
+		};
+		note?: string;
+		tags?: string[];
+	}> {
+		const rows = this.parseCSVToRows(csvText);
+		if (rows.length <= 1) {
+			return [];
+		}
+
+		const headers = rows[0];
+		const orders = [];
+
+		for (let i = 1; i < rows.length; i++) {
+			const values = rows[i];
+			if (values.length < headers.length / 2) {
+				continue; // Skip malformed rows
+			}
+
+			const order: any = {
+				lineItems: [],
+			};
+			let shippingAddress: any = {};
+			let billingAddress: any = {};
+
+			headers.forEach((header: string, index: number) => {
+				const value = values[index] || "";
+				const cleanValue = value.replace(/^"|"$/g, "").trim();
+				if (!cleanValue) return;
+
+				const lowerHeader = header.toLowerCase();
+
+				// Map CSV headers to order fields
+				switch (lowerHeader) {
+					case "email":
+					case "customer email":
+						order.email = cleanValue;
+						break;
+					case "financial status":
+					case "financial_status":
+						order.financialStatus = cleanValue.toUpperCase();
+						break;
+					case "fulfillment status":
+					case "fulfillment_status":
+						order.fulfillmentStatus = cleanValue.toUpperCase();
+						break;
+					case "note":
+					case "notes":
+						order.note = cleanValue;
+						break;
+					case "tags":
+						if (cleanValue) {
+							order.tags = cleanValue
+								.split(",")
+								.map((tag) => tag.trim())
+								.filter((tag) => tag);
+						}
+						break;
+
+					// Line item fields
+					case "lineitem title":
+					case "product title":
+					case "item title":
+						if (cleanValue) {
+							order.lineItems.push({
+								title: cleanValue,
+								quantity: 1,
+								price: "0.00",
+							});
+						}
+						break;
+					case "lineitem quantity":
+					case "quantity":
+						if (
+							order.lineItems.length > 0 &&
+							!isNaN(parseInt(cleanValue))
+						) {
+							order.lineItems[
+								order.lineItems.length - 1
+							].quantity = parseInt(cleanValue);
+						}
+						break;
+					case "lineitem price":
+					case "price":
+						if (
+							order.lineItems.length > 0 &&
+							!isNaN(parseFloat(cleanValue))
+						) {
+							order.lineItems[order.lineItems.length - 1].price =
+								parseFloat(cleanValue).toFixed(2);
+						}
+						break;
+					case "lineitem sku":
+					case "sku":
+						if (order.lineItems.length > 0) {
+							order.lineItems[order.lineItems.length - 1].sku =
+								cleanValue;
+						}
+						break;
+
+					// Shipping address fields
+					case "shipping address1":
+					case "shipping_address1":
+						shippingAddress.address1 = cleanValue;
+						break;
+					case "shipping address2":
+					case "shipping_address2":
+						shippingAddress.address2 = cleanValue;
+						break;
+					case "shipping city":
+					case "shipping_city":
+						shippingAddress.city = cleanValue;
+						break;
+					case "shipping province":
+					case "shipping_province":
+					case "shipping state":
+						shippingAddress.province = cleanValue;
+						break;
+					case "shipping country":
+					case "shipping_country":
+						shippingAddress.country = cleanValue;
+						break;
+					case "shipping zip":
+					case "shipping_zip":
+						shippingAddress.zip = cleanValue;
+						break;
+					case "shipping first name":
+					case "shipping_first_name":
+						shippingAddress.firstName = cleanValue;
+						break;
+					case "shipping last name":
+					case "shipping_last_name":
+						shippingAddress.lastName = cleanValue;
+						break;
+					case "shipping company":
+					case "shipping_company":
+						shippingAddress.company = cleanValue;
+						break;
+					case "shipping phone":
+					case "shipping_phone":
+						shippingAddress.phone = cleanValue;
+						break;
+
+					// Billing address fields
+					case "billing address1":
+					case "billing_address1":
+						billingAddress.address1 = cleanValue;
+						break;
+					case "billing address2":
+					case "billing_address2":
+						billingAddress.address2 = cleanValue;
+						break;
+					case "billing city":
+					case "billing_city":
+						billingAddress.city = cleanValue;
+						break;
+					case "billing province":
+					case "billing_province":
+					case "billing state":
+						billingAddress.province = cleanValue;
+						break;
+					case "billing country":
+					case "billing_country":
+						billingAddress.country = cleanValue;
+						break;
+					case "billing zip":
+					case "billing_zip":
+						billingAddress.zip = cleanValue;
+						break;
+					case "billing first name":
+					case "billing_first_name":
+						billingAddress.firstName = cleanValue;
+						break;
+					case "billing last name":
+					case "billing_last_name":
+						billingAddress.lastName = cleanValue;
+						break;
+					case "billing company":
+					case "billing_company":
+						billingAddress.company = cleanValue;
+						break;
+					case "billing phone":
+					case "billing_phone":
+						billingAddress.phone = cleanValue;
+						break;
+				}
+			});
+
+			// Only include orders with valid line items
+			if (order.lineItems.length > 0) {
+				// Add addresses if any address fields are present
+				if (Object.keys(shippingAddress).length > 0) {
+					order.shippingAddress = shippingAddress;
+				}
+				if (Object.keys(billingAddress).length > 0) {
+					order.billingAddress = billingAddress;
+				}
+
+				orders.push(order);
+			}
+		}
+
+		return orders;
+	}
+
+	// Convert orders to JSONL format for bulk import
+	private convertOrdersToJSONL(
+		orders: Array<{
+			email?: string;
+			financialStatus?: string;
+			fulfillmentStatus?: string;
+			lineItems: Array<{
+				title: string;
+				quantity: number;
+				price: string;
+				sku?: string;
+			}>;
+			shippingAddress?: {
+				firstName?: string;
+				lastName?: string;
+				company?: string;
+				address1?: string;
+				address2?: string;
+				city?: string;
+				province?: string;
+				country?: string;
+				zip?: string;
+				phone?: string;
+			};
+			billingAddress?: {
+				firstName?: string;
+				lastName?: string;
+				company?: string;
+				address1?: string;
+				address2?: string;
+				city?: string;
+				province?: string;
+				country?: string;
+				zip?: string;
+				phone?: string;
+			};
+			note?: string;
+			tags?: string[];
+		}>
+	): string {
+		const jsonlLines = orders.map((order) => {
+			const orderInput: any = {
+				email: order.email || undefined,
+				financialStatus: order.financialStatus || "PENDING",
+				fulfillmentStatus: order.fulfillmentStatus || "UNFULFILLED",
+				lineItems: order.lineItems.map((item) => ({
+					title: item.title,
+					quantity: item.quantity,
+					price: item.price,
+					sku: item.sku || undefined,
+				})),
+				shippingAddress: order.shippingAddress || undefined,
+				billingAddress: order.billingAddress || undefined,
+				note: order.note || undefined,
+				tags:
+					order.tags && order.tags.length > 0
+						? order.tags
+						: undefined,
+			};
+
+			// Clean up undefined fields
+			const cleanOrderInput = JSON.parse(
+				JSON.stringify(orderInput, (key, value) => {
+					return value === undefined ? undefined : value;
+				})
+			);
+
+			return JSON.stringify({ input: cleanOrderInput });
+		});
+
+		return jsonlLines.join("\n");
+	}
+
+	// Bulk import orders using Shopify Bulk Operations
+	private async bulkImportOrders(jsonlContent: string): Promise<number> {
+		try {
+			console.log("Starting order bulk import...");
+
+			// Create staged upload for orders
+			const stagedUpload = await this.createStagedUploadForOrders();
+
+			// Upload JSONL file
+			await this.uploadJSONLFile(
+				stagedUpload.url,
+				stagedUpload.parameters,
+				jsonlContent
+			);
+
+			// Extract key and start bulk operation
+			const keyParameter = stagedUpload.parameters.find(
+				(param) => param.name === "key"
+			);
+
+			if (!keyParameter?.value) {
+				throw new Error("Invalid staged upload key parameter");
+			}
+
+			const bulkOperation = await this.startBulkOrderImport(
+				keyParameter.value
+			);
+
+			// Wait for completion and return count
+			const completedOperation =
+				await this.waitForBulkOperationCompletion(bulkOperation.id);
+
+			return completedOperation.objectCount || 0;
+		} catch (error) {
+			console.error("Order import failed:", error);
+			throw error;
+		}
+	}
+
+	// Create staged upload for customers
+	private async createStagedUploadForCustomers(): Promise<{
+		url: string;
+		parameters: Array<{ name: string; value: string }>;
+		resourceUrl: string;
+	}> {
+		const mutation = `
+			mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+				stagedUploadsCreate(input: $input) {
+					stagedTargets {
+						url
+						parameters {
+							name
+							value
+						}
+						resourceUrl
+					}
+					userErrors {
+						field
+						message
+					}
+				}
+			}
+		`;
+
+		const variables = {
+			input: [
+				{
+					filename: "customers.jsonl",
+					mimeType: "text/jsonl",
+					resource: "BULK_MUTATION_VARIABLES",
+					httpMethod: "POST",
+				},
+			],
+		};
+
+		const result = await this.makeGraphQLRequest<{
+			stagedUploadsCreate: {
+				stagedTargets: Array<{
+					url: string;
+					parameters: Array<{ name: string; value: string }>;
+					resourceUrl: string;
+				}>;
+				userErrors: Array<{ field: string; message: string }>;
+			};
+		}>(mutation, variables);
+
+		if (result.stagedUploadsCreate.userErrors.length > 0) {
+			const errors = result.stagedUploadsCreate.userErrors
+				.map((error) => error.message)
+				.join("; ");
+			throw new Error(`Staged upload creation errors: ${errors}`);
+		}
+
+		if (result.stagedUploadsCreate.stagedTargets.length === 0) {
+			throw new Error("No staged upload was created");
+		}
+
+		return result.stagedUploadsCreate.stagedTargets[0];
+	}
+
+	// Create staged upload for orders
+	private async createStagedUploadForOrders(): Promise<{
+		url: string;
+		parameters: Array<{ name: string; value: string }>;
+		resourceUrl: string;
+	}> {
+		const mutation = `
+			mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+				stagedUploadsCreate(input: $input) {
+					stagedTargets {
+						url
+						parameters {
+							name
+							value
+						}
+						resourceUrl
+					}
+					userErrors {
+						field
+						message
+					}
+				}
+			}
+		`;
+
+		const variables = {
+			input: [
+				{
+					filename: "orders.jsonl",
+					mimeType: "text/jsonl",
+					resource: "BULK_MUTATION_VARIABLES",
+					httpMethod: "POST",
+				},
+			],
+		};
+
+		const result = await this.makeGraphQLRequest<{
+			stagedUploadsCreate: {
+				stagedTargets: Array<{
+					url: string;
+					parameters: Array<{ name: string; value: string }>;
+					resourceUrl: string;
+				}>;
+				userErrors: Array<{ field: string; message: string }>;
+			};
+		}>(mutation, variables);
+
+		if (result.stagedUploadsCreate.userErrors.length > 0) {
+			const errors = result.stagedUploadsCreate.userErrors
+				.map((error) => error.message)
+				.join("; ");
+			throw new Error(`Staged upload creation errors: ${errors}`);
+		}
+
+		if (result.stagedUploadsCreate.stagedTargets.length === 0) {
+			throw new Error("No staged upload was created");
+		}
+
+		return result.stagedUploadsCreate.stagedTargets[0];
+	}
+
+	// Start bulk customer import operation
+	private async startBulkCustomerImport(stagedUploadPath: string): Promise<{
+		id: string;
+		status: string;
+	}> {
+		const mutation = `
+			mutation bulkOperationRunMutation($mutation: String!, $stagedUploadPath: String!) {
+				bulkOperationRunMutation(mutation: $mutation, stagedUploadPath: $stagedUploadPath) {
+					bulkOperation {
+						id
+						status
+					}
+					userErrors {
+						field
+						message
+					}
+				}
+			}
+		`;
+
+		const variables = {
+			mutation: `
+				mutation customerCreate($input: CustomerInput!) {
+					customerCreate(input: $input) {
+						customer {
+							id
+							email
+						}
+						userErrors {
+							field
+							message
+						}
+					}
+				}
+			`,
+			stagedUploadPath: stagedUploadPath,
+		};
+
+		const result = await this.makeGraphQLRequest<{
+			bulkOperationRunMutation: {
+				bulkOperation: {
+					id: string;
+					status: string;
+				};
+				userErrors: Array<{ field: string; message: string }>;
+			};
+		}>(mutation, variables);
+
+		if (result.bulkOperationRunMutation.userErrors.length > 0) {
+			const errors = result.bulkOperationRunMutation.userErrors
+				.map((error) => error.message)
+				.join("; ");
+			throw new Error(`Bulk operation start errors: ${errors}`);
+		}
+
+		return result.bulkOperationRunMutation.bulkOperation;
+	}
+
+	// Start bulk order import operation
+	private async startBulkOrderImport(stagedUploadPath: string): Promise<{
+		id: string;
+		status: string;
+	}> {
+		const mutation = `
+			mutation bulkOperationRunMutation($mutation: String!, $stagedUploadPath: String!) {
+				bulkOperationRunMutation(mutation: $mutation, stagedUploadPath: $stagedUploadPath) {
+					bulkOperation {
+						id
+						status
+					}
+					userErrors {
+						field
+						message
+					}
+				}
+			}
+		`;
+
+		const variables = {
+			mutation: `
+				mutation draftOrderCreate($input: DraftOrderInput!) {
+					draftOrderCreate(input: $input) {
+						draftOrder {
+							id
+							name
+						}
+						userErrors {
+							field
+							message
+						}
+					}
+				}
+			`,
+			stagedUploadPath: stagedUploadPath,
+		};
+
+		const result = await this.makeGraphQLRequest<{
+			bulkOperationRunMutation: {
+				bulkOperation: {
+					id: string;
+					status: string;
+				};
+				userErrors: Array<{ field: string; message: string }>;
+			};
+		}>(mutation, variables);
+
+		if (result.bulkOperationRunMutation.userErrors.length > 0) {
+			const errors = result.bulkOperationRunMutation.userErrors
+				.map((error) => error.message)
+				.join("; ");
+			throw new Error(`Bulk operation start errors: ${errors}`);
+		}
+
+		return result.bulkOperationRunMutation.bulkOperation;
+	}
+
+	// Helper method to parse CSV to rows (reusable for all CSV types)
+	private parseCSVToRows(csvText: string): string[][] {
+		const rows: string[][] = [];
+		let currentRow: string[] = [];
+		let currentField = "";
+		let inQuotes = false;
+		let i = 0;
+
+		while (i < csvText.length) {
+			const char = csvText[i];
+
+			if (char === '"') {
+				// Check for escaped quotes ("")
+				if (i + 1 < csvText.length && csvText[i + 1] === '"') {
+					currentField += '"';
+					i += 2;
+				} else {
+					inQuotes = !inQuotes;
+					i++;
+				}
+			} else if (char === "," && !inQuotes) {
+				// End of field
+				currentRow.push(currentField.trim());
+				currentField = "";
+				i++;
+			} else if ((char === "\n" || char === "\r") && !inQuotes) {
+				// End of row (only if not inside quotes)
+				if (currentField.trim() || currentRow.length > 0) {
+					currentRow.push(currentField.trim());
+					if (currentRow.some((field) => field.length > 0)) {
+						rows.push(currentRow);
+					}
+					currentRow = [];
+					currentField = "";
+				}
+				// Skip \r\n combinations
+				if (
+					char === "\r" &&
+					i + 1 < csvText.length &&
+					csvText[i + 1] === "\n"
+				) {
+					i += 2;
+				} else {
+					i++;
+				}
+			} else {
+				currentField += char;
+				i++;
+			}
+		}
+
+		// Add the last field and row if there's content
+		if (currentField.trim() || currentRow.length > 0) {
+			currentRow.push(currentField.trim());
+			if (currentRow.some((field) => field.length > 0)) {
+				rows.push(currentRow);
+			}
+		}
+
+		return rows;
+	}
+
+	// Helper method to validate email addresses
+	private isValidEmail(email: string): boolean {
+		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+		return emailRegex.test(email);
+	}
+
+	// Process store customers and orders (new 6th step)
+	async processStoreCustomersAndOrders(storeId: string): Promise<{
+		customers_created: number;
+		orders_created: number;
+		errors: string[];
+	}> {
+		try {
+			console.log("Starting store customers and orders processing...");
+
+			let customers_created = 0;
+			let orders_created = 0;
+			const errors: string[] = [];
+
+			// Import customers
+			try {
+				const customerResult = await this.importCustomersFromCSV(
+					storeId
+				);
+				customers_created = customerResult.customers_created;
+				errors.push(...customerResult.errors);
+			} catch (error) {
+				const errorMessage = `Error importing customers: ${error}`;
+				console.error(errorMessage);
+				errors.push(errorMessage);
+			}
+
+			// Import orders
+			try {
+				const orderResult = await this.importOrdersFromCSV(storeId);
+				orders_created = orderResult.orders_created;
+				errors.push(...orderResult.errors);
+			} catch (error) {
+				const errorMessage = `Error importing orders: ${error}`;
+				console.error(errorMessage);
+				errors.push(errorMessage);
+			}
+
+			console.log("Store customers and orders processing completed");
+
+			return {
+				customers_created,
+				orders_created,
+				errors,
+			};
+		} catch (error) {
+			console.error(
+				"Error processing store customers and orders:",
+				error
+			);
 			throw error;
 		}
 	}

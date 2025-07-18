@@ -328,6 +328,31 @@ export async function generateStoreCollectionsAPI(storeId: string): Promise<{
 	return result.result;
 }
 
+export async function generateStoreCustomersAPI(storeId: string): Promise<{
+	customers_created: number;
+	orders_created: number;
+	errors: string[];
+}> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/shopify/generate/customer`,
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ store_id: storeId }),
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to generate store customers");
+	}
+
+	const result = await response.json();
+	return result.data;
+}
+
 export async function disconnectShopifyStoreAPI(
 	storeId: string
 ): Promise<void> {

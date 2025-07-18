@@ -42,6 +42,7 @@ import {
 	generateStorePublishAPI,
 	processStoreInventoryAPI,
 	generateStoreCollectionsAPI,
+	generateStoreCustomersAPI,
 	connectShopifyStoreAPI,
 	disconnectShopifyStoreAPI,
 	deleteStoreAPI,
@@ -102,7 +103,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [generationProgress, setGenerationProgress] = useState({
 		currentStep: 0,
-		totalSteps: 5,
+		totalSteps: 6,
 		stepName: "",
 		stepDescription: "",
 		percentage: 0,
@@ -115,6 +116,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		publish?: any;
 		inventory?: any;
 		collections?: any;
+		customers?: any;
 	}>({});
 	const [store, setStore] = useState<Store | null>(null);
 	const [storeData, setStoreData] = useState<StoreData | null>(null);
@@ -1047,7 +1049,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 0) {
 				setGenerationProgress({
 					currentStep: 1,
-					totalSteps: 5,
+					totalSteps: 6,
 					stepName: "Foundation",
 					stepDescription:
 						"Setting up theme, locations, and branding...",
@@ -1090,7 +1092,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 1) {
 				setGenerationProgress({
 					currentStep: 2,
-					totalSteps: 5,
+					totalSteps: 6,
 					stepName: "Products",
 					stepDescription:
 						"Importing products, images, and categories...",
@@ -1108,7 +1110,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 					setGenerationProgress((prev) => ({
 						...prev,
-						percentage: 40,
+						percentage: 30,
 						lastCompletedStep: 1,
 					}));
 
@@ -1132,11 +1134,11 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 2) {
 				setGenerationProgress({
 					currentStep: 3,
-					totalSteps: 5,
+					totalSteps: 6,
 					stepName: "Publish",
 					stepDescription:
 						"Adding variants and publishing products...",
-					percentage: 40,
+					percentage: 30,
 					canResume: true,
 					lastCompletedStep: 1,
 				});
@@ -1150,7 +1152,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 					setGenerationProgress((prev) => ({
 						...prev,
-						percentage: 70,
+						percentage: 50,
 						lastCompletedStep: 2,
 					}));
 
@@ -1174,10 +1176,10 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 3) {
 				setGenerationProgress({
 					currentStep: 4,
-					totalSteps: 5,
+					totalSteps: 6,
 					stepName: "Inventory",
 					stepDescription: "Adding inventory quantities...",
-					percentage: 70,
+					percentage: 50,
 					canResume: true,
 					lastCompletedStep: 2,
 				});
@@ -1191,7 +1193,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 					setGenerationProgress((prev) => ({
 						...prev,
-						percentage: 90,
+						percentage: 70,
 						lastCompletedStep: 3,
 					}));
 
@@ -1218,10 +1220,10 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 4) {
 				setGenerationProgress({
 					currentStep: 5,
-					totalSteps: 5,
+					totalSteps: 6,
 					stepName: "Collections",
 					stepDescription: "Creating smart collections...",
-					percentage: 90,
+					percentage: 70,
 					canResume: true,
 					lastCompletedStep: 3,
 				});
@@ -1235,7 +1237,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 					setGenerationProgress((prev) => ({
 						...prev,
-						percentage: 100,
+						percentage: 80,
 						lastCompletedStep: 4,
 					}));
 
@@ -1258,6 +1260,50 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				}
 			}
 
+			// Step 6: Customers and Orders
+			if (startStep <= 5) {
+				setGenerationProgress({
+					currentStep: 6,
+					totalSteps: 6,
+					stepName: "Customers",
+					stepDescription: "Importing customers and orders...",
+					percentage: 80,
+					canResume: true,
+					lastCompletedStep: 4,
+				});
+
+				try {
+					const customersResult = await generateStoreCustomersAPI(
+						store.id
+					);
+					currentResults.customers = customersResult;
+					setGenerationResults(currentResults);
+
+					setGenerationProgress((prev) => ({
+						...prev,
+						percentage: 100,
+						lastCompletedStep: 5,
+					}));
+
+					console.log(
+						"Customers and orders import completed:",
+						customersResult
+					);
+				} catch (err) {
+					console.error("Customers import error:", err);
+					setGenerationProgress((prev) => ({
+						...prev,
+						canResume: true,
+						lastCompletedStep: 4,
+					}));
+					throw new Error(
+						`Customers and orders import failed: ${
+							err instanceof Error ? err.message : "Unknown error"
+						}`
+					);
+				}
+			}
+
 			// Success - all steps completed
 			const storeUrl = `https://${store.shopify_store_domain}.myshopify.com`;
 			setSuccess(
@@ -1268,7 +1314,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				// Reset progress after success
 				setGenerationProgress({
 					currentStep: 0,
-					totalSteps: 5,
+					totalSteps: 6,
 					stepName: "",
 					stepDescription: "",
 					percentage: 0,
@@ -2660,7 +2706,8 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 									generationResults.products ||
 									generationResults.publish ||
 									generationResults.inventory ||
-									generationResults.collections) && (
+									generationResults.collections ||
+									generationResults.customers) && (
 									<div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
 										<h4 className="text-sm font-medium text-green-800 mb-2">
 											Generation Progress
@@ -2788,6 +2835,34 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 															.collections_created
 													}{" "}
 													collections created
+												</div>
+											)}
+											{generationResults.customers && (
+												<div className="flex items-center">
+													<svg
+														className="h-4 w-4 text-green-500 mr-2"
+														fill="currentColor"
+														viewBox="0 0 20 20"
+													>
+														<path
+															fillRule="evenodd"
+															d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+															clipRule="evenodd"
+														/>
+													</svg>
+													Customers:{" "}
+													{
+														generationResults
+															.customers
+															.customers_created
+													}{" "}
+													customers,{" "}
+													{
+														generationResults
+															.customers
+															.orders_created
+													}{" "}
+													orders imported
 												</div>
 											)}
 										</div>
