@@ -3095,6 +3095,228 @@ export class ShopifyClient {
 		return await data.text();
 	}
 
+	// Create a Smart Collection using GraphQL collectionCreate mutation
+	async createSmartCollection(collection: {
+		title: string;
+		description?: string;
+		rules: Array<{
+			column:
+				| "TAG"
+				| "TYPE"
+				| "PRODUCT_TYPE"
+				| "TITLE"
+				| "VENDOR"
+				| "VARIANT_TITLE"
+				| "VARIANT_COMPARE_AT_PRICE"
+				| "VARIANT_WEIGHT"
+				| "VARIANT_INVENTORY"
+				| "VARIANT_PRICE";
+			relation:
+				| "EQUALS"
+				| "NOT_EQUALS"
+				| "STARTS_WITH"
+				| "ENDS_WITH"
+				| "CONTAINS"
+				| "NOT_CONTAINS"
+				| "GREATER_THAN"
+				| "LESS_THAN";
+			condition: string;
+		}>;
+		appliedDisjunctively?: boolean; // true = ANY rule match, false = ALL rules match
+	}): Promise<{ collection_id: string }> {
+		try {
+			const mutation = `
+				mutation collectionCreate($input: CollectionInput!) {
+					collectionCreate(input: $input) {
+						collection {
+							id
+							title
+							descriptionHtml
+							ruleSet {
+								appliedDisjunctively
+								rules {
+									column
+									relation
+									condition
+								}
+							}
+						}
+						userErrors {
+							field
+							message
+						}
+					}
+				}
+			`;
+
+			const variables = {
+				input: {
+					title: collection.title,
+					descriptionHtml: collection.description || "",
+					ruleSet: {
+						appliedDisjunctively:
+							collection.appliedDisjunctively ?? true, // Default to ANY rule match
+						rules: collection.rules,
+					},
+				},
+			};
+
+			const result = await this.makeGraphQLRequest<{
+				collectionCreate: {
+					collection: {
+						id: string;
+						title: string;
+						descriptionHtml: string;
+						ruleSet: {
+							appliedDisjunctively: boolean;
+							rules: Array<{
+								column: string;
+								relation: string;
+								condition: string;
+							}>;
+						};
+					};
+					userErrors: Array<{ field: string; message: string }>;
+				};
+			}>(mutation, variables);
+
+			if (result.collectionCreate.userErrors.length > 0) {
+				const errors = result.collectionCreate.userErrors
+					.map((error) => error.message)
+					.join("; ");
+				throw new Error(`Collection creation errors: ${errors}`);
+			}
+
+			console.log(
+				`Smart Collection "${collection.title}" created successfully`
+			);
+			return { collection_id: result.collectionCreate.collection.id };
+		} catch (error) {
+			console.error("Error creating smart collection:", error);
+			throw error;
+		}
+	}
+
+	// Generate Smart Collections for a store based on collection mappings
+	async generateStoreCollections(storeId: string): Promise<{
+		collections_created: number;
+		collections_updated: number;
+	}> {
+		try {
+			console.log("Starting store collections generation...");
+
+			// Get collections and mappings from the database
+			const { getStoreCollections, updateStoreCollection } = await import(
+				"./supabase"
+			);
+			const collectionsWithMappings = await getStoreCollections(storeId);
+
+			if (collectionsWithMappings.length === 0) {
+				console.log("No collections found to create");
+				return { collections_created: 0, collections_updated: 0 };
+			}
+
+			console.log(
+				`Found ${collectionsWithMappings.length} collections to create in Shopify`
+			);
+
+			let collections_created = 0;
+			let collections_updated = 0;
+
+			// Process each collection
+			for (const collection of collectionsWithMappings) {
+				try {
+					// Skip if already created in Shopify
+					if (collection.shopify_collection_id) {
+						console.log(
+							`Collection "${collection.title}" already exists in Shopify, skipping`
+						);
+						continue;
+					}
+
+					// Convert collection mappings to Shopify rules
+					const rules = collection.mappings.map((mapping) => {
+						let column:
+							| "TAG"
+							| "TYPE"
+							| "PRODUCT_TYPE"
+							| "TITLE"
+							| "VENDOR"
+							| "VARIANT_TITLE"
+							| "VARIANT_COMPARE_AT_PRICE"
+							| "VARIANT_WEIGHT"
+							| "VARIANT_INVENTORY"
+							| "VARIANT_PRICE";
+
+						switch (mapping.mapping_type) {
+							case "product_tag":
+								column = "TAG";
+								break;
+							case "product_type":
+								column = "TYPE";
+								break;
+							case "product_category":
+								// For product categories, we'll use TYPE as the closest match
+								column = "TYPE";
+								break;
+							default:
+								column = "TAG";
+						}
+
+						return {
+							column,
+							relation: "EQUALS" as const,
+							condition: mapping.mapping_value,
+						};
+					});
+
+					// Skip collections with no rules
+					if (rules.length === 0) {
+						console.log(
+							`Collection "${collection.title}" has no mapping rules, skipping`
+						);
+						continue;
+					}
+
+					// Create the Smart Collection in Shopify
+					const { collection_id } = await this.createSmartCollection({
+						title: collection.title,
+						description: collection.description || "",
+						rules,
+						appliedDisjunctively: true, // Use ANY rule match for broader collections
+					});
+
+					// Extract numeric ID from GraphQL ID
+					const numericId = collection_id.split("/").pop();
+					if (numericId) {
+						// Update the database with the Shopify collection ID
+						await updateStoreCollection(collection.id, {
+							shopify_collection_id: parseInt(numericId),
+						});
+						collections_updated++;
+					}
+
+					collections_created++;
+					console.log(
+						`Created Smart Collection "${collection.title}" with ${rules.length} rules`
+					);
+				} catch (error) {
+					console.error(
+						`Failed to create collection "${collection.title}":`,
+						error
+					);
+					// Continue with other collections instead of failing the entire process
+				}
+			}
+
+			console.log("Store collections generation completed");
+			return { collections_created, collections_updated };
+		} catch (error) {
+			console.error("Error generating store collections:", error);
+			throw error;
+		}
+	}
+
 	// Generate store foundation (theme, locations, branding)
 	async generateStoreFoundation(
 		storeData: StoreData,

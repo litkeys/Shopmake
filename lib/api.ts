@@ -304,6 +304,30 @@ export async function processStoreInventoryAPI(storeId: string): Promise<{
 	return result.result;
 }
 
+export async function generateStoreCollectionsAPI(storeId: string): Promise<{
+	collections_created: number;
+	collections_updated: number;
+}> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/shopify/generate/collection`,
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ storeId }),
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to generate store collections");
+	}
+
+	const result = await response.json();
+	return result.result;
+}
+
 export async function disconnectShopifyStoreAPI(
 	storeId: string
 ): Promise<void> {

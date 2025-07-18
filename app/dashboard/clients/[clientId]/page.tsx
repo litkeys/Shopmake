@@ -41,6 +41,7 @@ import {
 	generateStoreProductsAPI,
 	generateStorePublishAPI,
 	processStoreInventoryAPI,
+	generateStoreCollectionsAPI,
 	connectShopifyStoreAPI,
 	disconnectShopifyStoreAPI,
 	deleteStoreAPI,
@@ -101,7 +102,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [generationProgress, setGenerationProgress] = useState({
 		currentStep: 0,
-		totalSteps: 4,
+		totalSteps: 5,
 		stepName: "",
 		stepDescription: "",
 		percentage: 0,
@@ -113,6 +114,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		products?: any;
 		publish?: any;
 		inventory?: any;
+		collections?: any;
 	}>({});
 	const [store, setStore] = useState<Store | null>(null);
 	const [storeData, setStoreData] = useState<StoreData | null>(null);
@@ -1045,11 +1047,11 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 0) {
 				setGenerationProgress({
 					currentStep: 1,
-					totalSteps: 4,
+					totalSteps: 5,
 					stepName: "Foundation",
 					stepDescription:
 						"Setting up theme, locations, and branding...",
-					percentage: 10,
+					percentage: 1,
 					canResume: false,
 					lastCompletedStep: -1,
 				});
@@ -1063,7 +1065,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 					setGenerationProgress((prev) => ({
 						...prev,
-						percentage: 20,
+						percentage: 10,
 						lastCompletedStep: 0,
 						canResume: true,
 					}));
@@ -1088,11 +1090,11 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 1) {
 				setGenerationProgress({
 					currentStep: 2,
-					totalSteps: 4,
+					totalSteps: 5,
 					stepName: "Products",
 					stepDescription:
 						"Importing products, images, and categories...",
-					percentage: 20,
+					percentage: 10,
 					canResume: true,
 					lastCompletedStep: 0,
 				});
@@ -1106,7 +1108,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 					setGenerationProgress((prev) => ({
 						...prev,
-						percentage: 50,
+						percentage: 40,
 						lastCompletedStep: 1,
 					}));
 
@@ -1130,11 +1132,11 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 2) {
 				setGenerationProgress({
 					currentStep: 3,
-					totalSteps: 4,
+					totalSteps: 5,
 					stepName: "Publish",
 					stepDescription:
 						"Adding variants and publishing products...",
-					percentage: 50,
+					percentage: 40,
 					canResume: true,
 					lastCompletedStep: 1,
 				});
@@ -1148,7 +1150,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 					setGenerationProgress((prev) => ({
 						...prev,
-						percentage: 80,
+						percentage: 70,
 						lastCompletedStep: 2,
 					}));
 
@@ -1172,10 +1174,10 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 3) {
 				setGenerationProgress({
 					currentStep: 4,
-					totalSteps: 4,
+					totalSteps: 5,
 					stepName: "Inventory",
 					stepDescription: "Adding inventory quantities...",
-					percentage: 80,
+					percentage: 70,
 					canResume: true,
 					lastCompletedStep: 2,
 				});
@@ -1189,7 +1191,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 					setGenerationProgress((prev) => ({
 						...prev,
-						percentage: 100,
+						percentage: 90,
 						lastCompletedStep: 3,
 					}));
 
@@ -1212,6 +1214,50 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				}
 			}
 
+			// Step 5: Collections
+			if (startStep <= 4) {
+				setGenerationProgress({
+					currentStep: 5,
+					totalSteps: 5,
+					stepName: "Collections",
+					stepDescription: "Creating smart collections...",
+					percentage: 90,
+					canResume: true,
+					lastCompletedStep: 3,
+				});
+
+				try {
+					const collectionsResult = await generateStoreCollectionsAPI(
+						store.id
+					);
+					currentResults.collections = collectionsResult;
+					setGenerationResults(currentResults);
+
+					setGenerationProgress((prev) => ({
+						...prev,
+						percentage: 100,
+						lastCompletedStep: 4,
+					}));
+
+					console.log(
+						"Collections generation completed:",
+						collectionsResult
+					);
+				} catch (err) {
+					console.error("Collections generation error:", err);
+					setGenerationProgress((prev) => ({
+						...prev,
+						canResume: true,
+						lastCompletedStep: 3,
+					}));
+					throw new Error(
+						`Store collections generation failed: ${
+							err instanceof Error ? err.message : "Unknown error"
+						}`
+					);
+				}
+			}
+
 			// Success - all steps completed
 			const storeUrl = `https://${store.shopify_store_domain}.myshopify.com`;
 			setSuccess(
@@ -1222,7 +1268,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				// Reset progress after success
 				setGenerationProgress({
 					currentStep: 0,
-					totalSteps: 4,
+					totalSteps: 5,
 					stepName: "",
 					stepDescription: "",
 					percentage: 0,
