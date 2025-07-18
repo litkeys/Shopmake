@@ -2434,17 +2434,27 @@ export class ShopifyClient {
 							if (line.trim()) {
 								try {
 									const result = JSON.parse(line);
-									if (result.customer && result.customer.id) {
-										successCount++;
-									} else if (
-										result.userErrors &&
-										result.userErrors.length > 0
+									if (
+										result.data &&
+										result.data.customerCreate
 									) {
-										errorCount++;
-										console.log(
-											"Customer creation error:",
-											result.userErrors
-										);
+										const customerCreate =
+											result.data.customerCreate;
+										if (
+											customerCreate.customer &&
+											customerCreate.customer.id
+										) {
+											successCount++;
+										} else if (
+											customerCreate.userErrors &&
+											customerCreate.userErrors.length > 0
+										) {
+											errorCount++;
+											console.log(
+												"Customer creation error:",
+												customerCreate.userErrors
+											);
+										}
 									}
 								} catch (parseError) {
 									console.log(
@@ -4331,7 +4341,10 @@ export class ShopifyClient {
 				phone: customer.phone || undefined,
 				emailMarketingConsent:
 					customer.emailMarketingConsent || undefined,
-				smsMarketingConsent: customer.smsMarketingConsent || undefined,
+				// Only set SMS marketing consent if customer has a phone number
+				smsMarketingConsent:
+					(customer.phone && customer.smsMarketingConsent) ||
+					undefined,
 				tags:
 					customer.tags && customer.tags.length > 0
 						? customer.tags
