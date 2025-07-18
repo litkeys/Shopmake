@@ -4597,6 +4597,14 @@ export class ShopifyClient {
 							].quantity = parseInt(cleanValue);
 						}
 						break;
+					case "lineitem variant id":
+					case "variant id":
+						if (order.lineItems.length > 0 && cleanValue) {
+							order.lineItems[
+								order.lineItems.length - 1
+							].variantId = cleanValue;
+						}
+						break;
 					case "lineitem price":
 					case "price":
 						if (
@@ -4747,14 +4755,56 @@ export class ShopifyClient {
 				}
 			});
 
-			// Only include orders with valid line items
+			// Validate order requirements
 			if (order.lineItems.length > 0) {
-				// Add addresses if any address fields are present
-				if (Object.keys(shippingAddress).length > 0) {
-					order.shippingAddress = shippingAddress;
+				// Validate that each line item has required fields
+				const validLineItems = order.lineItems.filter((item: any) => {
+					// Line item must have title and quantity > 0
+					if (!item.title || item.quantity <= 0) {
+						console.warn(
+							`Skipping line item with missing title or invalid quantity: ${JSON.stringify(
+								item
+							)}`
+						);
+						return false;
+					}
+					return true;
+				});
+
+				if (validLineItems.length === 0) {
+					console.warn(`Skipping order - no valid line items found`);
+					continue;
 				}
+
+				order.lineItems = validLineItems;
+
+				// Validate customer identification - must have email or phone
+				if (!order.email && !order.phone) {
+					console.warn(
+						`Skipping order - no customer email or phone provided`
+					);
+					continue;
+				}
+
+				// Validate and clean up addresses
+				if (Object.keys(shippingAddress).length > 0) {
+					if (this.isValidOrderAddress(shippingAddress)) {
+						order.shippingAddress = shippingAddress;
+					} else {
+						console.warn(
+							`Skipping invalid shipping address for order`
+						);
+					}
+				}
+
 				if (Object.keys(billingAddress).length > 0) {
-					order.billingAddress = billingAddress;
+					if (this.isValidOrderAddress(billingAddress)) {
+						order.billingAddress = billingAddress;
+					} else {
+						console.warn(
+							`Skipping invalid billing address for order`
+						);
+					}
 				}
 
 				orders.push(order);
@@ -4818,33 +4868,37 @@ export class ShopifyClient {
 	): string {
 		const jsonlLines = orders.map((order) => {
 			const orderInput: any = {
-				name: order.name || undefined,
+				// Basic fields that exist in DraftOrderInput
 				email: order.email || undefined,
 				phone: order.phone || undefined,
-				currencyCode: order.currencyCode || undefined,
-				financialStatus: order.financialStatus || "PENDING",
-				fulfillmentStatus: order.fulfillmentStatus || "UNFULFILLED",
-				processedAt: order.processedAt || undefined,
+				note: order.note || undefined,
+				tags:
+					order.tags && order.tags.length > 0
+						? order.tags
+						: undefined,
+
+				// Currency and discount codes
+				presentmentCurrencyCode: order.currencyCode || undefined,
 				discountCodes: order.discountCodes || undefined,
-				customerAcceptsMarketing: order.acceptsMarketing || undefined,
+
+				// Line items with correct DraftOrderLineItemInput fields
 				lineItems: order.lineItems.map((item) => ({
 					title: item.title,
 					quantity: item.quantity,
+					// For custom line items, we need to specify the price as a custom item
+					custom: true,
 					price: item.price,
-					sku: item.sku || undefined,
+					...(item.sku ? { sku: item.sku } : {}),
 					requiresShipping:
 						item.requiresShipping !== undefined
 							? item.requiresShipping
 							: true,
 					taxable: item.taxable !== undefined ? item.taxable : true,
 				})),
+
+				// Addresses
 				shippingAddress: order.shippingAddress || undefined,
 				billingAddress: order.billingAddress || undefined,
-				note: order.note || undefined,
-				tags:
-					order.tags && order.tags.length > 0
-						? order.tags
-						: undefined,
 			};
 
 			// Clean up undefined fields
@@ -5307,6 +5361,22 @@ export class ShopifyClient {
 		}
 
 		return true;
+	}
+
+	// Validate order address with stricter requirements
+	private isValidOrderAddress(address: any): boolean {
+		// Must have country for order addresses
+		if (!address.country) {
+			return false;
+		}
+
+		// Must have first name and last name for order addresses
+		if (!address.firstName || !address.lastName) {
+			return false;
+		}
+
+		// Use the general address validation for other requirements
+		return this.isValidAddress(address);
 	}
 
 	// Process store customers and orders (new 6th step)
