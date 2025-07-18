@@ -3132,6 +3132,32 @@ export class ShopifyClient {
 		return await data.text();
 	}
 
+	// Check if a collection exists in Shopify by ID
+	async checkCollectionExists(collectionId: number): Promise<boolean> {
+		try {
+			const query = `
+				query($id: ID!) {
+					collection(id: $id) {
+						id
+						title
+					}
+				}
+			`;
+
+			const result = await this.makeGraphQLRequest<{
+				collection: {
+					id: string;
+					title: string;
+				} | null;
+			}>(query, { id: `gid://shopify/Collection/${collectionId}` });
+
+			return result.collection !== null;
+		} catch (error) {
+			console.error("Error checking collection existence:", error);
+			return false;
+		}
+	}
+
 	// Create a Smart Collection using GraphQL collectionCreate mutation
 	async createSmartCollection(collection: {
 		title: string;
@@ -3272,11 +3298,32 @@ export class ShopifyClient {
 			// Process each collection
 			for (const collection of collectionsWithMappings) {
 				try {
-					// Skip if already created in Shopify
+					// Check if collection exists in Shopify (if we have an ID stored)
+					let shouldCreateCollection = true;
+
 					if (collection.shopify_collection_id) {
-						console.log(
-							`Collection "${collection.title}" already exists in Shopify, skipping`
-						);
+						const collectionExists =
+							await this.checkCollectionExists(
+								collection.shopify_collection_id
+							);
+
+						if (collectionExists) {
+							console.log(
+								`Collection "${collection.title}" already exists in Shopify (ID: ${collection.shopify_collection_id}), skipping`
+							);
+							shouldCreateCollection = false;
+						} else {
+							console.log(
+								`Collection "${collection.title}" was deleted from Shopify (ID: ${collection.shopify_collection_id}), will recreate`
+							);
+							// Clear the old ID since the collection was deleted
+							await updateStoreCollection(collection.id, {
+								shopify_collection_id: null,
+							});
+						}
+					}
+
+					if (!shouldCreateCollection) {
 						continue;
 					}
 

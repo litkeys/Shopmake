@@ -448,7 +448,7 @@ export async function updateStoreCollection(
 	collectionData: Partial<{
 		title: string;
 		description?: string;
-		shopify_collection_id?: number;
+		shopify_collection_id?: number | null;
 	}>
 ): Promise<StoreCollection> {
 	const { data, error } = await supabaseAdmin
