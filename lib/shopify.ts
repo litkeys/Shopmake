@@ -1199,26 +1199,39 @@ export class ShopifyClient {
 		return jsonlLines.join("\n");
 	}
 
-	// Fetch and cache Shopify taxonomy categories
-	private taxonomyCache: Map<string, string> | null = null;
+	// Lazy-loading cache for taxonomy categories
+	private taxonomyCache: Map<
+		string,
+		{ id: string; name: string; fullName: string }
+	> = new Map();
 
-	private async getTaxonomyCategories(): Promise<Map<string, string>> {
-		if (this.taxonomyCache) {
-			return this.taxonomyCache;
+	// Search for a specific category by name and cache the result
+	private async searchTaxonomyCategory(
+		categoryName: string
+	): Promise<{ id: string; name: string; fullName: string } | null> {
+		// Check cache first
+		const cached = this.taxonomyCache.get(categoryName.toLowerCase());
+		if (cached) {
+			return cached;
 		}
 
 		try {
-			console.log("Fetching Shopify taxonomy categories...");
+			// Extract the most specific segment for search
+			const segments = categoryName.split(">").map((s) => s.trim());
+			const searchTerm = segments[segments.length - 1];
+
+			console.log(`Searching for taxonomy category: "${searchTerm}"`);
+
 			const query = `
-				query {
+				query($searchTerm: String!) {
 					taxonomy {
-						categories(first: 250) {
-							nodes {
-								id
-								name
-								fullName
-								level
-								parentId
+						categories(first: 10, search: $searchTerm) {
+							edges {
+								node {
+									id
+									name
+									fullName
+								}
 							}
 						}
 					}
@@ -1228,61 +1241,85 @@ export class ShopifyClient {
 			const result = await this.makeGraphQLRequest<{
 				taxonomy: {
 					categories: {
-						nodes: Array<{
-							id: string;
-							name: string;
-							fullName: string;
-							level: number;
-							parentId?: string;
+						edges: Array<{
+							node: {
+								id: string;
+								name: string;
+								fullName: string;
+							};
 						}>;
 					};
 				};
-			}>(query);
+			}>(query, { searchTerm });
 
-			// Create a map of category names to IDs for fast lookup
-			const categoryMap = new Map<string, string>();
+			const categories = result.taxonomy.categories.edges.map(
+				(edge) => edge.node
+			);
 
-			for (const category of result.taxonomy.categories.nodes) {
-				// Map both the name and full name for flexible matching
-				categoryMap.set(category.name.toLowerCase(), category.id);
-				categoryMap.set(category.fullName.toLowerCase(), category.id);
+			if (categories.length === 0) {
+				console.warn(
+					`No taxonomy categories found for search term: "${searchTerm}"`
+				);
+				return null;
 			}
 
-			this.taxonomyCache = categoryMap;
-			console.log(`Cached ${categoryMap.size} taxonomy categories`);
-			return categoryMap;
+			// Find the best match
+			let bestMatch: {
+				id: string;
+				name: string;
+				fullName: string;
+			} | null = null;
+
+			for (const category of categories) {
+				const categoryLower = categoryName.toLowerCase();
+				const fullNameLower = category.fullName.toLowerCase();
+				const nameLower = category.name.toLowerCase();
+
+				// Perfect match: exact full path
+				if (fullNameLower === categoryLower) {
+					bestMatch = category;
+					break;
+				}
+
+				// Good match: exact name match with our search term
+				if (nameLower === searchTerm.toLowerCase()) {
+					bestMatch = category;
+					// Continue looking for a perfect match
+				}
+
+				// Fallback: if no better match found yet
+				if (!bestMatch) {
+					bestMatch = category;
+				}
+			}
+
+			if (bestMatch) {
+				// Cache the result using the original category name as key
+				this.taxonomyCache.set(categoryName.toLowerCase(), bestMatch);
+				console.log(
+					`Found and cached category: "${categoryName}" -> "${bestMatch.fullName}" (${bestMatch.id})`
+				);
+				return bestMatch;
+			}
+
+			return null;
 		} catch (error) {
-			console.error("Error fetching taxonomy categories:", error);
-			// Return empty map if taxonomy fetch fails
-			return new Map<string, string>();
+			console.error("Error searching taxonomy category:", error);
+			return null;
 		}
 	}
 
-	// Find best matching taxonomy category ID for a given category name
-	private async findTaxonomyCategoryId(
+	// Find Shopify category ID for a given category name
+	private async findShopifyCategoryId(
 		categoryName: string
 	): Promise<string | null> {
-		if (!categoryName) return null;
-
-		const taxonomyMap = await this.getTaxonomyCategories();
-		const lowerCategoryName = categoryName.toLowerCase();
-
-		// Try exact match first
-		let categoryId = taxonomyMap.get(lowerCategoryName);
-		if (categoryId) return categoryId;
-
-		// Try partial matching for common category variations
-		for (const [key, value] of Array.from(taxonomyMap.entries())) {
-			if (
-				key.includes(lowerCategoryName) ||
-				lowerCategoryName.includes(key)
-			) {
-				return value;
-			}
+		try {
+			const category = await this.searchTaxonomyCategory(categoryName);
+			return category ? category.id : null;
+		} catch (error) {
+			console.error("Error finding Shopify category ID:", error);
+			return null;
 		}
-
-		console.warn(`No taxonomy category found for: ${categoryName}`);
-		return null;
 	}
 
 	// Add taxonomy categories to recently created products
@@ -1404,7 +1441,7 @@ export class ShopifyClient {
 		}
 
 		// Find matching taxonomy category ID
-		const taxonomyCategoryId = await this.findTaxonomyCategoryId(
+		const taxonomyCategoryId = await this.findShopifyCategoryId(
 			categoryMetafield.value
 		);
 
@@ -3110,7 +3147,8 @@ export class ShopifyClient {
 				| "VARIANT_COMPARE_AT_PRICE"
 				| "VARIANT_WEIGHT"
 				| "VARIANT_INVENTORY"
-				| "VARIANT_PRICE";
+				| "VARIANT_PRICE"
+				| "PRODUCT_CATEGORY_ID";
 			relation:
 				| "EQUALS"
 				| "NOT_EQUALS"
@@ -3121,6 +3159,7 @@ export class ShopifyClient {
 				| "GREATER_THAN"
 				| "LESS_THAN";
 			condition: string;
+			conditionObjectId?: string; // Required for PRODUCT_CATEGORY_ID
 		}>;
 		appliedDisjunctively?: boolean; // true = ANY rule match, false = ALL rules match
 	}): Promise<{ collection_id: string }> {
@@ -3156,7 +3195,14 @@ export class ShopifyClient {
 					ruleSet: {
 						appliedDisjunctively:
 							collection.appliedDisjunctively ?? true, // Default to ANY rule match
-						rules: collection.rules,
+						rules: collection.rules.map((rule) => ({
+							column: rule.column,
+							relation: rule.relation,
+							condition: rule.condition,
+							...(rule.conditionObjectId && {
+								conditionObjectId: rule.conditionObjectId,
+							}),
+						})),
 					},
 				},
 			};
@@ -3235,7 +3281,9 @@ export class ShopifyClient {
 					}
 
 					// Convert collection mappings to Shopify rules
-					const rules = collection.mappings.map((mapping) => {
+					const rules = [];
+
+					for (const mapping of collection.mappings) {
 						let column:
 							| "TAG"
 							| "TYPE"
@@ -3246,29 +3294,66 @@ export class ShopifyClient {
 							| "VARIANT_COMPARE_AT_PRICE"
 							| "VARIANT_WEIGHT"
 							| "VARIANT_INVENTORY"
-							| "VARIANT_PRICE";
+							| "VARIANT_PRICE"
+							| "PRODUCT_CATEGORY_ID";
+
+						let rule: {
+							column: typeof column;
+							relation: "EQUALS";
+							condition: string;
+							conditionObjectId?: string;
+						};
 
 						switch (mapping.mapping_type) {
 							case "product_tag":
-								column = "TAG";
+								rule = {
+									column: "TAG",
+									relation: "EQUALS",
+									condition: mapping.mapping_value,
+								};
 								break;
 							case "product_type":
-								column = "TYPE";
+								rule = {
+									column: "TYPE",
+									relation: "EQUALS",
+									condition: mapping.mapping_value,
+								};
 								break;
 							case "product_category":
-								// For product categories, we'll use TYPE as the closest match
-								column = "TYPE";
+								// For product categories, find the Shopify category ID
+								const categoryId =
+									await this.findShopifyCategoryId(
+										mapping.mapping_value
+									);
+								if (categoryId) {
+									rule = {
+										column: "PRODUCT_CATEGORY_ID",
+										relation: "EQUALS",
+										condition: categoryId,
+										conditionObjectId: categoryId,
+									};
+								} else {
+									// Fallback to TYPE if category not found
+									console.warn(
+										`Category "${mapping.mapping_value}" not found, using TYPE fallback`
+									);
+									rule = {
+										column: "TYPE",
+										relation: "EQUALS",
+										condition: mapping.mapping_value,
+									};
+								}
 								break;
 							default:
-								column = "TAG";
+								rule = {
+									column: "TAG",
+									relation: "EQUALS",
+									condition: mapping.mapping_value,
+								};
 						}
 
-						return {
-							column,
-							relation: "EQUALS" as const,
-							condition: mapping.mapping_value,
-						};
-					});
+						rules.push(rule);
+					}
 
 					// Skip collections with no rules
 					if (rules.length === 0) {
