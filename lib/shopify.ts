@@ -2402,80 +2402,8 @@ export class ShopifyClient {
 			}
 
 			const operation = result.node;
-			console.log(
-				`Bulk operation status: ${operation.status}, objectCount: ${
-					operation.objectCount
-				}, errorCode: ${operation.errorCode || "none"}`
-			);
 
 			if (operation.status === "COMPLETED") {
-				console.log(
-					`Bulk operation completed. URL: ${operation.url}, partialDataUrl: ${operation.partialDataUrl}`
-				);
-
-				// Download and examine the results to see what happened
-				if (operation.url) {
-					try {
-						const response = await fetch(operation.url);
-						const resultsText = await response.text();
-						console.log(
-							"Bulk operation results (first 1000 chars):",
-							resultsText.substring(0, 1000)
-						);
-
-						// Count successful vs failed operations
-						const lines = resultsText
-							.split("\n")
-							.filter((line) => line.trim());
-						let successCount = 0;
-						let errorCount = 0;
-
-						for (const line of lines) {
-							if (line.trim()) {
-								try {
-									const result = JSON.parse(line);
-									if (
-										result.data &&
-										result.data.customerCreate
-									) {
-										const customerCreate =
-											result.data.customerCreate;
-										if (
-											customerCreate.customer &&
-											customerCreate.customer.id
-										) {
-											successCount++;
-										} else if (
-											customerCreate.userErrors &&
-											customerCreate.userErrors.length > 0
-										) {
-											errorCount++;
-											console.log(
-												"Customer creation error:",
-												customerCreate.userErrors
-											);
-										}
-									}
-								} catch (parseError) {
-									console.log(
-										"Could not parse result line:",
-										line
-									);
-								}
-							}
-						}
-
-						console.log(
-							`Bulk operation results: ${successCount} successful, ${errorCount} errors`
-						);
-					} catch (downloadError) {
-						console.error(
-							"Could not download bulk operation results:",
-							downloadError
-						);
-					}
-				}
-
 				// Query Shopify directly for accurate customer count
 				let actualCustomerCount = 0;
 
@@ -4042,28 +3970,6 @@ export class ShopifyClient {
 						`Found ${customers.length} customers to import`
 					);
 
-					// Log some sample customers for debugging
-					if (customers.length > 0) {
-						console.log("Sample customers:");
-						customers.slice(0, 3).forEach((customer, index) => {
-							console.log(`Customer ${index + 1}:`, {
-								firstName: customer.firstName,
-								lastName: customer.lastName,
-								email: customer.email,
-								hasAddress: !!customer.addresses?.length,
-								addressSample: customer.addresses?.[0]
-									? {
-											address1:
-												customer.addresses[0].address1,
-											city: customer.addresses[0].city,
-											country:
-												customer.addresses[0].country,
-									  }
-									: null,
-							});
-						});
-					}
-
 					// Convert to JSONL format for bulk import
 					const jsonlContent =
 						this.convertCustomersToJSONL(customers);
@@ -4131,12 +4037,9 @@ export class ShopifyClient {
 
 		const headers = rows[0];
 		const customers = [];
-		let totalRows = 0;
-		let validRows = 0;
 
 		for (let i = 1; i < rows.length; i++) {
 			const values = rows[i];
-			totalRows++;
 			if (values.length < headers.length / 2) {
 				continue; // Skip malformed rows
 			}
@@ -4273,31 +4176,72 @@ export class ShopifyClient {
 				}
 			});
 
-			// Only include customers with valid email addresses
-			if (customer.email && this.isValidEmail(customer.email)) {
-				// Add address if any address fields are present and the address has sufficient data
+			// Validate mandatory fields: email, firstName, lastName are required
+			if (
+				customer.email &&
+				this.isValidEmail(customer.email) &&
+				customer.firstName &&
+				customer.firstName.trim() &&
+				customer.lastName &&
+				customer.lastName.trim()
+			) {
+				// Handle field dependencies
+
+				// SMS marketing consent requires a valid phone number
+				if (
+					customer.smsMarketingConsent &&
+					(!customer.phone || !customer.phone.trim())
+				) {
+					console.warn(
+						`Skipping SMS marketing consent for customer ${customer.email} - no phone number provided`
+					);
+					delete customer.smsMarketingConsent;
+				}
+
+				// Email marketing consent requires a valid email (already validated above)
+				// This is already handled by the email validation above
+
+				// Add address if any address fields are present and validate country requirements
 				if (Object.keys(address).length > 0) {
-					// Only include address if it has at least address1 or city (not just country)
-					if (address.address1 || address.city) {
-						// Use customer name for address if address name is not provided
-						if (!address.firstName && customer.firstName) {
-							address.firstName = customer.firstName;
-						}
-						if (!address.lastName && customer.lastName) {
-							address.lastName = customer.lastName;
-						}
+					// Use customer name for address if address name is not provided
+					if (!address.firstName && customer.firstName) {
+						address.firstName = customer.firstName;
+					}
+					if (!address.lastName && customer.lastName) {
+						address.lastName = customer.lastName;
+					}
+
+					// Validate address based on country requirements
+					if (this.isValidAddress(address)) {
 						customer.addresses = [address];
+					} else {
+						console.warn(
+							`Skipping invalid address for customer ${customer.email}`
+						);
 					}
 				}
 
 				customers.push(customer);
-				validRows++;
+			} else {
+				// Log why the customer was skipped
+				const missingFields = [];
+				if (!customer.email || !this.isValidEmail(customer.email)) {
+					missingFields.push("valid email");
+				}
+				if (!customer.firstName || !customer.firstName.trim()) {
+					missingFields.push("first name");
+				}
+				if (!customer.lastName || !customer.lastName.trim()) {
+					missingFields.push("last name");
+				}
+				console.warn(
+					`Skipping customer record - missing required fields: ${missingFields.join(
+						", "
+					)}`
+				);
 			}
 		}
 
-		console.log(
-			`Parsed ${validRows} valid customers out of ${totalRows} total rows`
-		);
 		return customers;
 	}
 
@@ -4335,16 +4279,13 @@ export class ShopifyClient {
 	): string {
 		const jsonlLines = customers.map((customer) => {
 			const customerInput: any = {
-				firstName: customer.firstName || undefined,
-				lastName: customer.lastName || undefined,
-				email: customer.email,
+				firstName: customer.firstName, // Required field, already validated
+				lastName: customer.lastName, // Required field, already validated
+				email: customer.email, // Required field, already validated
 				phone: customer.phone || undefined,
 				emailMarketingConsent:
 					customer.emailMarketingConsent || undefined,
-				// Only set SMS marketing consent if customer has a phone number
-				smsMarketingConsent:
-					(customer.phone && customer.smsMarketingConsent) ||
-					undefined,
+				smsMarketingConsent: customer.smsMarketingConsent || undefined,
 				tags:
 					customer.tags && customer.tags.length > 0
 						? customer.tags
@@ -4358,10 +4299,10 @@ export class ShopifyClient {
 			};
 
 			// Clean up undefined fields
-			const cleanCustomerInput = Object.fromEntries(
-				Object.entries(customerInput).filter(
-					([_, value]) => value !== undefined
-				)
+			const cleanCustomerInput = JSON.parse(
+				JSON.stringify(customerInput, (key, value) => {
+					return value === undefined ? undefined : value;
+				})
 			);
 
 			return JSON.stringify({ input: cleanCustomerInput });
@@ -4374,9 +4315,6 @@ export class ShopifyClient {
 	private async bulkImportCustomers(jsonlContent: string): Promise<number> {
 		try {
 			console.log("Starting customer bulk import...");
-			const jsonlLines = jsonlContent.split("\n");
-			console.log(`JSONL has ${jsonlLines.length} lines`);
-			console.log("Sample JSONL content:", jsonlLines[0]); // Log first line for debugging
 
 			// Create staged upload for customers
 			const stagedUpload = await this.createStagedUploadForCustomers();
@@ -4400,7 +4338,6 @@ export class ShopifyClient {
 			const bulkOperation = await this.startBulkCustomerImport(
 				keyParameter.value
 			);
-			console.log(`Bulk operation started with ID: ${bulkOperation.id}`);
 
 			// Wait for completion and return count
 			const completedOperation =
@@ -4408,9 +4345,6 @@ export class ShopifyClient {
 					bulkOperation.id
 				);
 
-			console.log(
-				`Bulk operation completed with status: ${completedOperation.status}, objectCount: ${completedOperation.objectCount}`
-			);
 			return completedOperation.objectCount || 0;
 		} catch (error) {
 			console.error("Customer import failed:", error);
@@ -4914,10 +4848,10 @@ export class ShopifyClient {
 			};
 
 			// Clean up undefined fields
-			const cleanOrderInput = Object.fromEntries(
-				Object.entries(orderInput).filter(
-					([_, value]) => value !== undefined
-				)
+			const cleanOrderInput = JSON.parse(
+				JSON.stringify(orderInput, (key, value) => {
+					return value === undefined ? undefined : value;
+				})
 			);
 
 			return JSON.stringify({ input: cleanOrderInput });
@@ -5271,6 +5205,108 @@ export class ShopifyClient {
 	private isValidEmail(email: string): boolean {
 		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 		return emailRegex.test(email);
+	}
+
+	// Validate address based on country requirements
+	private isValidAddress(address: any): boolean {
+		// Basic validation - must have at least address1 and city
+		if (!address.address1 || !address.city) {
+			return false;
+		}
+
+		// Country-specific validation
+		if (address.country) {
+			const country = address.country.toUpperCase();
+
+			// Countries that require province/state
+			const provinceRequiredCountries = [
+				"US",
+				"CA",
+				"AU",
+				"IN",
+				"BR",
+				"MX",
+			];
+			if (
+				provinceRequiredCountries.includes(country) &&
+				!address.province
+			) {
+				return false;
+			}
+
+			// Countries that require postal code
+			const postalCodeRequiredCountries = [
+				"US",
+				"CA",
+				"GB",
+				"AU",
+				"DE",
+				"FR",
+				"IT",
+				"ES",
+				"NL",
+				"BE",
+				"CH",
+				"AT",
+				"SE",
+				"NO",
+				"DK",
+				"FI",
+				"PL",
+				"CZ",
+				"SK",
+				"HU",
+				"RO",
+				"BG",
+				"HR",
+				"SI",
+				"EE",
+				"LV",
+				"LT",
+				"LU",
+				"MT",
+				"CY",
+				"IE",
+				"PT",
+				"GR",
+				"IN",
+				"BR",
+				"MX",
+				"JP",
+				"KR",
+				"SG",
+				"MY",
+				"TH",
+				"PH",
+				"ID",
+				"VN",
+				"TW",
+				"HK",
+				"NZ",
+				"ZA",
+				"NG",
+				"KE",
+				"EG",
+				"MA",
+				"TN",
+				"GH",
+				"UG",
+				"TZ",
+				"ZM",
+				"ZW",
+				"BW",
+				"NA",
+				"MZ",
+				"MW",
+				"SZ",
+				"LS",
+			];
+			if (postalCodeRequiredCountries.includes(country) && !address.zip) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	// Process store customers and orders (new 6th step)
