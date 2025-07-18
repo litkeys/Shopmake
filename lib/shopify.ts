@@ -4885,9 +4885,11 @@ export class ShopifyClient {
 				lineItems: order.lineItems.map((item) => ({
 					title: item.title,
 					quantity: item.quantity,
-					// For custom line items, we need to specify the price as a custom item
-					custom: true,
-					price: item.price,
+					// Use priceOverride for custom pricing (MoneyInput format)
+					priceOverride: {
+						amount: item.price,
+						currencyCode: order.currencyCode || "USD",
+					},
 					...(item.sku ? { sku: item.sku } : {}),
 					requiresShipping:
 						item.requiresShipping !== undefined
