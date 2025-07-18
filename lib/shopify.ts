@@ -2413,6 +2413,59 @@ export class ShopifyClient {
 					`Bulk operation completed. URL: ${operation.url}, partialDataUrl: ${operation.partialDataUrl}`
 				);
 
+				// Download and examine the results to see what happened
+				if (operation.url) {
+					try {
+						const response = await fetch(operation.url);
+						const resultsText = await response.text();
+						console.log(
+							"Bulk operation results (first 1000 chars):",
+							resultsText.substring(0, 1000)
+						);
+
+						// Count successful vs failed operations
+						const lines = resultsText
+							.split("\n")
+							.filter((line) => line.trim());
+						let successCount = 0;
+						let errorCount = 0;
+
+						for (const line of lines) {
+							if (line.trim()) {
+								try {
+									const result = JSON.parse(line);
+									if (result.customer && result.customer.id) {
+										successCount++;
+									} else if (
+										result.userErrors &&
+										result.userErrors.length > 0
+									) {
+										errorCount++;
+										console.log(
+											"Customer creation error:",
+											result.userErrors
+										);
+									}
+								} catch (parseError) {
+									console.log(
+										"Could not parse result line:",
+										line
+									);
+								}
+							}
+						}
+
+						console.log(
+							`Bulk operation results: ${successCount} successful, ${errorCount} errors`
+						);
+					} catch (downloadError) {
+						console.error(
+							"Could not download bulk operation results:",
+							downloadError
+						);
+					}
+				}
+
 				// Query Shopify directly for accurate customer count
 				let actualCustomerCount = 0;
 
