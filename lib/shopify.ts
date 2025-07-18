@@ -4943,21 +4943,25 @@ export class ShopifyClient {
 			variables
 		);
 
-		if (response.data?.draftOrderCreate?.userErrors?.length > 0) {
+		if (response.draftOrderCreate?.userErrors?.length > 0) {
 			throw new Error(
-				`Draft order creation failed: ${response.data.draftOrderCreate.userErrors
+				`Draft order creation failed: ${response.draftOrderCreate.userErrors
 					.map((error: any) => error.message)
 					.join(", ")}`
 			);
 		}
 
-		if (!response.data?.draftOrderCreate?.draftOrder?.id) {
+		if (!response.draftOrderCreate?.draftOrder?.id) {
+			console.error(
+				"Draft order creation response:",
+				JSON.stringify(response, null, 2)
+			);
 			throw new Error(
 				"Draft order creation failed: No draft order ID returned"
 			);
 		}
 
-		return response.data.draftOrderCreate.draftOrder.id;
+		return response.draftOrderCreate.draftOrder.id;
 	}
 
 	// Complete a draft order using draftOrderComplete mutation
@@ -4989,15 +4993,19 @@ export class ShopifyClient {
 			variables
 		);
 
-		if (response.data?.draftOrderComplete?.userErrors?.length > 0) {
+		if (response.draftOrderComplete?.userErrors?.length > 0) {
 			throw new Error(
-				`Draft order completion failed: ${response.data.draftOrderComplete.userErrors
+				`Draft order completion failed: ${response.draftOrderComplete.userErrors
 					.map((error: any) => error.message)
 					.join(", ")}`
 			);
 		}
 
-		if (!response.data?.draftOrderComplete?.draftOrder?.order?.id) {
+		if (!response.draftOrderComplete?.draftOrder?.order?.id) {
+			console.error(
+				"Draft order completion response:",
+				JSON.stringify(response, null, 2)
+			);
 			throw new Error(
 				"Draft order completion failed: No order ID returned"
 			);
