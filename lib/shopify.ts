@@ -4393,12 +4393,9 @@ export class ShopifyClient {
 
 					console.log(`Found ${orders.length} orders to import`);
 
-					// Convert to JSONL format for bulk import
-					const jsonlContent = this.convertOrdersToJSONL(orders);
-
-					// Use bulk operations to import orders
-					const importedCount = await this.bulkImportOrders(
-						jsonlContent
+					// Import orders individually using draftOrderCreate + draftOrderComplete
+					const importedCount = await this.importOrdersIndividually(
+						orders
 					);
 					totalOrdersCreated += importedCount;
 
@@ -4812,6 +4809,199 @@ export class ShopifyClient {
 		}
 
 		return orders;
+	}
+
+	// Import orders individually using draftOrderCreate + draftOrderComplete
+	private async importOrdersIndividually(
+		orders: Array<{
+			name?: string;
+			email?: string;
+			phone?: string;
+			currencyCode?: string;
+			financialStatus?: string;
+			fulfillmentStatus?: string;
+			processedAt?: string;
+			discountCodes?: string[];
+			acceptsMarketing?: boolean;
+			lineItems: Array<{
+				title: string;
+				quantity: number;
+				price: string;
+				sku?: string;
+				requiresShipping?: boolean;
+				taxable?: boolean;
+			}>;
+			shippingAddress?: {
+				firstName?: string;
+				lastName?: string;
+				company?: string;
+				address1?: string;
+				address2?: string;
+				city?: string;
+				province?: string;
+				country?: string;
+				zip?: string;
+				phone?: string;
+			};
+			billingAddress?: {
+				firstName?: string;
+				lastName?: string;
+				company?: string;
+				address1?: string;
+				address2?: string;
+				city?: string;
+				province?: string;
+				country?: string;
+				zip?: string;
+				phone?: string;
+			};
+			note?: string;
+			tags?: string[];
+			totalPrice?: string;
+			subtotalPrice?: string;
+			totalShipping?: string;
+			totalTax?: string;
+		}>
+	): Promise<number> {
+		let successCount = 0;
+		const batchSize = 10; // Process in batches to avoid rate limits
+
+		for (let i = 0; i < orders.length; i += batchSize) {
+			const batch = orders.slice(i, i + batchSize);
+			const batchPromises = batch.map(async (order) => {
+				try {
+					// Create draft order
+					const draftOrderId = await this.createDraftOrder(order);
+
+					// Complete the draft order to make it a real order
+					await this.completeDraftOrder(draftOrderId);
+
+					return true;
+				} catch (error) {
+					console.error(`Failed to import order: ${error}`);
+					return false;
+				}
+			});
+
+			const results = await Promise.all(batchPromises);
+			successCount += results.filter((result) => result).length;
+
+			// Add a small delay between batches to avoid rate limits
+			if (i + batchSize < orders.length) {
+				await new Promise((resolve) => setTimeout(resolve, 1000));
+			}
+		}
+
+		return successCount;
+	}
+
+	// Create a draft order using draftOrderCreate mutation
+	private async createDraftOrder(order: any): Promise<string> {
+		const mutation = `
+			mutation draftOrderCreate($input: DraftOrderInput!) {
+				draftOrderCreate(input: $input) {
+					draftOrder {
+						id
+						name
+					}
+					userErrors {
+						field
+						message
+					}
+				}
+			}
+		`;
+
+		const variables = {
+			input: {
+				email: order.email || undefined,
+				phone: order.phone || undefined,
+				note: order.note || undefined,
+				tags: order.tags || undefined,
+				presentmentCurrencyCode: order.currencyCode || "USD",
+				lineItems: order.lineItems.map((item: any) => ({
+					title: item.title,
+					quantity: item.quantity,
+					priceOverride: {
+						amount: item.price,
+						currencyCode: order.currencyCode || "USD",
+					},
+					sku: item.sku || undefined,
+					requiresShipping:
+						item.requiresShipping !== undefined
+							? item.requiresShipping
+							: true,
+					taxable: item.taxable !== undefined ? item.taxable : true,
+				})),
+				shippingAddress: order.shippingAddress || undefined,
+				billingAddress: order.billingAddress || undefined,
+			},
+		};
+
+		const response = await this.makeGraphQLRequest<any>(
+			mutation,
+			variables
+		);
+
+		if (response.data?.draftOrderCreate?.userErrors?.length > 0) {
+			throw new Error(
+				`Draft order creation failed: ${response.data.draftOrderCreate.userErrors
+					.map((error: any) => error.message)
+					.join(", ")}`
+			);
+		}
+
+		if (!response.data?.draftOrderCreate?.draftOrder?.id) {
+			throw new Error(
+				"Draft order creation failed: No draft order ID returned"
+			);
+		}
+
+		return response.data.draftOrderCreate.draftOrder.id;
+	}
+
+	// Complete a draft order using draftOrderComplete mutation
+	private async completeDraftOrder(draftOrderId: string): Promise<void> {
+		const mutation = `
+			mutation draftOrderComplete($id: ID!) {
+				draftOrderComplete(id: $id) {
+					draftOrder {
+						id
+						order {
+							id
+							name
+						}
+					}
+					userErrors {
+						field
+						message
+					}
+				}
+			}
+		`;
+
+		const variables = {
+			id: draftOrderId,
+		};
+
+		const response = await this.makeGraphQLRequest<any>(
+			mutation,
+			variables
+		);
+
+		if (response.data?.draftOrderComplete?.userErrors?.length > 0) {
+			throw new Error(
+				`Draft order completion failed: ${response.data.draftOrderComplete.userErrors
+					.map((error: any) => error.message)
+					.join(", ")}`
+			);
+		}
+
+		if (!response.data?.draftOrderComplete?.draftOrder?.order?.id) {
+			throw new Error(
+				"Draft order completion failed: No order ID returned"
+			);
+		}
 	}
 
 	// Convert orders to JSONL format for bulk import
