@@ -2856,7 +2856,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 															.customers
 															.customers_created
 													}{" "}
-													customers created,{" "}
+													customers,{" "}
 													{
 														generationResults
 															.customers
