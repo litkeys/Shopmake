@@ -4016,6 +4016,7 @@ export class ShopifyClient {
 		};
 		tags?: string[];
 		note?: string;
+		taxExempt?: boolean;
 		addresses?: Array<{
 			firstName?: string;
 			lastName?: string;
@@ -4073,6 +4074,7 @@ export class ShopifyClient {
 					case "phone number":
 						customer.phone = cleanValue;
 						break;
+					case "accepts email marketing":
 					case "accepts marketing":
 					case "accepts_marketing":
 					case "marketing":
@@ -4092,6 +4094,7 @@ export class ShopifyClient {
 							};
 						}
 						break;
+					case "accepts sms marketing":
 					case "sms marketing":
 					case "sms_marketing":
 						const acceptsSms =
@@ -4122,37 +4125,70 @@ export class ShopifyClient {
 						customer.note = cleanValue;
 						break;
 
-					// Address fields
+					// Address fields - Updated to match Shopify export format
+					case "default address company":
+					case "address company":
+					case "company":
+						address.company = cleanValue;
+						break;
+					case "default address address1":
 					case "address1":
 					case "address 1":
 					case "street":
 					case "street address":
 						address.address1 = cleanValue;
 						break;
+					case "default address address2":
 					case "address2":
 					case "address 2":
 					case "apartment":
 					case "unit":
 						address.address2 = cleanValue;
 						break;
+					case "default address city":
 					case "city":
 						address.city = cleanValue;
 						break;
+					case "default address province code":
+					case "default address province":
 					case "province":
 					case "state":
 					case "region":
 						address.province = cleanValue;
 						break;
+					case "default address country code":
+					case "default address country":
 					case "country":
 						address.country = cleanValue;
 						break;
+					case "default address zip":
 					case "zip":
 					case "postal code":
 					case "postcode":
 						address.zip = cleanValue;
 						break;
-					case "company":
-						address.company = cleanValue;
+					case "default address phone":
+					case "address phone":
+						address.phone = cleanValue;
+						break;
+
+					// Additional fields from Shopify export that we should handle
+					case "customer id":
+					case "id":
+						// Skip customer ID as it's for existing customers
+						break;
+					case "total spent":
+					case "total orders":
+						// Skip these as they're calculated fields
+						break;
+					case "tax exempt":
+						// This could be mapped to taxExempt field if needed
+						if (
+							cleanValue.toLowerCase() === "true" ||
+							cleanValue.toLowerCase() === "yes"
+						) {
+							customer.taxExempt = true;
+						}
 						break;
 				}
 			});
@@ -4195,6 +4231,7 @@ export class ShopifyClient {
 			};
 			tags?: string[];
 			note?: string;
+			taxExempt?: boolean;
 			addresses?: Array<{
 				firstName?: string;
 				lastName?: string;
@@ -4223,6 +4260,7 @@ export class ShopifyClient {
 						? customer.tags
 						: undefined,
 				note: customer.note || undefined,
+				taxExempt: customer.taxExempt || undefined,
 				addresses:
 					customer.addresses && customer.addresses.length > 0
 						? customer.addresses
@@ -4355,9 +4393,13 @@ export class ShopifyClient {
 
 	// Parse order CSV data
 	private parseOrderCSV(csvText: string): Array<{
+		name?: string;
 		email?: string;
 		financialStatus?: string;
 		fulfillmentStatus?: string;
+		currency?: string;
+		subtotal?: string;
+		total?: string;
 		lineItems: Array<{
 			title: string;
 			quantity: number;
@@ -4397,7 +4439,7 @@ export class ShopifyClient {
 		}
 
 		const headers = rows[0];
-		const orders = [];
+		const orderMap = new Map<string, any>(); // Group orders by order name
 
 		for (let i = 1; i < rows.length; i++) {
 			const values = rows[i];
@@ -4405,11 +4447,11 @@ export class ShopifyClient {
 				continue; // Skip malformed rows
 			}
 
-			const order: any = {
-				lineItems: [],
-			};
+			let orderName = "";
+			let currentOrder: any = null;
 			let shippingAddress: any = {};
 			let billingAddress: any = {};
+			let lineItem: any = null;
 
 			headers.forEach((header: string, index: number) => {
 				const value = values[index] || "";
@@ -4420,25 +4462,44 @@ export class ShopifyClient {
 
 				// Map CSV headers to order fields
 				switch (lowerHeader) {
+					case "name":
+						orderName = cleanValue;
+						if (!orderMap.has(orderName)) {
+							orderMap.set(orderName, {
+								name: orderName,
+								lineItems: [],
+							});
+						}
+						currentOrder = orderMap.get(orderName);
+						break;
 					case "email":
-					case "customer email":
-						order.email = cleanValue;
+						if (currentOrder) currentOrder.email = cleanValue;
 						break;
 					case "financial status":
-					case "financial_status":
-						order.financialStatus = cleanValue.toUpperCase();
+						if (currentOrder)
+							currentOrder.financialStatus =
+								cleanValue.toUpperCase();
 						break;
 					case "fulfillment status":
-					case "fulfillment_status":
-						order.fulfillmentStatus = cleanValue.toUpperCase();
+						if (currentOrder)
+							currentOrder.fulfillmentStatus =
+								cleanValue.toUpperCase();
 						break;
-					case "note":
+					case "currency":
+						if (currentOrder) currentOrder.currency = cleanValue;
+						break;
+					case "subtotal":
+						if (currentOrder) currentOrder.subtotal = cleanValue;
+						break;
+					case "total":
+						if (currentOrder) currentOrder.total = cleanValue;
+						break;
 					case "notes":
-						order.note = cleanValue;
+						if (currentOrder) currentOrder.note = cleanValue;
 						break;
 					case "tags":
-						if (cleanValue) {
-							order.tags = cleanValue
+						if (currentOrder && cleanValue) {
+							currentOrder.tags = cleanValue
 								.split(",")
 								.map((tag) => tag.trim())
 								.filter((tag) => tag);
@@ -4446,147 +4507,127 @@ export class ShopifyClient {
 						break;
 
 					// Line item fields
-					case "lineitem title":
-					case "product title":
-					case "item title":
+					case "lineitem name":
 						if (cleanValue) {
-							order.lineItems.push({
+							lineItem = {
 								title: cleanValue,
 								quantity: 1,
 								price: "0.00",
-							});
+							};
 						}
 						break;
 					case "lineitem quantity":
-					case "quantity":
-						if (
-							order.lineItems.length > 0 &&
-							!isNaN(parseInt(cleanValue))
-						) {
-							order.lineItems[
-								order.lineItems.length - 1
-							].quantity = parseInt(cleanValue);
+						if (lineItem && !isNaN(parseInt(cleanValue))) {
+							lineItem.quantity = parseInt(cleanValue);
 						}
 						break;
 					case "lineitem price":
-					case "price":
-						if (
-							order.lineItems.length > 0 &&
-							!isNaN(parseFloat(cleanValue))
-						) {
-							order.lineItems[order.lineItems.length - 1].price =
-								parseFloat(cleanValue).toFixed(2);
+						if (lineItem && !isNaN(parseFloat(cleanValue))) {
+							lineItem.price = parseFloat(cleanValue).toFixed(2);
 						}
 						break;
 					case "lineitem sku":
-					case "sku":
-						if (order.lineItems.length > 0) {
-							order.lineItems[order.lineItems.length - 1].sku =
-								cleanValue;
+						if (lineItem) {
+							lineItem.sku = cleanValue;
 						}
 						break;
 
 					// Shipping address fields
+					case "shipping name":
+						const shippingNames = cleanValue.split(" ");
+						if (shippingNames.length >= 2) {
+							shippingAddress.firstName = shippingNames[0];
+							shippingAddress.lastName = shippingNames
+								.slice(1)
+								.join(" ");
+						} else {
+							shippingAddress.firstName = cleanValue;
+						}
+						break;
 					case "shipping address1":
-					case "shipping_address1":
 						shippingAddress.address1 = cleanValue;
 						break;
 					case "shipping address2":
-					case "shipping_address2":
 						shippingAddress.address2 = cleanValue;
 						break;
 					case "shipping city":
-					case "shipping_city":
 						shippingAddress.city = cleanValue;
 						break;
 					case "shipping province":
-					case "shipping_province":
-					case "shipping state":
 						shippingAddress.province = cleanValue;
 						break;
 					case "shipping country":
-					case "shipping_country":
 						shippingAddress.country = cleanValue;
 						break;
 					case "shipping zip":
-					case "shipping_zip":
 						shippingAddress.zip = cleanValue;
 						break;
-					case "shipping first name":
-					case "shipping_first_name":
-						shippingAddress.firstName = cleanValue;
-						break;
-					case "shipping last name":
-					case "shipping_last_name":
-						shippingAddress.lastName = cleanValue;
-						break;
 					case "shipping company":
-					case "shipping_company":
 						shippingAddress.company = cleanValue;
 						break;
 					case "shipping phone":
-					case "shipping_phone":
 						shippingAddress.phone = cleanValue;
 						break;
 
 					// Billing address fields
+					case "billing name":
+						const billingNames = cleanValue.split(" ");
+						if (billingNames.length >= 2) {
+							billingAddress.firstName = billingNames[0];
+							billingAddress.lastName = billingNames
+								.slice(1)
+								.join(" ");
+						} else {
+							billingAddress.firstName = cleanValue;
+						}
+						break;
 					case "billing address1":
-					case "billing_address1":
 						billingAddress.address1 = cleanValue;
 						break;
 					case "billing address2":
-					case "billing_address2":
 						billingAddress.address2 = cleanValue;
 						break;
 					case "billing city":
-					case "billing_city":
 						billingAddress.city = cleanValue;
 						break;
 					case "billing province":
-					case "billing_province":
-					case "billing state":
 						billingAddress.province = cleanValue;
 						break;
 					case "billing country":
-					case "billing_country":
 						billingAddress.country = cleanValue;
 						break;
 					case "billing zip":
-					case "billing_zip":
 						billingAddress.zip = cleanValue;
 						break;
-					case "billing first name":
-					case "billing_first_name":
-						billingAddress.firstName = cleanValue;
-						break;
-					case "billing last name":
-					case "billing_last_name":
-						billingAddress.lastName = cleanValue;
-						break;
 					case "billing company":
-					case "billing_company":
 						billingAddress.company = cleanValue;
 						break;
 					case "billing phone":
-					case "billing_phone":
 						billingAddress.phone = cleanValue;
 						break;
 				}
 			});
 
-			// Only include orders with valid line items
-			if (order.lineItems.length > 0) {
-				// Add addresses if any address fields are present
+			// Add line item to current order if we have one
+			if (currentOrder && lineItem) {
+				currentOrder.lineItems.push(lineItem);
+			}
+
+			// Add addresses to current order if we have data
+			if (currentOrder) {
 				if (Object.keys(shippingAddress).length > 0) {
-					order.shippingAddress = shippingAddress;
+					currentOrder.shippingAddress = shippingAddress;
 				}
 				if (Object.keys(billingAddress).length > 0) {
-					order.billingAddress = billingAddress;
+					currentOrder.billingAddress = billingAddress;
 				}
-
-				orders.push(order);
 			}
 		}
+
+		// Convert map to array and filter out orders without line items
+		const orders = Array.from(orderMap.values()).filter(
+			(order) => order.lineItems && order.lineItems.length > 0
+		);
 
 		return orders;
 	}
@@ -4594,9 +4635,13 @@ export class ShopifyClient {
 	// Convert orders to JSONL format for bulk import
 	private convertOrdersToJSONL(
 		orders: Array<{
+			name?: string;
 			email?: string;
 			financialStatus?: string;
 			fulfillmentStatus?: string;
+			currency?: string;
+			subtotal?: string;
+			total?: string;
 			lineItems: Array<{
 				title: string;
 				quantity: number;
