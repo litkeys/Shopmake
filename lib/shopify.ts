@@ -4231,8 +4231,8 @@ export class ShopifyClient {
 	): string {
 		const jsonlLines = customers.map((customer) => {
 			const customerInput: any = {
-				firstName: customer.firstName || "",
-				lastName: customer.lastName || "",
+				firstName: customer.firstName || undefined,
+				lastName: customer.lastName || undefined,
 				email: customer.email,
 				phone: customer.phone || undefined,
 				emailMarketingConsent:
@@ -4251,10 +4251,10 @@ export class ShopifyClient {
 			};
 
 			// Clean up undefined fields
-			const cleanCustomerInput = JSON.parse(
-				JSON.stringify(customerInput, (key, value) => {
-					return value === undefined ? undefined : value;
-				})
+			const cleanCustomerInput = Object.fromEntries(
+				Object.entries(customerInput).filter(
+					([_, value]) => value !== undefined
+				)
 			);
 
 			return JSON.stringify({ input: cleanCustomerInput });
@@ -4267,6 +4267,7 @@ export class ShopifyClient {
 	private async bulkImportCustomers(jsonlContent: string): Promise<number> {
 		try {
 			console.log("Starting customer bulk import...");
+			console.log("Sample JSONL content:", jsonlContent.split("\n")[0]); // Log first line for debugging
 
 			// Create staged upload for customers
 			const stagedUpload = await this.createStagedUploadForCustomers();
@@ -4800,10 +4801,10 @@ export class ShopifyClient {
 			};
 
 			// Clean up undefined fields
-			const cleanOrderInput = JSON.parse(
-				JSON.stringify(orderInput, (key, value) => {
-					return value === undefined ? undefined : value;
-				})
+			const cleanOrderInput = Object.fromEntries(
+				Object.entries(orderInput).filter(
+					([_, value]) => value !== undefined
+				)
 			);
 
 			return JSON.stringify({ input: cleanOrderInput });
