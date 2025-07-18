@@ -2356,6 +2356,232 @@ export class ShopifyClient {
 		throw new Error("Bulk operation timed out after 10 minutes");
 	}
 
+	// Wait for bulk operation completion - Customer version
+	private async waitForBulkOperationCompletionCustomers(
+		bulkOperationId: string
+	): Promise<{
+		status: string;
+		objectCount: number;
+	}> {
+		const maxAttempts = 60; // Wait up to 10 minutes (60 * 10 seconds)
+		let attempts = 0;
+
+		while (attempts < maxAttempts) {
+			const query = `
+				query($id: ID!) {
+					node(id: $id) {
+						... on BulkOperation {
+							id
+							status
+							errorCode
+							objectCount
+							createdAt
+							completedAt
+							url
+							partialDataUrl
+						}
+					}
+				}
+			`;
+
+			const result = await this.makeGraphQLRequest<{
+				node: {
+					id: string;
+					status: string;
+					errorCode?: string;
+					objectCount: number;
+					createdAt: string;
+					completedAt?: string;
+					url?: string;
+					partialDataUrl?: string;
+				} | null;
+			}>(query, { id: bulkOperationId });
+
+			if (!result.node) {
+				throw new Error(`Bulk operation not found: ${bulkOperationId}`);
+			}
+
+			const operation = result.node;
+
+			if (operation.status === "COMPLETED") {
+				// Query Shopify directly for accurate customer count
+				let actualCustomerCount = 0;
+
+				try {
+					const customersQuery = `
+						query {
+							customers(first: 250, sortKey: CREATED_AT, reverse: true) {
+								nodes {
+									id
+									createdAt
+								}
+							}
+						}
+					`;
+
+					const customersResult = await this.makeGraphQLRequest<{
+						customers: {
+							nodes: Array<{ id: string; createdAt: string }>;
+						};
+					}>(customersQuery);
+
+					// Count customers created in the last 10 minutes
+					const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+					const recentCustomers =
+						customersResult.customers.nodes.filter(
+							(customer) =>
+								new Date(customer.createdAt) > tenMinutesAgo
+						);
+
+					actualCustomerCount = recentCustomers.length;
+					console.log(
+						`Successfully imported ${actualCustomerCount} customers`
+					);
+				} catch (countError) {
+					console.error(
+						"Could not count imported customers:",
+						countError
+					);
+					actualCustomerCount = 0;
+				}
+
+				return {
+					status: operation.status,
+					objectCount: actualCustomerCount,
+				};
+			}
+
+			if (
+				operation.status === "FAILED" ||
+				operation.status === "CANCELED"
+			) {
+				throw new Error(
+					`Bulk operation ${operation.status.toLowerCase()}: ${
+						operation.errorCode || "Unknown error"
+					}`
+				);
+			}
+
+			// Wait 10 seconds before checking again
+			await new Promise((resolve) => setTimeout(resolve, 10000));
+			attempts++;
+		}
+
+		throw new Error("Bulk operation timed out after 10 minutes");
+	}
+
+	// Wait for bulk operation completion - Order version
+	private async waitForBulkOperationCompletionOrders(
+		bulkOperationId: string
+	): Promise<{
+		status: string;
+		objectCount: number;
+	}> {
+		const maxAttempts = 60; // Wait up to 10 minutes (60 * 10 seconds)
+		let attempts = 0;
+
+		while (attempts < maxAttempts) {
+			const query = `
+				query($id: ID!) {
+					node(id: $id) {
+						... on BulkOperation {
+							id
+							status
+							errorCode
+							objectCount
+							createdAt
+							completedAt
+							url
+							partialDataUrl
+						}
+					}
+				}
+			`;
+
+			const result = await this.makeGraphQLRequest<{
+				node: {
+					id: string;
+					status: string;
+					errorCode?: string;
+					objectCount: number;
+					createdAt: string;
+					completedAt?: string;
+					url?: string;
+					partialDataUrl?: string;
+				} | null;
+			}>(query, { id: bulkOperationId });
+
+			if (!result.node) {
+				throw new Error(`Bulk operation not found: ${bulkOperationId}`);
+			}
+
+			const operation = result.node;
+
+			if (operation.status === "COMPLETED") {
+				// Query Shopify directly for accurate order count
+				let actualOrderCount = 0;
+
+				try {
+					const ordersQuery = `
+						query {
+							orders(first: 250, sortKey: CREATED_AT, reverse: true) {
+								nodes {
+									id
+									createdAt
+								}
+							}
+						}
+					`;
+
+					const ordersResult = await this.makeGraphQLRequest<{
+						orders: {
+							nodes: Array<{ id: string; createdAt: string }>;
+						};
+					}>(ordersQuery);
+
+					// Count orders created in the last 10 minutes
+					const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+					const recentOrders = ordersResult.orders.nodes.filter(
+						(order) => new Date(order.createdAt) > tenMinutesAgo
+					);
+
+					actualOrderCount = recentOrders.length;
+					console.log(
+						`Successfully imported ${actualOrderCount} orders`
+					);
+				} catch (countError) {
+					console.error(
+						"Could not count imported orders:",
+						countError
+					);
+					actualOrderCount = 0;
+				}
+
+				return {
+					status: operation.status,
+					objectCount: actualOrderCount,
+				};
+			}
+
+			if (
+				operation.status === "FAILED" ||
+				operation.status === "CANCELED"
+			) {
+				throw new Error(
+					`Bulk operation ${operation.status.toLowerCase()}: ${
+						operation.errorCode || "Unknown error"
+					}`
+				);
+			}
+
+			// Wait 10 seconds before checking again
+			await new Promise((resolve) => setTimeout(resolve, 10000));
+			attempts++;
+		}
+
+		throw new Error("Bulk operation timed out after 10 minutes");
+	}
+
 	// Update store branding
 	async updateStoreBranding(
 		storeData: StoreData,
@@ -4046,7 +4272,9 @@ export class ShopifyClient {
 
 			// Wait for completion and return count
 			const completedOperation =
-				await this.waitForBulkOperationCompletion(bulkOperation.id);
+				await this.waitForBulkOperationCompletionCustomers(
+					bulkOperation.id
+				);
 
 			return completedOperation.objectCount || 0;
 		} catch (error) {
@@ -4466,7 +4694,9 @@ export class ShopifyClient {
 
 			// Wait for completion and return count
 			const completedOperation =
-				await this.waitForBulkOperationCompletion(bulkOperation.id);
+				await this.waitForBulkOperationCompletionOrders(
+					bulkOperation.id
+				);
 
 			return completedOperation.objectCount || 0;
 		} catch (error) {
