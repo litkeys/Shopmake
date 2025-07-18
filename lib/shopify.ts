@@ -2404,50 +2404,12 @@ export class ShopifyClient {
 			const operation = result.node;
 
 			if (operation.status === "COMPLETED") {
-				// Query Shopify directly for accurate customer count
-				let actualCustomerCount = 0;
-
-				try {
-					const customersQuery = `
-						query {
-							customers(first: 250, sortKey: CREATED_AT, reverse: true) {
-								nodes {
-									id
-									createdAt
-								}
-							}
-						}
-					`;
-
-					const customersResult = await this.makeGraphQLRequest<{
-						customers: {
-							nodes: Array<{ id: string; createdAt: string }>;
-						};
-					}>(customersQuery);
-
-					// Count customers created in the last 10 minutes
-					const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-					const recentCustomers =
-						customersResult.customers.nodes.filter(
-							(customer) =>
-								new Date(customer.createdAt) > tenMinutesAgo
-						);
-
-					actualCustomerCount = recentCustomers.length;
-					console.log(
-						`Successfully imported ${actualCustomerCount} customers`
-					);
-				} catch (countError) {
-					console.error(
-						"Could not count imported customers:",
-						countError
-					);
-					actualCustomerCount = 0;
-				}
-
+				console.log(
+					`Successfully imported ${operation.objectCount} customers`
+				);
 				return {
 					status: operation.status,
-					objectCount: actualCustomerCount,
+					objectCount: operation.objectCount,
 				};
 			}
 
@@ -2518,48 +2480,12 @@ export class ShopifyClient {
 			const operation = result.node;
 
 			if (operation.status === "COMPLETED") {
-				// Query Shopify directly for accurate order count
-				let actualOrderCount = 0;
-
-				try {
-					const ordersQuery = `
-						query {
-							orders(first: 250, sortKey: CREATED_AT, reverse: true) {
-								nodes {
-									id
-									createdAt
-								}
-							}
-						}
-					`;
-
-					const ordersResult = await this.makeGraphQLRequest<{
-						orders: {
-							nodes: Array<{ id: string; createdAt: string }>;
-						};
-					}>(ordersQuery);
-
-					// Count orders created in the last 10 minutes
-					const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-					const recentOrders = ordersResult.orders.nodes.filter(
-						(order) => new Date(order.createdAt) > tenMinutesAgo
-					);
-
-					actualOrderCount = recentOrders.length;
-					console.log(
-						`Successfully imported ${actualOrderCount} orders`
-					);
-				} catch (countError) {
-					console.error(
-						"Could not count imported orders:",
-						countError
-					);
-					actualOrderCount = 0;
-				}
-
+				console.log(
+					`Successfully imported ${operation.objectCount} orders`
+				);
 				return {
 					status: operation.status,
-					objectCount: actualOrderCount,
+					objectCount: operation.objectCount,
 				};
 			}
 
@@ -4679,12 +4605,10 @@ export class ShopifyClient {
 		const jsonlLines = orders.map((order) => {
 			const orderInput: any = {
 				email: order.email || undefined,
-				financialStatus: order.financialStatus || "PENDING",
-				fulfillmentStatus: order.fulfillmentStatus || "UNFULFILLED",
 				lineItems: order.lineItems.map((item) => ({
 					title: item.title,
 					quantity: item.quantity,
-					price: item.price,
+					originalUnitPrice: item.price, // Use originalUnitPrice instead of price
 					sku: item.sku || undefined,
 				})),
 				shippingAddress: order.shippingAddress || undefined,
