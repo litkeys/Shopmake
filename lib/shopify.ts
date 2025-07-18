@@ -2402,8 +2402,17 @@ export class ShopifyClient {
 			}
 
 			const operation = result.node;
+			console.log(
+				`Bulk operation status: ${operation.status}, objectCount: ${
+					operation.objectCount
+				}, errorCode: ${operation.errorCode || "none"}`
+			);
 
 			if (operation.status === "COMPLETED") {
+				console.log(
+					`Bulk operation completed. URL: ${operation.url}, partialDataUrl: ${operation.partialDataUrl}`
+				);
+
 				// Query Shopify directly for accurate customer count
 				let actualCustomerCount = 0;
 
@@ -3970,6 +3979,28 @@ export class ShopifyClient {
 						`Found ${customers.length} customers to import`
 					);
 
+					// Log some sample customers for debugging
+					if (customers.length > 0) {
+						console.log("Sample customers:");
+						customers.slice(0, 3).forEach((customer, index) => {
+							console.log(`Customer ${index + 1}:`, {
+								firstName: customer.firstName,
+								lastName: customer.lastName,
+								email: customer.email,
+								hasAddress: !!customer.addresses?.length,
+								addressSample: customer.addresses?.[0]
+									? {
+											address1:
+												customer.addresses[0].address1,
+											city: customer.addresses[0].city,
+											country:
+												customer.addresses[0].country,
+									  }
+									: null,
+							});
+						});
+					}
+
 					// Convert to JSONL format for bulk import
 					const jsonlContent =
 						this.convertCustomersToJSONL(customers);
@@ -4037,9 +4068,12 @@ export class ShopifyClient {
 
 		const headers = rows[0];
 		const customers = [];
+		let totalRows = 0;
+		let validRows = 0;
 
 		for (let i = 1; i < rows.length; i++) {
 			const values = rows[i];
+			totalRows++;
 			if (values.length < headers.length / 2) {
 				continue; // Skip malformed rows
 			}
@@ -4178,22 +4212,29 @@ export class ShopifyClient {
 
 			// Only include customers with valid email addresses
 			if (customer.email && this.isValidEmail(customer.email)) {
-				// Add address if any address fields are present
+				// Add address if any address fields are present and the address has sufficient data
 				if (Object.keys(address).length > 0) {
-					// Use customer name for address if address name is not provided
-					if (!address.firstName && customer.firstName) {
-						address.firstName = customer.firstName;
+					// Only include address if it has at least address1 or city (not just country)
+					if (address.address1 || address.city) {
+						// Use customer name for address if address name is not provided
+						if (!address.firstName && customer.firstName) {
+							address.firstName = customer.firstName;
+						}
+						if (!address.lastName && customer.lastName) {
+							address.lastName = customer.lastName;
+						}
+						customer.addresses = [address];
 					}
-					if (!address.lastName && customer.lastName) {
-						address.lastName = customer.lastName;
-					}
-					customer.addresses = [address];
 				}
 
 				customers.push(customer);
+				validRows++;
 			}
 		}
 
+		console.log(
+			`Parsed ${validRows} valid customers out of ${totalRows} total rows`
+		);
 		return customers;
 	}
 
@@ -4267,7 +4308,9 @@ export class ShopifyClient {
 	private async bulkImportCustomers(jsonlContent: string): Promise<number> {
 		try {
 			console.log("Starting customer bulk import...");
-			console.log("Sample JSONL content:", jsonlContent.split("\n")[0]); // Log first line for debugging
+			const jsonlLines = jsonlContent.split("\n");
+			console.log(`JSONL has ${jsonlLines.length} lines`);
+			console.log("Sample JSONL content:", jsonlLines[0]); // Log first line for debugging
 
 			// Create staged upload for customers
 			const stagedUpload = await this.createStagedUploadForCustomers();
@@ -4291,6 +4334,7 @@ export class ShopifyClient {
 			const bulkOperation = await this.startBulkCustomerImport(
 				keyParameter.value
 			);
+			console.log(`Bulk operation started with ID: ${bulkOperation.id}`);
 
 			// Wait for completion and return count
 			const completedOperation =
@@ -4298,6 +4342,9 @@ export class ShopifyClient {
 					bulkOperation.id
 				);
 
+			console.log(
+				`Bulk operation completed with status: ${completedOperation.status}, objectCount: ${completedOperation.objectCount}`
+			);
 			return completedOperation.objectCount || 0;
 		} catch (error) {
 			console.error("Customer import failed:", error);
