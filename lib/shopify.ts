@@ -4393,9 +4393,12 @@ export class ShopifyClient {
 
 					console.log(`Found ${orders.length} orders to import`);
 
-					// Import orders individually using draftOrderCreate + draftOrderComplete
-					const importedCount = await this.importOrdersIndividually(
-						orders
+					// Convert to JSONL format for bulk import
+					const jsonlContent = this.convertOrdersToJSONL(orders);
+
+					// Use bulk operations to import orders
+					const importedCount = await this.bulkImportOrders(
+						jsonlContent
 					);
 					totalOrdersCreated += importedCount;
 
@@ -4421,35 +4424,12 @@ export class ShopifyClient {
 
 	// Parse order CSV data
 	private parseOrderCSV(csvText: string): Array<{
-		name?: string;
+		currency?: string;
 		email?: string;
 		phone?: string;
-		currencyCode?: string;
-		financialStatus?: string;
-		fulfillmentStatus?: string;
-		processedAt?: string;
-		discountCodes?: string[];
-		acceptsMarketing?: boolean;
-		lineItems: Array<{
-			title: string;
-			quantity: number;
-			price: string;
-			sku?: string;
-			requiresShipping?: boolean;
-			taxable?: boolean;
-		}>;
-		shippingAddress?: {
-			firstName?: string;
-			lastName?: string;
-			company?: string;
-			address1?: string;
-			address2?: string;
-			city?: string;
-			province?: string;
-			country?: string;
-			zip?: string;
-			phone?: string;
-		};
+		createdAt?: string;
+		note?: string;
+		tags?: string[];
 		billingAddress?: {
 			firstName?: string;
 			lastName?: string;
@@ -4462,12 +4442,78 @@ export class ShopifyClient {
 			zip?: string;
 			phone?: string;
 		};
-		note?: string;
-		tags?: string[];
-		totalPrice?: string;
-		subtotalPrice?: string;
-		totalShipping?: string;
-		totalTax?: string;
+		shippingAddress?: {
+			firstName?: string;
+			lastName?: string;
+			company?: string;
+			address1?: string;
+			address2?: string;
+			city?: string;
+			province?: string;
+			country?: string;
+			zip?: string;
+			phone?: string;
+		};
+		lineItems: Array<{
+			title: string;
+			quantity: number;
+			priceSet: {
+				shopMoney: {
+					amount: string;
+					currencyCode: string;
+				};
+			};
+			sku?: string;
+			requiresShipping?: boolean;
+			taxable?: boolean;
+			taxLines?: Array<{
+				title: string;
+				rate: number;
+				priceSet: {
+					shopMoney: {
+						amount: string;
+						currencyCode: string;
+					};
+				};
+			}>;
+		}>;
+		transactions?: Array<{
+			kind: string;
+			status: string;
+			amountSet: {
+				shopMoney: {
+					amount: string;
+					currencyCode: string;
+				};
+			};
+		}>;
+		totalPriceSet?: {
+			shopMoney: {
+				amount: string;
+				currencyCode: string;
+			};
+		};
+		subtotalPriceSet?: {
+			shopMoney: {
+				amount: string;
+				currencyCode: string;
+			};
+		};
+		totalTaxSet?: {
+			shopMoney: {
+				amount: string;
+				currencyCode: string;
+			};
+		};
+		totalShippingPriceSet?: {
+			shopMoney: {
+				amount: string;
+				currencyCode: string;
+			};
+		};
+		discountCodes?: string[];
+		fulfillmentStatus?: string;
+		financialStatus?: string;
 	}> {
 		const rows = this.parseCSVToRows(csvText);
 		if (rows.length <= 1) {
@@ -4475,7 +4521,7 @@ export class ShopifyClient {
 		}
 
 		const headers = rows[0];
-		const orders = [];
+		const orderMap = new Map(); // Map to group line items by order
 
 		for (let i = 1; i < rows.length; i++) {
 			const values = rows[i];
@@ -4483,11 +4529,14 @@ export class ShopifyClient {
 				continue; // Skip malformed rows
 			}
 
-			const order: any = {
+			let orderName = "";
+			let orderData: any = {
 				lineItems: [],
 			};
 			let shippingAddress: any = {};
 			let billingAddress: any = {};
+			let currentLineItem: any = {};
+			let taxInfo: any = {};
 
 			headers.forEach((header: string, index: number) => {
 				const value = values[index] || "";
@@ -4496,153 +4545,133 @@ export class ShopifyClient {
 
 				const lowerHeader = header.toLowerCase();
 
-				// Map CSV headers to order fields
+				// Map CSV headers to order fields based on actual Shopify export format
 				switch (lowerHeader) {
 					case "name":
-					case "order name":
-						order.name = cleanValue;
+						orderName = cleanValue;
 						break;
 					case "email":
-					case "customer email":
-						order.email = cleanValue;
+						orderData.email = cleanValue;
 						break;
 					case "phone":
-					case "customer phone":
-						order.phone = cleanValue;
+						orderData.phone = cleanValue;
 						break;
 					case "currency":
-					case "currency code":
-						order.currencyCode = cleanValue.toUpperCase();
-						break;
-					case "financial status":
-					case "financial_status":
-						order.financialStatus = cleanValue.toUpperCase();
-						break;
-					case "fulfillment status":
-					case "fulfillment_status":
-						order.fulfillmentStatus = cleanValue.toUpperCase();
+						orderData.currency = cleanValue.toUpperCase();
 						break;
 					case "created at":
-					case "created_at":
-					case "processed at":
-						order.processedAt = cleanValue;
+						orderData.createdAt = cleanValue;
 						break;
 					case "discount code":
-					case "discount_code":
 						if (cleanValue) {
-							order.discountCodes = [cleanValue];
+							orderData.discountCodes = [cleanValue];
 						}
 						break;
-					case "accepts marketing":
-					case "accepts_marketing":
-						order.acceptsMarketing =
-							cleanValue.toLowerCase() === "true" ||
-							cleanValue.toLowerCase() === "yes";
-						break;
 					case "total":
-					case "total price":
-						order.totalPrice = cleanValue;
+						if (!isNaN(parseFloat(cleanValue))) {
+							orderData.totalPriceSet = {
+								shopMoney: {
+									amount: parseFloat(cleanValue).toFixed(2),
+									currencyCode: orderData.currency || "USD",
+								},
+							};
+						}
 						break;
 					case "subtotal":
-					case "subtotal price":
-						order.subtotalPrice = cleanValue;
+						if (!isNaN(parseFloat(cleanValue))) {
+							orderData.subtotalPriceSet = {
+								shopMoney: {
+									amount: parseFloat(cleanValue).toFixed(2),
+									currencyCode: orderData.currency || "USD",
+								},
+							};
+						}
 						break;
 					case "shipping":
-					case "shipping price":
-						order.totalShipping = cleanValue;
+						if (!isNaN(parseFloat(cleanValue))) {
+							orderData.totalShippingPriceSet = {
+								shopMoney: {
+									amount: parseFloat(cleanValue).toFixed(2),
+									currencyCode: orderData.currency || "USD",
+								},
+							};
+						}
 						break;
 					case "taxes":
-					case "tax":
-						order.totalTax = cleanValue;
+						if (!isNaN(parseFloat(cleanValue))) {
+							orderData.totalTaxSet = {
+								shopMoney: {
+									amount: parseFloat(cleanValue).toFixed(2),
+									currencyCode: orderData.currency || "USD",
+								},
+							};
+						}
 						break;
-					case "note":
 					case "notes":
-						order.note = cleanValue;
+						orderData.note = cleanValue;
 						break;
 					case "tags":
 						if (cleanValue) {
-							order.tags = cleanValue
+							orderData.tags = cleanValue
 								.split(",")
 								.map((tag) => tag.trim())
 								.filter((tag) => tag);
 						}
 						break;
+					case "financial status":
+						orderData.financialStatus = cleanValue.toUpperCase();
+						break;
+					case "fulfillment status":
+						orderData.fulfillmentStatus = cleanValue.toUpperCase();
+						break;
 
 					// Line item fields
 					case "lineitem name":
-					case "lineitem title":
-					case "product title":
-					case "item title":
 						if (cleanValue) {
-							order.lineItems.push({
-								title: cleanValue,
-								quantity: 1,
-								price: "0.00",
-								requiresShipping: true,
-								taxable: true,
-							});
+							currentLineItem.title = cleanValue;
 						}
 						break;
 					case "lineitem quantity":
-					case "quantity":
-						if (
-							order.lineItems.length > 0 &&
-							!isNaN(parseInt(cleanValue))
-						) {
-							order.lineItems[
-								order.lineItems.length - 1
-							].quantity = parseInt(cleanValue);
-						}
-						break;
-					case "lineitem variant id":
-					case "variant id":
-						if (order.lineItems.length > 0 && cleanValue) {
-							order.lineItems[
-								order.lineItems.length - 1
-							].variantId = cleanValue;
+						if (!isNaN(parseInt(cleanValue))) {
+							currentLineItem.quantity = parseInt(cleanValue);
 						}
 						break;
 					case "lineitem price":
-					case "price":
-						if (
-							order.lineItems.length > 0 &&
-							!isNaN(parseFloat(cleanValue))
-						) {
-							order.lineItems[order.lineItems.length - 1].price =
-								parseFloat(cleanValue).toFixed(2);
+						if (!isNaN(parseFloat(cleanValue))) {
+							currentLineItem.priceSet = {
+								shopMoney: {
+									amount: parseFloat(cleanValue).toFixed(2),
+									currencyCode: orderData.currency || "USD",
+								},
+							};
 						}
 						break;
 					case "lineitem sku":
-					case "sku":
-						if (order.lineItems.length > 0) {
-							order.lineItems[order.lineItems.length - 1].sku =
-								cleanValue;
-						}
+						currentLineItem.sku = cleanValue;
 						break;
 					case "lineitem requires shipping":
-					case "requires shipping":
-						if (order.lineItems.length > 0) {
-							order.lineItems[
-								order.lineItems.length - 1
-							].requiresShipping =
-								cleanValue.toLowerCase() === "true" ||
-								cleanValue.toLowerCase() === "yes";
-						}
+						currentLineItem.requiresShipping =
+							cleanValue.toLowerCase() === "true";
 						break;
 					case "lineitem taxable":
-					case "taxable":
-						if (order.lineItems.length > 0) {
-							order.lineItems[
-								order.lineItems.length - 1
-							].taxable =
-								cleanValue.toLowerCase() === "true" ||
-								cleanValue.toLowerCase() === "yes";
+						currentLineItem.taxable =
+							cleanValue.toLowerCase() === "true";
+						break;
+
+					// Tax information for line items
+					case "tax 1 name":
+						if (cleanValue) {
+							taxInfo.name1 = cleanValue;
+						}
+						break;
+					case "tax 1 value":
+						if (!isNaN(parseFloat(cleanValue))) {
+							taxInfo.value1 = parseFloat(cleanValue);
 						}
 						break;
 
 					// Shipping address fields
 					case "shipping name":
-						// Handle combined name field from Shopify export
 						const shippingNameParts = cleanValue.split(" ");
 						if (shippingNameParts.length >= 2) {
 							shippingAddress.firstName = shippingNameParts[0];
@@ -4654,50 +4683,32 @@ export class ShopifyClient {
 						}
 						break;
 					case "shipping address1":
-					case "shipping_address1":
 						shippingAddress.address1 = cleanValue;
 						break;
 					case "shipping address2":
-					case "shipping_address2":
 						shippingAddress.address2 = cleanValue;
 						break;
 					case "shipping city":
-					case "shipping_city":
 						shippingAddress.city = cleanValue;
 						break;
 					case "shipping province":
-					case "shipping_province":
-					case "shipping state":
 						shippingAddress.province = cleanValue;
 						break;
 					case "shipping country":
-					case "shipping_country":
 						shippingAddress.country = cleanValue;
 						break;
 					case "shipping zip":
-					case "shipping_zip":
 						shippingAddress.zip = cleanValue;
 						break;
-					case "shipping first name":
-					case "shipping_first_name":
-						shippingAddress.firstName = cleanValue;
-						break;
-					case "shipping last name":
-					case "shipping_last_name":
-						shippingAddress.lastName = cleanValue;
-						break;
 					case "shipping company":
-					case "shipping_company":
 						shippingAddress.company = cleanValue;
 						break;
 					case "shipping phone":
-					case "shipping_phone":
 						shippingAddress.phone = cleanValue;
 						break;
 
 					// Billing address fields
 					case "billing name":
-						// Handle combined name field from Shopify export
 						const billingNameParts = cleanValue.split(" ");
 						if (billingNameParts.length >= 2) {
 							billingAddress.firstName = billingNameParts[0];
@@ -4709,140 +4720,147 @@ export class ShopifyClient {
 						}
 						break;
 					case "billing address1":
-					case "billing_address1":
 						billingAddress.address1 = cleanValue;
 						break;
 					case "billing address2":
-					case "billing_address2":
 						billingAddress.address2 = cleanValue;
 						break;
 					case "billing city":
-					case "billing_city":
 						billingAddress.city = cleanValue;
 						break;
 					case "billing province":
-					case "billing_province":
-					case "billing state":
 						billingAddress.province = cleanValue;
 						break;
 					case "billing country":
-					case "billing_country":
 						billingAddress.country = cleanValue;
 						break;
 					case "billing zip":
-					case "billing_zip":
 						billingAddress.zip = cleanValue;
 						break;
-					case "billing first name":
-					case "billing_first_name":
-						billingAddress.firstName = cleanValue;
-						break;
-					case "billing last name":
-					case "billing_last_name":
-						billingAddress.lastName = cleanValue;
-						break;
 					case "billing company":
-					case "billing_company":
 						billingAddress.company = cleanValue;
 						break;
 					case "billing phone":
-					case "billing_phone":
 						billingAddress.phone = cleanValue;
 						break;
 				}
 			});
 
-			// Validate order requirements
-			if (order.lineItems.length > 0) {
-				// Validate that each line item has required fields
-				const validLineItems = order.lineItems.filter((item: any) => {
-					// Line item must have title and quantity > 0
-					if (!item.title || item.quantity <= 0) {
-						console.warn(
-							`Skipping line item with missing title or invalid quantity: ${JSON.stringify(
-								item
-							)}`
-						);
-						return false;
+			// Build line item with tax information if available
+			if (currentLineItem.title) {
+				// Set defaults for required fields
+				if (!currentLineItem.quantity) {
+					currentLineItem.quantity = 1;
+				}
+				if (!currentLineItem.priceSet) {
+					currentLineItem.priceSet = {
+						shopMoney: {
+							amount: "0.00",
+							currencyCode: orderData.currency || "USD",
+						},
+					};
+				} else {
+					// Ensure currency is set in priceSet
+					currentLineItem.priceSet.shopMoney.currencyCode =
+						currentLineItem.priceSet.shopMoney.currencyCode ||
+						orderData.currency ||
+						"USD";
+				}
+				if (currentLineItem.requiresShipping === undefined) {
+					currentLineItem.requiresShipping = true;
+				}
+				if (currentLineItem.taxable === undefined) {
+					currentLineItem.taxable = true;
+				}
+
+				// Add tax lines if tax information is present
+				if (taxInfo.name1 && taxInfo.value1) {
+					const taxRate = taxInfo.value1 / 100; // Convert percentage to decimal
+					const taxAmount = (
+						parseFloat(
+							currentLineItem.priceSet?.shopMoney?.amount || "0"
+						) *
+						currentLineItem.quantity *
+						taxRate
+					).toFixed(2);
+
+					currentLineItem.taxLines = [
+						{
+							title: taxInfo.name1,
+							rate: taxRate,
+							priceSet: {
+								shopMoney: {
+									amount: taxAmount,
+									currencyCode: orderData.currency || "USD",
+								},
+							},
+						},
+					];
+				}
+
+				// Check if this order already exists in our map
+				if (orderMap.has(orderName)) {
+					const existingOrder = orderMap.get(orderName);
+					existingOrder.lineItems.push(currentLineItem);
+				} else {
+					// Create new order entry
+					orderData.lineItems = [currentLineItem];
+
+					// Add addresses if present
+					if (Object.keys(shippingAddress).length > 0) {
+						orderData.shippingAddress = shippingAddress;
 					}
-					return true;
-				});
-
-				if (validLineItems.length === 0) {
-					console.warn(`Skipping order - no valid line items found`);
-					continue;
-				}
-
-				order.lineItems = validLineItems;
-
-				// Validate customer identification - must have email or phone
-				if (!order.email && !order.phone) {
-					console.warn(
-						`Skipping order - no customer email or phone provided`
-					);
-					continue;
-				}
-
-				// Validate and clean up addresses
-				if (Object.keys(shippingAddress).length > 0) {
-					if (this.isValidOrderAddress(shippingAddress)) {
-						order.shippingAddress = shippingAddress;
-					} else {
-						console.warn(
-							`Skipping invalid shipping address for order`
-						);
+					if (Object.keys(billingAddress).length > 0) {
+						orderData.billingAddress = billingAddress;
 					}
-				}
 
-				if (Object.keys(billingAddress).length > 0) {
-					if (this.isValidOrderAddress(billingAddress)) {
-						order.billingAddress = billingAddress;
-					} else {
-						console.warn(
-							`Skipping invalid billing address for order`
-						);
+					// Create transaction based on financial status and total
+					if (orderData.totalPriceSet && orderData.financialStatus) {
+						let transactionStatus = "SUCCESS";
+						let transactionKind = "SALE";
+
+						if (
+							orderData.financialStatus === "PAID" ||
+							orderData.financialStatus === "PARTIALLY_REFUNDED"
+						) {
+							transactionStatus = "SUCCESS";
+						} else if (orderData.financialStatus === "PENDING") {
+							transactionStatus = "PENDING";
+						} else if (orderData.financialStatus === "VOIDED") {
+							transactionStatus = "FAILURE";
+						}
+
+						orderData.transactions = [
+							{
+								kind: transactionKind,
+								status: transactionStatus,
+								amountSet: orderData.totalPriceSet,
+							},
+						];
 					}
-				}
 
-				orders.push(order);
+					orderMap.set(orderName, orderData);
+				}
 			}
 		}
+
+		// Convert map values to array
+		const orders = Array.from(orderMap.values()).filter(
+			(order) => order.lineItems.length > 0
+		);
 
 		return orders;
 	}
 
-	// Import orders individually using draftOrderCreate + draftOrderComplete
-	private async importOrdersIndividually(
+	// Convert orders to JSONL format for orderCreate bulk import
+	private convertOrdersToJSONL(
 		orders: Array<{
-			name?: string;
+			currency?: string;
 			email?: string;
 			phone?: string;
-			currencyCode?: string;
-			financialStatus?: string;
-			fulfillmentStatus?: string;
-			processedAt?: string;
-			discountCodes?: string[];
-			acceptsMarketing?: boolean;
-			lineItems: Array<{
-				title: string;
-				quantity: number;
-				price: string;
-				sku?: string;
-				requiresShipping?: boolean;
-				taxable?: boolean;
-			}>;
-			shippingAddress?: {
-				firstName?: string;
-				lastName?: string;
-				company?: string;
-				address1?: string;
-				address2?: string;
-				city?: string;
-				province?: string;
-				country?: string;
-				zip?: string;
-				phone?: string;
-			};
+			createdAt?: string;
+			note?: string;
+			tags?: string[];
 			billingAddress?: {
 				firstName?: string;
 				lastName?: string;
@@ -4855,250 +4873,111 @@ export class ShopifyClient {
 				zip?: string;
 				phone?: string;
 			};
-			note?: string;
-			tags?: string[];
-			totalPrice?: string;
-			subtotalPrice?: string;
-			totalShipping?: string;
-			totalTax?: string;
+			shippingAddress?: {
+				firstName?: string;
+				lastName?: string;
+				company?: string;
+				address1?: string;
+				address2?: string;
+				city?: string;
+				province?: string;
+				country?: string;
+				zip?: string;
+				phone?: string;
+			};
+			lineItems: Array<{
+				title: string;
+				quantity: number;
+				priceSet: {
+					shopMoney: {
+						amount: string;
+						currencyCode: string;
+					};
+				};
+				sku?: string;
+				requiresShipping?: boolean;
+				taxable?: boolean;
+				taxLines?: Array<{
+					title: string;
+					rate: number;
+					priceSet: {
+						shopMoney: {
+							amount: string;
+							currencyCode: string;
+						};
+					};
+				}>;
+			}>;
+			transactions?: Array<{
+				kind: string;
+				status: string;
+				amountSet: {
+					shopMoney: {
+						amount: string;
+						currencyCode: string;
+					};
+				};
+			}>;
+			totalPriceSet?: {
+				shopMoney: {
+					amount: string;
+					currencyCode: string;
+				};
+			};
+			subtotalPriceSet?: {
+				shopMoney: {
+					amount: string;
+					currencyCode: string;
+				};
+			};
+			totalTaxSet?: {
+				shopMoney: {
+					amount: string;
+					currencyCode: string;
+				};
+			};
+			totalShippingPriceSet?: {
+				shopMoney: {
+					amount: string;
+					currencyCode: string;
+				};
+			};
+			discountCodes?: string[];
+			fulfillmentStatus?: string;
+			financialStatus?: string;
 		}>
-	): Promise<number> {
-		let successCount = 0;
-		const batchSize = 10; // Process in batches to avoid rate limits
-
-		for (let i = 0; i < orders.length; i += batchSize) {
-			const batch = orders.slice(i, i + batchSize);
-			const batchPromises = batch.map(async (order) => {
-				try {
-					// Create draft order
-					const draftOrderId = await this.createDraftOrder(order);
-
-					// Complete the draft order to make it a real order
-					await this.completeDraftOrder(draftOrderId);
-
-					return true;
-				} catch (error) {
-					console.error(`Failed to import order: ${error}`);
-					return false;
-				}
-			});
-
-			const results = await Promise.all(batchPromises);
-			successCount += results.filter((result) => result).length;
-
-			// Add a small delay between batches to avoid rate limits
-			if (i + batchSize < orders.length) {
-				await new Promise((resolve) => setTimeout(resolve, 1000));
-			}
-		}
-
-		return successCount;
-	}
-
-	// Create a draft order using draftOrderCreate mutation
-	private async createDraftOrder(order: any): Promise<string> {
-		const mutation = `
-			mutation draftOrderCreate($input: DraftOrderInput!) {
-				draftOrderCreate(input: $input) {
-					draftOrder {
-						id
-						name
-					}
-					userErrors {
-						field
-						message
-					}
-				}
-			}
-		`;
-
-		const variables = {
-			input: {
+	): string {
+		const jsonlLines = orders.map((order) => {
+			const orderInput: any = {
+				currency: order.currency || "USD",
 				email: order.email || undefined,
 				phone: order.phone || undefined,
-				note: order.note || undefined,
-				tags: order.tags || undefined,
-				presentmentCurrencyCode: order.currencyCode || "USD",
-				lineItems: order.lineItems.map((item: any) => ({
+				billingAddress: order.billingAddress || undefined,
+				shippingAddress: order.shippingAddress || undefined,
+				lineItems: order.lineItems.map((item) => ({
 					title: item.title,
 					quantity: item.quantity,
-					priceOverride: {
-						amount: item.price,
-						currencyCode: order.currencyCode || "USD",
-					},
+					priceSet: item.priceSet,
 					sku: item.sku || undefined,
 					requiresShipping:
 						item.requiresShipping !== undefined
 							? item.requiresShipping
 							: true,
 					taxable: item.taxable !== undefined ? item.taxable : true,
+					taxLines:
+						item.taxLines && item.taxLines.length > 0
+							? item.taxLines
+							: undefined,
 				})),
-				shippingAddress: order.shippingAddress || undefined,
-				billingAddress: order.billingAddress || undefined,
-			},
-		};
-
-		const response = await this.makeGraphQLRequest<any>(
-			mutation,
-			variables
-		);
-
-		if (response.draftOrderCreate?.userErrors?.length > 0) {
-			throw new Error(
-				`Draft order creation failed: ${response.draftOrderCreate.userErrors
-					.map((error: any) => error.message)
-					.join(", ")}`
-			);
-		}
-
-		if (!response.draftOrderCreate?.draftOrder?.id) {
-			console.error(
-				"Draft order creation response:",
-				JSON.stringify(response, null, 2)
-			);
-			throw new Error(
-				"Draft order creation failed: No draft order ID returned"
-			);
-		}
-
-		return response.draftOrderCreate.draftOrder.id;
-	}
-
-	// Complete a draft order using draftOrderComplete mutation
-	private async completeDraftOrder(draftOrderId: string): Promise<void> {
-		const mutation = `
-			mutation draftOrderComplete($id: ID!) {
-				draftOrderComplete(id: $id) {
-					draftOrder {
-						id
-						order {
-							id
-							name
-						}
-					}
-					userErrors {
-						field
-						message
-					}
-				}
-			}
-		`;
-
-		const variables = {
-			id: draftOrderId,
-		};
-
-		const response = await this.makeGraphQLRequest<any>(
-			mutation,
-			variables
-		);
-
-		if (response.draftOrderComplete?.userErrors?.length > 0) {
-			throw new Error(
-				`Draft order completion failed: ${response.draftOrderComplete.userErrors
-					.map((error: any) => error.message)
-					.join(", ")}`
-			);
-		}
-
-		if (!response.draftOrderComplete?.draftOrder?.order?.id) {
-			console.error(
-				"Draft order completion response:",
-				JSON.stringify(response, null, 2)
-			);
-			throw new Error(
-				"Draft order completion failed: No order ID returned"
-			);
-		}
-	}
-
-	// Convert orders to JSONL format for bulk import
-	private convertOrdersToJSONL(
-		orders: Array<{
-			name?: string;
-			email?: string;
-			phone?: string;
-			currencyCode?: string;
-			financialStatus?: string;
-			fulfillmentStatus?: string;
-			processedAt?: string;
-			discountCodes?: string[];
-			acceptsMarketing?: boolean;
-			lineItems: Array<{
-				title: string;
-				quantity: number;
-				price: string;
-				sku?: string;
-				requiresShipping?: boolean;
-				taxable?: boolean;
-			}>;
-			shippingAddress?: {
-				firstName?: string;
-				lastName?: string;
-				company?: string;
-				address1?: string;
-				address2?: string;
-				city?: string;
-				province?: string;
-				country?: string;
-				zip?: string;
-				phone?: string;
-			};
-			billingAddress?: {
-				firstName?: string;
-				lastName?: string;
-				company?: string;
-				address1?: string;
-				address2?: string;
-				city?: string;
-				province?: string;
-				country?: string;
-				zip?: string;
-				phone?: string;
-			};
-			note?: string;
-			tags?: string[];
-			totalPrice?: string;
-			subtotalPrice?: string;
-			totalShipping?: string;
-			totalTax?: string;
-		}>
-	): string {
-		const jsonlLines = orders.map((order) => {
-			const orderInput: any = {
-				// Basic fields that exist in DraftOrderInput
-				email: order.email || undefined,
-				phone: order.phone || undefined,
 				note: order.note || undefined,
 				tags:
 					order.tags && order.tags.length > 0
 						? order.tags
 						: undefined,
-
-				// Currency and discount codes
-				presentmentCurrencyCode: order.currencyCode || undefined,
-				discountCodes: order.discountCodes || undefined,
-
-				// Line items with correct DraftOrderLineItemInput fields
-				lineItems: order.lineItems.map((item) => ({
-					title: item.title,
-					quantity: item.quantity,
-					// Use priceOverride for custom pricing (MoneyInput format)
-					priceOverride: {
-						amount: item.price,
-						currencyCode: order.currencyCode || "USD",
-					},
-					...(item.sku ? { sku: item.sku } : {}),
-					requiresShipping:
-						item.requiresShipping !== undefined
-							? item.requiresShipping
-							: true,
-					taxable: item.taxable !== undefined ? item.taxable : true,
-				})),
-
-				// Addresses
-				shippingAddress: order.shippingAddress || undefined,
-				billingAddress: order.billingAddress || undefined,
+				transactions:
+					order.transactions && order.transactions.length > 0
+						? order.transactions
+						: undefined,
 			};
 
 			// Clean up undefined fields
@@ -5108,7 +4987,13 @@ export class ShopifyClient {
 				})
 			);
 
-			return JSON.stringify({ input: cleanOrderInput });
+			return JSON.stringify({
+				order: cleanOrderInput,
+				options: {
+					sendShippingNotification: false,
+					sendOrderConfirmation: false,
+				},
+			});
 		});
 
 		return jsonlLines.join("\n");
@@ -5357,9 +5242,9 @@ export class ShopifyClient {
 
 		const variables = {
 			mutation: `
-				mutation draftOrderCreate($input: DraftOrderInput!) {
-					draftOrderCreate(input: $input) {
-						draftOrder {
+				mutation orderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
+					orderCreate(order: $order, options: $options) {
+						order {
 							id
 							name
 						}
@@ -5561,22 +5446,6 @@ export class ShopifyClient {
 		}
 
 		return true;
-	}
-
-	// Validate order address with stricter requirements
-	private isValidOrderAddress(address: any): boolean {
-		// Must have country for order addresses
-		if (!address.country) {
-			return false;
-		}
-
-		// Must have first name and last name for order addresses
-		if (!address.firstName || !address.lastName) {
-			return false;
-		}
-
-		// Use the general address validation for other requirements
-		return this.isValidAddress(address);
 	}
 
 	// Process store customers and orders (new 6th step)
