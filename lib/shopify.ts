@@ -5000,44 +5000,113 @@ export class ShopifyClient {
 		return jsonlLines.join("\n");
 	}
 
-	// Bulk import orders using Shopify Bulk Operations
+	// Import orders individually using orderCreate mutation
 	private async bulkImportOrders(jsonlContent: string): Promise<number> {
 		try {
-			console.log("Starting order bulk import...");
-
-			// Create staged upload for orders
-			const stagedUpload = await this.createStagedUploadForOrders();
-
-			// Upload JSONL file
-			await this.uploadJSONLFile(
-				stagedUpload.url,
-				stagedUpload.parameters,
-				jsonlContent
+			console.log(
+				"Starting individual order import with orderCreate mutation..."
 			);
 
-			// Extract key and start bulk operation
-			const keyParameter = stagedUpload.parameters.find(
-				(param) => param.name === "key"
-			);
+			// Parse JSONL content to get individual orders
+			const jsonlLines = jsonlContent.trim().split("\n");
+			let successfulImports = 0;
+			let errors: string[] = [];
 
-			if (!keyParameter?.value) {
-				throw new Error("Invalid staged upload key parameter");
+			for (const line of jsonlLines) {
+				try {
+					const orderData = JSON.parse(line);
+					const result = await this.createIndividualOrder(orderData);
+					if (result.success) {
+						successfulImports++;
+						console.log(
+							`Order created successfully: ${result.orderId}`
+						);
+					} else {
+						errors.push(`Order creation failed: ${result.error}`);
+						console.error(`Order creation failed: ${result.error}`);
+					}
+				} catch (parseError) {
+					errors.push(`Failed to parse order data: ${parseError}`);
+					console.error(`Failed to parse order data:`, parseError);
+				}
+
+				// Add small delay to avoid rate limiting
+				await new Promise((resolve) => setTimeout(resolve, 100));
 			}
 
-			const bulkOperation = await this.startBulkOrderImport(
-				keyParameter.value
-			);
-
-			// Wait for completion and return count
-			const completedOperation =
-				await this.waitForBulkOperationCompletionOrders(
-					bulkOperation.id
+			if (errors.length > 0) {
+				console.warn(
+					`Order import completed with ${errors.length} errors:`,
+					errors
 				);
+			}
 
-			return completedOperation.objectCount || 0;
+			console.log(
+				`Successfully imported ${successfulImports} orders out of ${jsonlLines.length} total`
+			);
+			return successfulImports;
 		} catch (error) {
 			console.error("Order import failed:", error);
 			throw error;
+		}
+	}
+
+	// Create individual order using orderCreate mutation
+	private async createIndividualOrder(orderData: {
+		order: any;
+		options: any;
+	}): Promise<{ success: boolean; orderId?: string; error?: string }> {
+		try {
+			const mutation = `
+				mutation orderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
+					orderCreate(order: $order, options: $options) {
+						order {
+							id
+							name
+						}
+						userErrors {
+							field
+							message
+						}
+					}
+				}
+			`;
+
+			const variables = {
+				order: orderData.order,
+				options: orderData.options,
+			};
+
+			const result = await this.makeGraphQLRequest<{
+				orderCreate: {
+					order: { id: string; name: string } | null;
+					userErrors: Array<{ field: string; message: string }>;
+				};
+			}>(mutation, variables);
+
+			if (result.orderCreate.userErrors.length > 0) {
+				const errors = result.orderCreate.userErrors
+					.map((error) => `${error.field}: ${error.message}`)
+					.join("; ");
+				return { success: false, error: errors };
+			}
+
+			if (!result.orderCreate.order) {
+				return {
+					success: false,
+					error: "Order creation returned null",
+				};
+			}
+
+			return {
+				success: true,
+				orderId: result.orderCreate.order.id,
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : String(error),
+			};
 		}
 	}
 
