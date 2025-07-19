@@ -4990,8 +4990,9 @@ export class ShopifyClient {
 			return JSON.stringify({
 				order: cleanOrderInput,
 				options: {
-					sendShippingNotification: false,
-					sendOrderConfirmation: false,
+					sendFulfillmentReceipt: false,
+					sendReceipt: false,
+					inventoryBehaviour: "BYPASS",
 				},
 			});
 		});
