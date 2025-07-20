@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
 		const body: ShopifyStoreGenerationRequest = await request.json();
 		const { store_id } = body;
 
-		console.log("Process customers and orders request:", {
+		console.log("Process customers request:", {
 			store_id,
 			userId,
 		});
@@ -101,29 +101,26 @@ export async function POST(request: NextRequest) {
 			shopifyToken.admin_api_token
 		);
 
-		console.log("Starting customer and order import...");
+		console.log("Starting customer import...");
 
-		// Process customers and orders
-		const result = await shopifyClient.processStoreCustomersAndOrders(
-			store_id
-		);
+		// Process customers only
+		const result = await shopifyClient.importCustomersFromCSV(store_id);
 
-		console.log("Customer and order import completed:", result);
+		console.log("Customer import completed:", result);
 
 		return NextResponse.json({
 			success: true,
-			message: "Customers and orders processed successfully",
+			message: "Customers processed successfully",
 			data: {
 				customers_created: result.customers_created,
-				orders_created: result.orders_created,
 				errors: result.errors,
 			},
 		});
 	} catch (error) {
-		console.error("Error processing customers and orders:", error);
+		console.error("Error processing customers:", error);
 		return NextResponse.json(
 			{
-				error: "Failed to process customers and orders",
+				error: "Failed to process customers",
 				details: error instanceof Error ? error.message : String(error),
 			},
 			{ status: 500 }

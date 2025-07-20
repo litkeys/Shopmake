@@ -330,7 +330,6 @@ export async function generateStoreCollectionsAPI(storeId: string): Promise<{
 
 export async function generateStoreCustomersAPI(storeId: string): Promise<{
 	customers_created: number;
-	orders_created: number;
 	errors: string[];
 }> {
 	const response = await fetch(

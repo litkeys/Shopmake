@@ -2470,118 +2470,6 @@ export class ShopifyClient {
 		throw new Error("Bulk operation timed out after 10 minutes");
 	}
 
-	// Wait for bulk operation completion - Order version
-	private async waitForBulkOperationCompletionOrders(
-		bulkOperationId: string
-	): Promise<{
-		status: string;
-		objectCount: number;
-	}> {
-		const maxAttempts = 60; // Wait up to 10 minutes (60 * 10 seconds)
-		let attempts = 0;
-
-		while (attempts < maxAttempts) {
-			const query = `
-				query($id: ID!) {
-					node(id: $id) {
-						... on BulkOperation {
-							id
-							status
-							errorCode
-							objectCount
-							createdAt
-							completedAt
-							url
-							partialDataUrl
-						}
-					}
-				}
-			`;
-
-			const result = await this.makeGraphQLRequest<{
-				node: {
-					id: string;
-					status: string;
-					errorCode?: string;
-					objectCount: number;
-					createdAt: string;
-					completedAt?: string;
-					url?: string;
-					partialDataUrl?: string;
-				} | null;
-			}>(query, { id: bulkOperationId });
-
-			if (!result.node) {
-				throw new Error(`Bulk operation not found: ${bulkOperationId}`);
-			}
-
-			const operation = result.node;
-
-			if (operation.status === "COMPLETED") {
-				// Query Shopify directly for accurate order count
-				let actualOrderCount = 0;
-
-				try {
-					const ordersQuery = `
-						query {
-							orders(first: 250, sortKey: CREATED_AT, reverse: true) {
-								nodes {
-									id
-									createdAt
-								}
-							}
-						}
-					`;
-
-					const ordersResult = await this.makeGraphQLRequest<{
-						orders: {
-							nodes: Array<{ id: string; createdAt: string }>;
-						};
-					}>(ordersQuery);
-
-					// Count orders created in the last 10 minutes
-					const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-					const recentOrders = ordersResult.orders.nodes.filter(
-						(order) => new Date(order.createdAt) > tenMinutesAgo
-					);
-
-					actualOrderCount = recentOrders.length;
-					console.log(
-						`Successfully imported ${actualOrderCount} orders`
-					);
-				} catch (countError) {
-					console.error(
-						"Could not count imported orders:",
-						countError
-					);
-					actualOrderCount = 0;
-				}
-
-				return {
-					status: operation.status,
-					objectCount: actualOrderCount,
-				};
-			}
-
-			if (
-				operation.status === "FAILED" ||
-				operation.status === "CANCELED"
-			) {
-				throw new Error(
-					`Bulk operation ${operation.status.toLowerCase()}: ${
-						operation.errorCode || "Unknown error"
-					}`
-				);
-			}
-
-			// Wait 10 seconds before checking again
-			await new Promise((resolve) => setTimeout(resolve, 10000));
-			attempts++;
-		}
-
-		throw new Error("Bulk operation timed out after 10 minutes");
-	}
-
 	// Update store branding
 	async updateStoreBranding(
 		storeData: StoreData,
@@ -4000,23 +3888,14 @@ export class ShopifyClient {
 		}
 	}
 
-	// Parse customer CSV data
+	// Parse customer CSV data for bulk import
 	private parseCustomerCSV(csvText: string): Array<{
 		firstName?: string;
 		lastName?: string;
-		email: string;
+		email?: string;
 		phone?: string;
-		emailMarketingConsent?: {
-			marketingState: string;
-			marketingOptInLevel: string;
-		};
-		smsMarketingConsent?: {
-			marketingState: string;
-			marketingOptInLevel: string;
-		};
-		tags?: string[];
 		note?: string;
-		taxExempt?: boolean;
+		tags?: string[];
 		addresses?: Array<{
 			firstName?: string;
 			lastName?: string;
@@ -4029,6 +3908,7 @@ export class ShopifyClient {
 			zip?: string;
 			phone?: string;
 		}>;
+		acceptsMarketing?: boolean;
 	}> {
 		const rows = this.parseCSVToRows(csvText);
 		if (rows.length <= 1) {
@@ -4036,7 +3916,7 @@ export class ShopifyClient {
 		}
 
 		const headers = rows[0];
-		const customers = [];
+		const customers: any[] = [];
 
 		for (let i = 1; i < rows.length; i++) {
 			const values = rows[i];
@@ -4044,8 +3924,10 @@ export class ShopifyClient {
 				continue; // Skip malformed rows
 			}
 
-			const customer: any = {};
-			let address: any = {};
+			const customer: any = {
+				addresses: [],
+			};
+			const address: any = {};
 
 			headers.forEach((header: string, index: number) => {
 				const value = values[index] || "";
@@ -4054,63 +3936,27 @@ export class ShopifyClient {
 
 				const lowerHeader = header.toLowerCase();
 
-				// Map CSV headers to customer fields
+				// Map CSV headers to customer fields based on actual Shopify export format
 				switch (lowerHeader) {
 					case "first name":
-					case "firstname":
-					case "first_name":
 						customer.firstName = cleanValue;
 						break;
 					case "last name":
-					case "lastname":
-					case "last_name":
 						customer.lastName = cleanValue;
 						break;
 					case "email":
-					case "email address":
-						customer.email = cleanValue;
+						customer.email = cleanValue.toLowerCase();
 						break;
 					case "phone":
-					case "phone number":
 						customer.phone = cleanValue;
 						break;
 					case "accepts marketing":
-					case "accepts_marketing":
-					case "accepts email marketing":
-					case "marketing":
-					case "email marketing":
-						const acceptsMarketing =
+						customer.acceptsMarketing =
 							cleanValue.toLowerCase() === "true" ||
 							cleanValue.toLowerCase() === "yes";
-						if (acceptsMarketing) {
-							customer.emailMarketingConsent = {
-								marketingState: "SUBSCRIBED",
-								marketingOptInLevel: "SINGLE_OPT_IN",
-							};
-						} else {
-							customer.emailMarketingConsent = {
-								marketingState: "NOT_SUBSCRIBED",
-								marketingOptInLevel: "SINGLE_OPT_IN",
-							};
-						}
 						break;
-					case "sms marketing":
-					case "sms_marketing":
-					case "accepts sms marketing":
-						const acceptsSms =
-							cleanValue.toLowerCase() === "true" ||
-							cleanValue.toLowerCase() === "yes";
-						if (acceptsSms) {
-							customer.smsMarketingConsent = {
-								marketingState: "SUBSCRIBED",
-								marketingOptInLevel: "SINGLE_OPT_IN",
-							};
-						} else {
-							customer.smsMarketingConsent = {
-								marketingState: "NOT_SUBSCRIBED",
-								marketingOptInLevel: "SINGLE_OPT_IN",
-							};
-						}
+					case "note":
+						customer.note = cleanValue;
 						break;
 					case "tags":
 						if (cleanValue) {
@@ -4120,55 +3966,36 @@ export class ShopifyClient {
 								.filter((tag: string) => tag);
 						}
 						break;
-					case "note":
-					case "notes":
-						customer.note = cleanValue;
+					case "default address first name":
+						address.firstName = cleanValue;
 						break;
-					case "tax exempt":
-					case "tax_exempt":
-						customer.taxExempt =
-							cleanValue.toLowerCase() === "true" ||
-							cleanValue.toLowerCase() === "yes";
+					case "default address last name":
+						address.lastName = cleanValue;
 						break;
-
-					// Address fields - handle both standard and Shopify export format
-					case "address1":
-					case "address 1":
-					case "street":
-					case "street address":
+					case "default address company":
+						address.company = cleanValue;
+						break;
 					case "default address address1":
+					case "default address line1":
 						address.address1 = cleanValue;
 						break;
-					case "address2":
-					case "address 2":
-					case "apartment":
-					case "unit":
 					case "default address address2":
+					case "default address line2":
 						address.address2 = cleanValue;
 						break;
-					case "city":
 					case "default address city":
 						address.city = cleanValue;
 						break;
-					case "province":
-					case "state":
-					case "region":
-					case "default address province code":
+					case "default address province":
+					case "default address state":
 						address.province = cleanValue;
 						break;
-					case "country":
-					case "default address country code":
+					case "default address country":
 						address.country = cleanValue;
 						break;
-					case "zip":
-					case "postal code":
-					case "postcode":
 					case "default address zip":
+					case "default address postal code":
 						address.zip = cleanValue;
-						break;
-					case "company":
-					case "default address company":
-						address.company = cleanValue;
 						break;
 					case "default address phone":
 						address.phone = cleanValue;
@@ -4176,69 +4003,14 @@ export class ShopifyClient {
 				}
 			});
 
-			// Validate mandatory fields: email, firstName, lastName are required
-			if (
-				customer.email &&
-				this.isValidEmail(customer.email) &&
-				customer.firstName &&
-				customer.firstName.trim() &&
-				customer.lastName &&
-				customer.lastName.trim()
-			) {
-				// Handle field dependencies
-
-				// SMS marketing consent requires a valid phone number
-				if (
-					customer.smsMarketingConsent &&
-					(!customer.phone || !customer.phone.trim())
-				) {
-					console.warn(
-						`Skipping SMS marketing consent for customer ${customer.email} - no phone number provided`
-					);
-					delete customer.smsMarketingConsent;
-				}
-
-				// Email marketing consent requires a valid email (already validated above)
-				// This is already handled by the email validation above
-
-				// Add address if any address fields are present and validate country requirements
+			// Only include customers with at least an email
+			if (customer.email) {
+				// Add address if there are address fields
 				if (Object.keys(address).length > 0) {
-					// Use customer name for address if address name is not provided
-					if (!address.firstName && customer.firstName) {
-						address.firstName = customer.firstName;
-					}
-					if (!address.lastName && customer.lastName) {
-						address.lastName = customer.lastName;
-					}
-
-					// Validate address based on country requirements
-					if (this.isValidAddress(address)) {
-						customer.addresses = [address];
-					} else {
-						console.warn(
-							`Skipping invalid address for customer ${customer.email}`
-						);
-					}
+					customer.addresses = [address];
 				}
 
 				customers.push(customer);
-			} else {
-				// Log why the customer was skipped
-				const missingFields = [];
-				if (!customer.email || !this.isValidEmail(customer.email)) {
-					missingFields.push("valid email");
-				}
-				if (!customer.firstName || !customer.firstName.trim()) {
-					missingFields.push("first name");
-				}
-				if (!customer.lastName || !customer.lastName.trim()) {
-					missingFields.push("last name");
-				}
-				console.warn(
-					`Skipping customer record - missing required fields: ${missingFields.join(
-						", "
-					)}`
-				);
 			}
 		}
 
@@ -4250,19 +4022,10 @@ export class ShopifyClient {
 		customers: Array<{
 			firstName?: string;
 			lastName?: string;
-			email: string;
+			email?: string;
 			phone?: string;
-			emailMarketingConsent?: {
-				marketingState: string;
-				marketingOptInLevel: string;
-			};
-			smsMarketingConsent?: {
-				marketingState: string;
-				marketingOptInLevel: string;
-			};
-			tags?: string[];
 			note?: string;
-			taxExempt?: boolean;
+			tags?: string[];
 			addresses?: Array<{
 				firstName?: string;
 				lastName?: string;
@@ -4275,27 +4038,25 @@ export class ShopifyClient {
 				zip?: string;
 				phone?: string;
 			}>;
+			acceptsMarketing?: boolean;
 		}>
 	): string {
 		const jsonlLines = customers.map((customer) => {
 			const customerInput: any = {
-				firstName: customer.firstName, // Required field, already validated
-				lastName: customer.lastName, // Required field, already validated
-				email: customer.email, // Required field, already validated
+				firstName: customer.firstName || undefined,
+				lastName: customer.lastName || undefined,
+				email: customer.email,
 				phone: customer.phone || undefined,
-				emailMarketingConsent:
-					customer.emailMarketingConsent || undefined,
-				smsMarketingConsent: customer.smsMarketingConsent || undefined,
+				note: customer.note || undefined,
 				tags:
 					customer.tags && customer.tags.length > 0
 						? customer.tags
 						: undefined,
-				note: customer.note || undefined,
-				taxExempt: customer.taxExempt || undefined,
 				addresses:
 					customer.addresses && customer.addresses.length > 0
 						? customer.addresses
 						: undefined,
+				acceptsMarketing: customer.acceptsMarketing || false,
 			};
 
 			// Clean up undefined fields
@@ -4305,7 +4066,7 @@ export class ShopifyClient {
 				})
 			);
 
-			return JSON.stringify({ input: cleanCustomerInput });
+			return JSON.stringify(cleanCustomerInput);
 		});
 
 		return jsonlLines.join("\n");
@@ -4349,764 +4110,6 @@ export class ShopifyClient {
 		} catch (error) {
 			console.error("Customer import failed:", error);
 			throw error;
-		}
-	}
-
-	// Import orders from CSV files using Shopify Bulk Operations
-	async importOrdersFromCSV(storeId: string): Promise<{
-		orders_created: number;
-		errors: string[];
-	}> {
-		try {
-			console.log("Starting order import from CSV...");
-
-			// Get order CSV uploads for this store
-			const orderUploads = await this.getStoreUploads(
-				storeId,
-				"csv_orders"
-			);
-
-			if (orderUploads.length === 0) {
-				console.log("No order CSV found, skipping order import");
-				return { orders_created: 0, errors: [] };
-			}
-
-			let totalOrdersCreated = 0;
-			const errors: string[] = [];
-
-			for (const upload of orderUploads) {
-				try {
-					console.log(`Processing order CSV: ${upload.file_name}`);
-
-					// Download the CSV file
-					const csvText = await this.downloadFile(upload.file_path);
-
-					// Parse the CSV
-					const orders = this.parseOrderCSV(csvText);
-
-					if (orders.length === 0) {
-						console.log(
-							`No valid orders found in ${upload.file_name}`
-						);
-						continue;
-					}
-
-					console.log(`Found ${orders.length} orders to import`);
-
-					// Convert to JSONL format for bulk import
-					const jsonlContent = this.convertOrdersToJSONL(orders);
-
-					// Use bulk operations to import orders
-					const importedCount = await this.bulkImportOrders(
-						jsonlContent
-					);
-					totalOrdersCreated += importedCount;
-
-					console.log(
-						`Successfully imported ${importedCount} orders from ${upload.file_name}`
-					);
-				} catch (fileError) {
-					const errorMessage = `Error processing order CSV file ${upload.file_name}: ${fileError}`;
-					console.error(errorMessage);
-					errors.push(errorMessage);
-				}
-			}
-
-			console.log(
-				`Order import completed. Total orders created: ${totalOrdersCreated}`
-			);
-			return { orders_created: totalOrdersCreated, errors };
-		} catch (error) {
-			console.error("Error importing orders from CSV:", error);
-			throw error;
-		}
-	}
-
-	// Parse order CSV data
-	private parseOrderCSV(csvText: string): Array<{
-		currency?: string;
-		email?: string;
-		phone?: string;
-		createdAt?: string;
-		note?: string;
-		tags?: string[];
-		billingAddress?: {
-			firstName?: string;
-			lastName?: string;
-			company?: string;
-			address1?: string;
-			address2?: string;
-			city?: string;
-			province?: string;
-			country?: string;
-			zip?: string;
-			phone?: string;
-		};
-		shippingAddress?: {
-			firstName?: string;
-			lastName?: string;
-			company?: string;
-			address1?: string;
-			address2?: string;
-			city?: string;
-			province?: string;
-			country?: string;
-			zip?: string;
-			phone?: string;
-		};
-		lineItems: Array<{
-			title: string;
-			quantity: number;
-			priceSet: {
-				shopMoney: {
-					amount: string;
-					currencyCode: string;
-				};
-			};
-			sku?: string;
-			requiresShipping?: boolean;
-			taxable?: boolean;
-			taxLines?: Array<{
-				title: string;
-				rate: number;
-				priceSet: {
-					shopMoney: {
-						amount: string;
-						currencyCode: string;
-					};
-				};
-			}>;
-		}>;
-		transactions?: Array<{
-			kind: string;
-			status: string;
-			amountSet: {
-				shopMoney: {
-					amount: string;
-					currencyCode: string;
-				};
-			};
-		}>;
-		totalPriceSet?: {
-			shopMoney: {
-				amount: string;
-				currencyCode: string;
-			};
-		};
-		subtotalPriceSet?: {
-			shopMoney: {
-				amount: string;
-				currencyCode: string;
-			};
-		};
-		totalTaxSet?: {
-			shopMoney: {
-				amount: string;
-				currencyCode: string;
-			};
-		};
-		totalShippingPriceSet?: {
-			shopMoney: {
-				amount: string;
-				currencyCode: string;
-			};
-		};
-		discountCodes?: string[];
-		fulfillmentStatus?: string;
-		financialStatus?: string;
-	}> {
-		const rows = this.parseCSVToRows(csvText);
-		if (rows.length <= 1) {
-			return [];
-		}
-
-		const headers = rows[0];
-		const orderMap = new Map(); // Map to group line items by order
-
-		for (let i = 1; i < rows.length; i++) {
-			const values = rows[i];
-			if (values.length < headers.length / 2) {
-				continue; // Skip malformed rows
-			}
-
-			let orderName = "";
-			let orderData: any = {
-				lineItems: [],
-			};
-			let shippingAddress: any = {};
-			let billingAddress: any = {};
-			let currentLineItem: any = {};
-			let taxInfo: any = {};
-
-			headers.forEach((header: string, index: number) => {
-				const value = values[index] || "";
-				const cleanValue = value.replace(/^"|"$/g, "").trim();
-				if (!cleanValue) return;
-
-				const lowerHeader = header.toLowerCase();
-
-				// Map CSV headers to order fields based on actual Shopify export format
-				switch (lowerHeader) {
-					case "name":
-						orderName = cleanValue;
-						break;
-					case "email":
-						orderData.email = cleanValue;
-						break;
-					case "phone":
-						orderData.phone = cleanValue;
-						break;
-					case "currency":
-						orderData.currency = cleanValue.toUpperCase();
-						break;
-					case "created at":
-						orderData.createdAt = cleanValue;
-						break;
-					case "discount code":
-						if (cleanValue) {
-							orderData.discountCodes = [cleanValue];
-						}
-						break;
-					case "total":
-						if (!isNaN(parseFloat(cleanValue))) {
-							orderData.totalPriceSet = {
-								shopMoney: {
-									amount: parseFloat(cleanValue).toFixed(2),
-									currencyCode: orderData.currency || "USD",
-								},
-							};
-						}
-						break;
-					case "subtotal":
-						if (!isNaN(parseFloat(cleanValue))) {
-							orderData.subtotalPriceSet = {
-								shopMoney: {
-									amount: parseFloat(cleanValue).toFixed(2),
-									currencyCode: orderData.currency || "USD",
-								},
-							};
-						}
-						break;
-					case "shipping":
-						if (!isNaN(parseFloat(cleanValue))) {
-							orderData.totalShippingPriceSet = {
-								shopMoney: {
-									amount: parseFloat(cleanValue).toFixed(2),
-									currencyCode: orderData.currency || "USD",
-								},
-							};
-						}
-						break;
-					case "taxes":
-						if (!isNaN(parseFloat(cleanValue))) {
-							orderData.totalTaxSet = {
-								shopMoney: {
-									amount: parseFloat(cleanValue).toFixed(2),
-									currencyCode: orderData.currency || "USD",
-								},
-							};
-						}
-						break;
-					case "notes":
-						orderData.note = cleanValue;
-						break;
-					case "tags":
-						if (cleanValue) {
-							orderData.tags = cleanValue
-								.split(",")
-								.map((tag) => tag.trim())
-								.filter((tag) => tag);
-						}
-						break;
-					case "financial status":
-						orderData.financialStatus = cleanValue.toUpperCase();
-						break;
-					case "fulfillment status":
-						orderData.fulfillmentStatus = cleanValue.toUpperCase();
-						break;
-
-					// Line item fields
-					case "lineitem name":
-						if (cleanValue) {
-							currentLineItem.title = cleanValue;
-						}
-						break;
-					case "lineitem quantity":
-						if (!isNaN(parseInt(cleanValue))) {
-							currentLineItem.quantity = parseInt(cleanValue);
-						}
-						break;
-					case "lineitem price":
-						if (!isNaN(parseFloat(cleanValue))) {
-							currentLineItem.priceSet = {
-								shopMoney: {
-									amount: parseFloat(cleanValue).toFixed(2),
-									currencyCode: orderData.currency || "USD",
-								},
-							};
-						}
-						break;
-					case "lineitem sku":
-						currentLineItem.sku = cleanValue;
-						break;
-					case "lineitem requires shipping":
-						currentLineItem.requiresShipping =
-							cleanValue.toLowerCase() === "true";
-						break;
-					case "lineitem taxable":
-						currentLineItem.taxable =
-							cleanValue.toLowerCase() === "true";
-						break;
-
-					// Tax information for line items
-					case "tax 1 name":
-						if (cleanValue) {
-							taxInfo.name1 = cleanValue;
-						}
-						break;
-					case "tax 1 value":
-						if (!isNaN(parseFloat(cleanValue))) {
-							taxInfo.value1 = parseFloat(cleanValue);
-						}
-						break;
-
-					// Shipping address fields
-					case "shipping name":
-						const shippingNameParts = cleanValue.split(" ");
-						if (shippingNameParts.length >= 2) {
-							shippingAddress.firstName = shippingNameParts[0];
-							shippingAddress.lastName = shippingNameParts
-								.slice(1)
-								.join(" ");
-						} else {
-							shippingAddress.firstName = cleanValue;
-						}
-						break;
-					case "shipping address1":
-						shippingAddress.address1 = cleanValue;
-						break;
-					case "shipping address2":
-						shippingAddress.address2 = cleanValue;
-						break;
-					case "shipping city":
-						shippingAddress.city = cleanValue;
-						break;
-					case "shipping province":
-						shippingAddress.province = cleanValue;
-						break;
-					case "shipping country":
-						shippingAddress.country = cleanValue;
-						break;
-					case "shipping zip":
-						shippingAddress.zip = cleanValue;
-						break;
-					case "shipping company":
-						shippingAddress.company = cleanValue;
-						break;
-					case "shipping phone":
-						shippingAddress.phone = cleanValue;
-						break;
-
-					// Billing address fields
-					case "billing name":
-						const billingNameParts = cleanValue.split(" ");
-						if (billingNameParts.length >= 2) {
-							billingAddress.firstName = billingNameParts[0];
-							billingAddress.lastName = billingNameParts
-								.slice(1)
-								.join(" ");
-						} else {
-							billingAddress.firstName = cleanValue;
-						}
-						break;
-					case "billing address1":
-						billingAddress.address1 = cleanValue;
-						break;
-					case "billing address2":
-						billingAddress.address2 = cleanValue;
-						break;
-					case "billing city":
-						billingAddress.city = cleanValue;
-						break;
-					case "billing province":
-						billingAddress.province = cleanValue;
-						break;
-					case "billing country":
-						billingAddress.country = cleanValue;
-						break;
-					case "billing zip":
-						billingAddress.zip = cleanValue;
-						break;
-					case "billing company":
-						billingAddress.company = cleanValue;
-						break;
-					case "billing phone":
-						billingAddress.phone = cleanValue;
-						break;
-				}
-			});
-
-			// Build line item with tax information if available
-			if (currentLineItem.title) {
-				// Set defaults for required fields
-				if (!currentLineItem.quantity) {
-					currentLineItem.quantity = 1;
-				}
-				if (!currentLineItem.priceSet) {
-					currentLineItem.priceSet = {
-						shopMoney: {
-							amount: "0.00",
-							currencyCode: orderData.currency || "USD",
-						},
-					};
-				} else {
-					// Ensure currency is set in priceSet
-					currentLineItem.priceSet.shopMoney.currencyCode =
-						currentLineItem.priceSet.shopMoney.currencyCode ||
-						orderData.currency ||
-						"USD";
-				}
-				if (currentLineItem.requiresShipping === undefined) {
-					currentLineItem.requiresShipping = true;
-				}
-				if (currentLineItem.taxable === undefined) {
-					currentLineItem.taxable = true;
-				}
-
-				// Add tax lines if tax information is present
-				if (taxInfo.name1 && taxInfo.value1) {
-					const taxRate = taxInfo.value1 / 100; // Convert percentage to decimal
-					const taxAmount = (
-						parseFloat(
-							currentLineItem.priceSet?.shopMoney?.amount || "0"
-						) *
-						currentLineItem.quantity *
-						taxRate
-					).toFixed(2);
-
-					currentLineItem.taxLines = [
-						{
-							title: taxInfo.name1,
-							rate: taxRate,
-							priceSet: {
-								shopMoney: {
-									amount: taxAmount,
-									currencyCode: orderData.currency || "USD",
-								},
-							},
-						},
-					];
-				}
-
-				// Check if this order already exists in our map
-				if (orderMap.has(orderName)) {
-					const existingOrder = orderMap.get(orderName);
-					existingOrder.lineItems.push(currentLineItem);
-				} else {
-					// Create new order entry
-					orderData.lineItems = [currentLineItem];
-
-					// Add addresses if present
-					if (Object.keys(shippingAddress).length > 0) {
-						orderData.shippingAddress = shippingAddress;
-					}
-					if (Object.keys(billingAddress).length > 0) {
-						orderData.billingAddress = billingAddress;
-					}
-
-					// Create transaction based on financial status and total
-					if (orderData.totalPriceSet && orderData.financialStatus) {
-						let transactionStatus = "SUCCESS";
-						let transactionKind = "SALE";
-
-						if (
-							orderData.financialStatus === "PAID" ||
-							orderData.financialStatus === "PARTIALLY_REFUNDED"
-						) {
-							transactionStatus = "SUCCESS";
-						} else if (orderData.financialStatus === "PENDING") {
-							transactionStatus = "PENDING";
-						} else if (orderData.financialStatus === "VOIDED") {
-							transactionStatus = "FAILURE";
-						}
-
-						orderData.transactions = [
-							{
-								kind: transactionKind,
-								status: transactionStatus,
-								amountSet: orderData.totalPriceSet,
-							},
-						];
-					}
-
-					orderMap.set(orderName, orderData);
-				}
-			}
-		}
-
-		// Convert map values to array
-		const orders = Array.from(orderMap.values()).filter(
-			(order) => order.lineItems.length > 0
-		);
-
-		return orders;
-	}
-
-	// Convert orders to JSONL format for orderCreate bulk import
-	private convertOrdersToJSONL(
-		orders: Array<{
-			currency?: string;
-			email?: string;
-			phone?: string;
-			createdAt?: string;
-			note?: string;
-			tags?: string[];
-			billingAddress?: {
-				firstName?: string;
-				lastName?: string;
-				company?: string;
-				address1?: string;
-				address2?: string;
-				city?: string;
-				province?: string;
-				country?: string;
-				zip?: string;
-				phone?: string;
-			};
-			shippingAddress?: {
-				firstName?: string;
-				lastName?: string;
-				company?: string;
-				address1?: string;
-				address2?: string;
-				city?: string;
-				province?: string;
-				country?: string;
-				zip?: string;
-				phone?: string;
-			};
-			lineItems: Array<{
-				title: string;
-				quantity: number;
-				priceSet: {
-					shopMoney: {
-						amount: string;
-						currencyCode: string;
-					};
-				};
-				sku?: string;
-				requiresShipping?: boolean;
-				taxable?: boolean;
-				taxLines?: Array<{
-					title: string;
-					rate: number;
-					priceSet: {
-						shopMoney: {
-							amount: string;
-							currencyCode: string;
-						};
-					};
-				}>;
-			}>;
-			transactions?: Array<{
-				kind: string;
-				status: string;
-				amountSet: {
-					shopMoney: {
-						amount: string;
-						currencyCode: string;
-					};
-				};
-			}>;
-			totalPriceSet?: {
-				shopMoney: {
-					amount: string;
-					currencyCode: string;
-				};
-			};
-			subtotalPriceSet?: {
-				shopMoney: {
-					amount: string;
-					currencyCode: string;
-				};
-			};
-			totalTaxSet?: {
-				shopMoney: {
-					amount: string;
-					currencyCode: string;
-				};
-			};
-			totalShippingPriceSet?: {
-				shopMoney: {
-					amount: string;
-					currencyCode: string;
-				};
-			};
-			discountCodes?: string[];
-			fulfillmentStatus?: string;
-			financialStatus?: string;
-		}>
-	): string {
-		const jsonlLines = orders.map((order) => {
-			const orderInput: any = {
-				currency: order.currency || "USD",
-				email: order.email || undefined,
-				phone: order.phone || undefined,
-				billingAddress: order.billingAddress || undefined,
-				shippingAddress: order.shippingAddress || undefined,
-				lineItems: order.lineItems.map((item) => ({
-					title: item.title,
-					quantity: item.quantity,
-					priceSet: item.priceSet,
-					sku: item.sku || undefined,
-					requiresShipping:
-						item.requiresShipping !== undefined
-							? item.requiresShipping
-							: true,
-					taxable: item.taxable !== undefined ? item.taxable : true,
-					taxLines:
-						item.taxLines && item.taxLines.length > 0
-							? item.taxLines
-							: undefined,
-				})),
-				note: order.note || undefined,
-				tags:
-					order.tags && order.tags.length > 0
-						? order.tags
-						: undefined,
-				transactions:
-					order.transactions && order.transactions.length > 0
-						? order.transactions
-						: undefined,
-			};
-
-			// Clean up undefined fields
-			const cleanOrderInput = JSON.parse(
-				JSON.stringify(orderInput, (key, value) => {
-					return value === undefined ? undefined : value;
-				})
-			);
-
-			return JSON.stringify({
-				order: cleanOrderInput,
-				options: {
-					sendFulfillmentReceipt: false,
-					sendReceipt: false,
-					inventoryBehaviour: "BYPASS",
-				},
-			});
-		});
-
-		return jsonlLines.join("\n");
-	}
-
-	// Import orders individually using orderCreate mutation
-	private async bulkImportOrders(jsonlContent: string): Promise<number> {
-		try {
-			console.log(
-				"Starting individual order import with orderCreate mutation..."
-			);
-
-			// Parse JSONL content to get individual orders
-			const jsonlLines = jsonlContent.trim().split("\n");
-			let successfulImports = 0;
-			let errors: string[] = [];
-
-			for (const line of jsonlLines) {
-				try {
-					const orderData = JSON.parse(line);
-					const result = await this.createIndividualOrder(orderData);
-					if (result.success) {
-						successfulImports++;
-						console.log(
-							`Order created successfully: ${result.orderId}`
-						);
-					} else {
-						errors.push(`Order creation failed: ${result.error}`);
-						console.error(`Order creation failed: ${result.error}`);
-					}
-				} catch (parseError) {
-					errors.push(`Failed to parse order data: ${parseError}`);
-					console.error(`Failed to parse order data:`, parseError);
-				}
-
-				// Add small delay to avoid rate limiting
-				await new Promise((resolve) => setTimeout(resolve, 100));
-			}
-
-			if (errors.length > 0) {
-				console.warn(
-					`Order import completed with ${errors.length} errors:`,
-					errors
-				);
-			}
-
-			console.log(
-				`Successfully imported ${successfulImports} orders out of ${jsonlLines.length} total`
-			);
-			return successfulImports;
-		} catch (error) {
-			console.error("Order import failed:", error);
-			throw error;
-		}
-	}
-
-	// Create individual order using orderCreate mutation
-	private async createIndividualOrder(orderData: {
-		order: any;
-		options: any;
-	}): Promise<{ success: boolean; orderId?: string; error?: string }> {
-		try {
-			const mutation = `
-				mutation orderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
-					orderCreate(order: $order, options: $options) {
-						order {
-							id
-							name
-						}
-						userErrors {
-							field
-							message
-						}
-					}
-				}
-			`;
-
-			const variables = {
-				order: orderData.order,
-				options: orderData.options,
-			};
-
-			const result = await this.makeGraphQLRequest<{
-				orderCreate: {
-					order: { id: string; name: string } | null;
-					userErrors: Array<{ field: string; message: string }>;
-				};
-			}>(mutation, variables);
-
-			if (result.orderCreate.userErrors.length > 0) {
-				const errors = result.orderCreate.userErrors
-					.map((error) => `${error.field}: ${error.message}`)
-					.join("; ");
-				return { success: false, error: errors };
-			}
-
-			if (!result.orderCreate.order) {
-				return {
-					success: false,
-					error: "Order creation returned null",
-				};
-			}
-
-			return {
-				success: true,
-				orderId: result.orderCreate.order.id,
-			};
-		} catch (error) {
-			return {
-				success: false,
-				error: error instanceof Error ? error.message : String(error),
-			};
 		}
 	}
 
@@ -5171,67 +4174,6 @@ export class ShopifyClient {
 		return result.stagedUploadsCreate.stagedTargets[0];
 	}
 
-	// Create staged upload for orders
-	private async createStagedUploadForOrders(): Promise<{
-		url: string;
-		parameters: Array<{ name: string; value: string }>;
-		resourceUrl: string;
-	}> {
-		const mutation = `
-			mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
-				stagedUploadsCreate(input: $input) {
-					stagedTargets {
-						url
-						parameters {
-							name
-							value
-						}
-						resourceUrl
-					}
-					userErrors {
-						field
-						message
-					}
-				}
-			}
-		`;
-
-		const variables = {
-			input: [
-				{
-					filename: "orders.jsonl",
-					mimeType: "text/jsonl",
-					resource: "BULK_MUTATION_VARIABLES",
-					httpMethod: "POST",
-				},
-			],
-		};
-
-		const result = await this.makeGraphQLRequest<{
-			stagedUploadsCreate: {
-				stagedTargets: Array<{
-					url: string;
-					parameters: Array<{ name: string; value: string }>;
-					resourceUrl: string;
-				}>;
-				userErrors: Array<{ field: string; message: string }>;
-			};
-		}>(mutation, variables);
-
-		if (result.stagedUploadsCreate.userErrors.length > 0) {
-			const errors = result.stagedUploadsCreate.userErrors
-				.map((error) => error.message)
-				.join("; ");
-			throw new Error(`Staged upload creation errors: ${errors}`);
-		}
-
-		if (result.stagedUploadsCreate.stagedTargets.length === 0) {
-			throw new Error("No staged upload was created");
-		}
-
-		return result.stagedUploadsCreate.stagedTargets[0];
-	}
-
 	// Start bulk customer import operation
 	private async startBulkCustomerImport(stagedUploadPath: string): Promise<{
 		id: string;
@@ -5259,64 +4201,6 @@ export class ShopifyClient {
 						customer {
 							id
 							email
-						}
-						userErrors {
-							field
-							message
-						}
-					}
-				}
-			`,
-			stagedUploadPath: stagedUploadPath,
-		};
-
-		const result = await this.makeGraphQLRequest<{
-			bulkOperationRunMutation: {
-				bulkOperation: {
-					id: string;
-					status: string;
-				};
-				userErrors: Array<{ field: string; message: string }>;
-			};
-		}>(mutation, variables);
-
-		if (result.bulkOperationRunMutation.userErrors.length > 0) {
-			const errors = result.bulkOperationRunMutation.userErrors
-				.map((error) => error.message)
-				.join("; ");
-			throw new Error(`Bulk operation start errors: ${errors}`);
-		}
-
-		return result.bulkOperationRunMutation.bulkOperation;
-	}
-
-	// Start bulk order import operation
-	private async startBulkOrderImport(stagedUploadPath: string): Promise<{
-		id: string;
-		status: string;
-	}> {
-		const mutation = `
-			mutation bulkOperationRunMutation($mutation: String!, $stagedUploadPath: String!) {
-				bulkOperationRunMutation(mutation: $mutation, stagedUploadPath: $stagedUploadPath) {
-					bulkOperation {
-						id
-						status
-					}
-					userErrors {
-						field
-						message
-					}
-				}
-			}
-		`;
-
-		const variables = {
-			mutation: `
-				mutation orderCreate($order: OrderCreateOrderInput!, $options: OrderCreateOptionsInput) {
-					orderCreate(order: $order, options: $options) {
-						order {
-							id
-							name
 						}
 						userErrors {
 							field
@@ -5516,58 +4400,5 @@ export class ShopifyClient {
 		}
 
 		return true;
-	}
-
-	// Process store customers and orders (new 6th step)
-	async processStoreCustomersAndOrders(storeId: string): Promise<{
-		customers_created: number;
-		orders_created: number;
-		errors: string[];
-	}> {
-		try {
-			console.log("Starting store customers and orders processing...");
-
-			let customers_created = 0;
-			let orders_created = 0;
-			const errors: string[] = [];
-
-			// Import customers
-			try {
-				const customerResult = await this.importCustomersFromCSV(
-					storeId
-				);
-				customers_created = customerResult.customers_created;
-				errors.push(...customerResult.errors);
-			} catch (error) {
-				const errorMessage = `Error importing customers: ${error}`;
-				console.error(errorMessage);
-				errors.push(errorMessage);
-			}
-
-			// Import orders
-			try {
-				const orderResult = await this.importOrdersFromCSV(storeId);
-				orders_created = orderResult.orders_created;
-				errors.push(...orderResult.errors);
-			} catch (error) {
-				const errorMessage = `Error importing orders: ${error}`;
-				console.error(errorMessage);
-				errors.push(errorMessage);
-			}
-
-			console.log("Store customers and orders processing completed");
-
-			return {
-				customers_created,
-				orders_created,
-				errors,
-			};
-		} catch (error) {
-			console.error(
-				"Error processing store customers and orders:",
-				error
-			);
-			throw error;
-		}
 	}
 }

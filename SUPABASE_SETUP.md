@@ -70,7 +70,7 @@ CREATE TABLE uploads (
     store_id UUID REFERENCES stores(id) ON DELETE CASCADE,
     file_path TEXT NOT NULL,
     file_name TEXT NOT NULL,
-    file_type TEXT NOT NULL, -- 'logo', 'csv_products', 'csv_customers', 'csv_orders', 'csv_inventory'
+    file_type TEXT NOT NULL, -- 'logo', 'csv_products', 'csv_customers', 'csv_inventory'
     file_size BIGINT NOT NULL,
     uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -327,8 +327,6 @@ store-files/
 │   ├── csv_products/
 │   │   └── timestamp.csv
 │   ├── csv_customers/
-│   │   └── timestamp.csv
-│   ├── csv_orders/
 │   │   └── timestamp.csv
 │   └── csv_inventory/
 │       └── timestamp.csv

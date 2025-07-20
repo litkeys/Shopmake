@@ -1260,13 +1260,13 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				}
 			}
 
-			// Step 6: Customers and Orders
+			// Step 6: Customers
 			if (startStep <= 5) {
 				setGenerationProgress({
 					currentStep: 6,
 					totalSteps: 6,
 					stepName: "Customers",
-					stepDescription: "Importing customers and orders...",
+					stepDescription: "Importing customers...",
 					percentage: 80,
 					canResume: true,
 					lastCompletedStep: 4,
@@ -1285,10 +1285,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 						lastCompletedStep: 5,
 					}));
 
-					console.log(
-						"Customers and orders import completed:",
-						customersResult
-					);
+					console.log("Customers import completed:", customersResult);
 				} catch (err) {
 					console.error("Customers import error:", err);
 					setGenerationProgress((prev) => ({
@@ -1297,7 +1294,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 						lastCompletedStep: 4,
 					}));
 					throw new Error(
-						`Customers and orders import failed: ${
+						`Customers import failed: ${
 							err instanceof Error ? err.message : "Unknown error"
 						}`
 					);
@@ -1783,61 +1780,6 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 								>
 									<Upload className="h-4 w-4 mr-2" />
 									Upload Customers CSV
-								</Button>
-							</div>
-						</div>
-
-						{/* Orders CSV */}
-						<div>
-							<Label>Orders CSV</Label>
-							{getCsvUploads("orders").map((upload) => (
-								<div
-									key={upload.id}
-									className="mt-2 p-3 border rounded-lg bg-gray-50 flex items-center justify-between"
-								>
-									<div>
-										<p className="font-medium">
-											{upload.file_name}
-										</p>
-										<p className="text-sm text-muted-foreground">
-											Uploaded{" "}
-											{new Date(
-												upload.uploaded_at
-											).toLocaleDateString()}
-										</p>
-									</div>
-									<Button
-										type="button"
-										variant="outline"
-										size="sm"
-										onClick={() => handleDeleteFile(upload)}
-									>
-										<Trash2 className="h-4 w-4" />
-									</Button>
-								</div>
-							))}
-							<div className="mt-2">
-								<input
-									id="orders_csv"
-									type="file"
-									accept=".csv"
-									onChange={(e) =>
-										handleCsvUpload(e, "orders")
-									}
-									className="hidden"
-								/>
-								<Button
-									type="button"
-									variant="outline"
-									onClick={() =>
-										document
-											.getElementById("orders_csv")
-											?.click()
-									}
-									disabled={isLoading}
-								>
-									<Upload className="h-4 w-4 mr-2" />
-									Upload Orders CSV
 								</Button>
 							</div>
 						</div>
@@ -2856,13 +2798,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 															.customers
 															.customers_created
 													}{" "}
-													customers,{" "}
-													{
-														generationResults
-															.customers
-															.orders_created
-													}{" "}
-													orders imported
+													customers imported
 												</div>
 											)}
 										</div>

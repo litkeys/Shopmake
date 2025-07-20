@@ -33,7 +33,7 @@ export interface Upload {
 	store_id: string;
 	file_path: string;
 	file_name: string;
-	file_type: string; // 'csv_products', 'csv_customers', 'csv_orders', 'csv_inventory', 'logo'
+	file_type: string; // 'csv_products', 'csv_customers', 'csv_inventory', 'logo'
 	file_size: number;
 	uploaded_at: string;
 }
@@ -82,7 +82,6 @@ export interface StoreFormData {
 	csv_files?: {
 		products?: File;
 		customers?: File;
-		orders?: File;
 		inventory?: File;
 	};
 }
