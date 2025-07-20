@@ -4060,7 +4060,17 @@ export class ShopifyClient {
 					customer.addresses && customer.addresses.length > 0
 						? customer.addresses
 						: undefined,
-				acceptsMarketing: customer.acceptsMarketing || false,
+				emailMarketingConsent: customer.acceptsMarketing
+					? {
+							marketingState: "SUBSCRIBED",
+							marketingOptInLevel: "SINGLE_OPT_IN",
+							consentUpdatedAt: new Date().toISOString(),
+					  }
+					: {
+							marketingState: "NOT_SUBSCRIBED",
+							marketingOptInLevel: "SINGLE_OPT_IN",
+							consentUpdatedAt: new Date().toISOString(),
+					  },
 			};
 
 			// Clean up undefined fields
