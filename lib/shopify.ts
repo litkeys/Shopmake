@@ -3908,7 +3908,9 @@ export class ShopifyClient {
 			zip?: string;
 			phone?: string;
 		}>;
-		acceptsMarketing?: boolean;
+		acceptsEmailMarketing?: boolean;
+		acceptsSmsMarketing?: boolean;
+		taxExempt?: boolean;
 	}> {
 		const rows = this.parseCSVToRows(csvText);
 		if (rows.length <= 1) {
@@ -3917,11 +3919,18 @@ export class ShopifyClient {
 
 		const headers = rows[0];
 		const customers: any[] = [];
+		let skippedCount = 0;
 
 		for (let i = 1; i < rows.length; i++) {
 			const values = rows[i];
 			if (values.length < headers.length / 2) {
-				continue; // Skip malformed rows
+				console.warn(
+					`Row ${
+						i + 1
+					}: Skipping malformed row with insufficient data`
+				);
+				skippedCount++;
+				continue;
 			}
 
 			const customer: any = {
@@ -3948,10 +3957,26 @@ export class ShopifyClient {
 						customer.email = cleanValue.toLowerCase();
 						break;
 					case "phone":
-						customer.phone = cleanValue;
+						// Only set phone if it's valid for potential SMS marketing
+						if (this.isValidPhone(cleanValue)) {
+							customer.phone = cleanValue;
+						} else if (cleanValue) {
+							console.warn(
+								`Row ${
+									i + 1
+								}: Invalid phone number format: ${cleanValue}`
+							);
+						}
 						break;
+					// Map both email and SMS marketing acceptance fields
+					case "accepts email marketing":
 					case "accepts marketing":
-						customer.acceptsMarketing =
+						customer.acceptsEmailMarketing =
+							cleanValue.toLowerCase() === "true" ||
+							cleanValue.toLowerCase() === "yes";
+						break;
+					case "accepts sms marketing":
+						customer.acceptsSmsMarketing =
 							cleanValue.toLowerCase() === "true" ||
 							cleanValue.toLowerCase() === "yes";
 						break;
@@ -3966,6 +3991,12 @@ export class ShopifyClient {
 								.filter((tag: string) => tag);
 						}
 						break;
+					case "tax exempt":
+						customer.taxExempt =
+							cleanValue.toLowerCase() === "true" ||
+							cleanValue.toLowerCase() === "yes";
+						break;
+					// Address field mappings
 					case "default address first name":
 						address.firstName = cleanValue;
 						break;
@@ -3987,10 +4018,12 @@ export class ShopifyClient {
 						address.city = cleanValue;
 						break;
 					case "default address province":
+					case "default address province code":
 					case "default address state":
 						address.province = cleanValue;
 						break;
 					case "default address country":
+					case "default address country code":
 						address.country = cleanValue;
 						break;
 					case "default address zip":
@@ -4003,21 +4036,41 @@ export class ShopifyClient {
 				}
 			});
 
-			// Only include customers with a valid email (required for CustomerInput)
-			if (customer.email && this.isValidEmail(customer.email)) {
-				// Add address if there are address fields
-				if (Object.keys(address).length > 0) {
+			// Validate mandatory fields: email is required for customer creation
+			if (!customer.email || !this.isValidEmail(customer.email)) {
+				console.warn(
+					`Row ${
+						i + 1
+					}: Skipping customer with missing or invalid email: ${
+						customer.email || "undefined"
+					}`
+				);
+				skippedCount++;
+				continue;
+			}
+
+			// Add address if there are meaningful address fields
+			if (Object.keys(address).length > 0) {
+				// Only add address if it has at least one meaningful field beyond just firstName/lastName
+				const meaningfulAddressFields = Object.keys(address).filter(
+					(key) => key !== "firstName" && key !== "lastName"
+				);
+				if (meaningfulAddressFields.length > 0) {
 					customer.addresses = [address];
 				}
-
-				customers.push(customer);
-			} else if (customer.email) {
-				console.warn(
-					`Skipping customer with invalid email: ${customer.email}`
-				);
 			}
+
+			customers.push(customer);
 		}
 
+		if (skippedCount > 0) {
+			console.log(
+				`Skipped ${skippedCount} invalid customer records during parsing`
+			);
+		}
+
+		console.log(`Successfully parsed ${customers.length} valid customers from CSV`);
+		
 		return customers;
 	}
 
@@ -4042,14 +4095,16 @@ export class ShopifyClient {
 				zip?: string;
 				phone?: string;
 			}>;
-			acceptsMarketing?: boolean;
+			acceptsEmailMarketing?: boolean;
+			acceptsSmsMarketing?: boolean;
+			taxExempt?: boolean;
 		}>
 	): string {
 		const jsonlLines = customers.map((customer) => {
 			const customerInput: any = {
 				firstName: customer.firstName || undefined,
 				lastName: customer.lastName || undefined,
-				email: customer.email,
+				email: customer.email, // Email is required and already validated
 				phone: customer.phone || undefined,
 				note: customer.note || undefined,
 				tags:
@@ -4060,7 +4115,35 @@ export class ShopifyClient {
 					customer.addresses && customer.addresses.length > 0
 						? customer.addresses
 						: undefined,
-				emailMarketingConsent: customer.acceptsMarketing
+				taxExempt: customer.taxExempt || undefined,
+			};
+
+			// Set emailMarketingConsent only if email is present (dependency requirement)
+			if (
+				customer.email &&
+				customer.acceptsEmailMarketing !== undefined
+			) {
+				customerInput.emailMarketingConsent =
+					customer.acceptsEmailMarketing
+						? {
+								marketingState: "SUBSCRIBED",
+								marketingOptInLevel: "SINGLE_OPT_IN",
+								consentUpdatedAt: new Date().toISOString(),
+						  }
+						: {
+								marketingState: "NOT_SUBSCRIBED",
+								marketingOptInLevel: "SINGLE_OPT_IN",
+								consentUpdatedAt: new Date().toISOString(),
+						  };
+			}
+
+			// Set smsMarketingConsent only if valid phone is present (dependency requirement)
+			if (
+				customer.phone &&
+				this.isValidPhone(customer.phone) &&
+				customer.acceptsSmsMarketing !== undefined
+			) {
+				customerInput.smsMarketingConsent = customer.acceptsSmsMarketing
 					? {
 							marketingState: "SUBSCRIBED",
 							marketingOptInLevel: "SINGLE_OPT_IN",
@@ -4070,8 +4153,8 @@ export class ShopifyClient {
 							marketingState: "NOT_SUBSCRIBED",
 							marketingOptInLevel: "SINGLE_OPT_IN",
 							consentUpdatedAt: new Date().toISOString(),
-					  },
-			};
+					  };
+			}
 
 			// Clean up undefined fields
 			const cleanCustomerInput = JSON.parse(
@@ -4313,6 +4396,16 @@ export class ShopifyClient {
 	private isValidEmail(email: string): boolean {
 		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 		return emailRegex.test(email);
+	}
+
+	// Helper method to validate phone numbers
+	private isValidPhone(phone: string): boolean {
+		if (!phone) return false;
+		// Remove all non-digit characters except + for international numbers
+		const cleanPhone = phone.replace(/[^\d+]/g, "");
+		// Basic validation: should be at least 10 digits (excluding +)
+		const digitCount = cleanPhone.replace(/\+/g, "").length;
+		return digitCount >= 10 && digitCount <= 15;
 	}
 
 	// Validate address based on country requirements
