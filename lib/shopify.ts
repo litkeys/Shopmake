@@ -1327,61 +1327,81 @@ export class ShopifyClient {
 		try {
 			console.log("Adding taxonomy categories to products...");
 
+			type ProductWithCategory = {
+				id: string;
+				title: string;
+				category?: {
+					id: string;
+					name: string;
+				};
+				metafields: {
+					nodes: Array<{
+						namespace: string;
+						key: string;
+						value: string;
+					}>;
+				};
+			};
+
 			// Query recently created products with category metafields
-			const productsQuery = `
-				query {
-					products(first: 250, sortKey: CREATED_AT, reverse: true) {
-						nodes {
-							id
-							title
-							category {
+			const allProducts: ProductWithCategory[] = [];
+			let hasNextPage = true;
+			let cursor: string | null = null;
+
+			while (hasNextPage) {
+				const productsQuery = `
+					query($cursor: String) {
+						products(first: 250, after: $cursor, sortKey: CREATED_AT, reverse: true) {
+							nodes {
 								id
-								name
-							}
-							metafields(first: 15) {
-								nodes {
-									namespace
-									key
-									value
+								title
+								category {
+									id
+									name
 								}
+								metafields(first: 15) {
+									nodes {
+										namespace
+										key
+										value
+									}
+								}
+							}
+							pageInfo {
+								hasNextPage
+								endCursor
 							}
 						}
 					}
-				}
-			`;
+				`;
 
-			const result = await this.makeGraphQLRequest<{
-				products: {
-					nodes: Array<{
-						id: string;
-						title: string;
-						category?: {
-							id: string;
-							name: string;
+				const result: {
+					products: {
+						nodes: ProductWithCategory[];
+						pageInfo: {
+							hasNextPage: boolean;
+							endCursor: string | null;
 						};
-						metafields: {
-							nodes: Array<{
-								namespace: string;
-								key: string;
-								value: string;
-							}>;
-						};
-					}>;
-				};
-			}>(productsQuery);
+					};
+				} = await this.makeGraphQLRequest(productsQuery, { cursor });
+
+				if (result.products?.nodes) {
+					allProducts.push(...result.products.nodes);
+				}
+				hasNextPage = result.products?.pageInfo?.hasNextPage ?? false;
+				cursor = result.products?.pageInfo?.endCursor ?? null;
+			}
 
 			// Filter products that need taxonomy category updates
 			// Simply check if product has a non-empty product_category metafield
-			const productsNeedingCategories = result.products.nodes.filter(
-				(product) => {
-					const categoryMetafield = product.metafields.nodes.find(
-						(meta) =>
-							meta.namespace === "custom" &&
-							meta.key === "product_category"
-					);
-					return categoryMetafield && categoryMetafield.value.trim();
-				}
-			);
+			const productsNeedingCategories = allProducts.filter((product) => {
+				const categoryMetafield = product.metafields.nodes.find(
+					(meta) =>
+						meta.namespace === "custom" &&
+						meta.key === "product_category"
+				);
+				return categoryMetafield && categoryMetafield.value.trim();
+			});
 
 			if (productsNeedingCategories.length === 0) {
 				console.log(
@@ -1506,61 +1526,81 @@ export class ShopifyClient {
 		try {
 			console.log("Adding variants and pricing to products...");
 
+			type ProductWithVariants = {
+				id: string;
+				title: string;
+				variants: {
+					nodes: Array<{ id: string }>;
+				};
+				metafields: {
+					nodes: Array<{
+						namespace: string;
+						key: string;
+						value: string;
+					}>;
+				};
+			};
+
 			// Query recently created products with metafields
-			const productsQuery = `
-				query {
-					products(first: 250, sortKey: CREATED_AT, reverse: true) {
-						nodes {
-							id
-							title
-							variants(first: 1) {
-								nodes {
-									id
+			const allProducts: ProductWithVariants[] = [];
+			let hasNextPage = true;
+			let cursor: string | null = null;
+
+			while (hasNextPage) {
+				const productsQuery = `
+					query($cursor: String) {
+						products(first: 250, after: $cursor, sortKey: CREATED_AT, reverse: true) {
+							nodes {
+								id
+								title
+								variants(first: 1) {
+									nodes {
+										id
+									}
+								}
+								metafields(first: 10) {
+									nodes {
+										namespace
+										key
+										value
+									}
 								}
 							}
-							metafields(first: 10) {
-								nodes {
-									namespace
-									key
-									value
-								}
+							pageInfo {
+								hasNextPage
+								endCursor
 							}
 						}
 					}
-				}
-			`;
+				`;
 
-			const result = await this.makeGraphQLRequest<{
-				products: {
-					nodes: Array<{
-						id: string;
-						title: string;
-						variants: {
-							nodes: Array<{ id: string }>;
+				const result: {
+					products: {
+						nodes: ProductWithVariants[];
+						pageInfo: {
+							hasNextPage: boolean;
+							endCursor: string | null;
 						};
-						metafields: {
-							nodes: Array<{
-								namespace: string;
-								key: string;
-								value: string;
-							}>;
-						};
-					}>;
-				};
-			}>(productsQuery);
+					};
+				} = await this.makeGraphQLRequest(productsQuery, { cursor });
+
+				if (result.products?.nodes) {
+					allProducts.push(...result.products.nodes);
+				}
+				hasNextPage = result.products?.pageInfo?.hasNextPage ?? false;
+				cursor = result.products?.pageInfo?.endCursor ?? null;
+			}
 
 			// Filter products that need variant updates (have pricing metafields)
-			const productsNeedingUpdates = result.products.nodes.filter(
-				(product) => {
-					// Check if product has pricing metafields
-					const hasPrice = product.metafields.nodes.some(
-						(meta) =>
-							meta.namespace === "custom" &&
-							meta.key === "original_price"
-					);
-					return hasPrice && product.variants.nodes.length > 0;
-				}
-			);
+			const productsNeedingUpdates = allProducts.filter((product) => {
+				// Check if product has pricing metafields
+				const hasPrice = product.metafields.nodes.some(
+					(meta) =>
+						meta.namespace === "custom" &&
+						meta.key === "original_price"
+				);
+				return hasPrice && product.variants.nodes.length > 0;
+			});
 
 			if (productsNeedingUpdates.length === 0) {
 				console.log("No products found that need variant updates");
@@ -1725,51 +1765,70 @@ export class ShopifyClient {
 		try {
 			console.log("Adding images to products...");
 
+			type ProductWithMetafields = {
+				id: string;
+				title: string;
+				metafields: {
+					nodes: Array<{
+						namespace: string;
+						key: string;
+						value: string;
+					}>;
+				};
+			};
+
 			// Query recently created products with image metafields
-			const productsQuery = `
-				query {
-					products(first: 250, sortKey: CREATED_AT, reverse: true) {
-						nodes {
-							id
-							title
-							metafields(first: 10) {
-								nodes {
-									namespace
-									key
-									value
+			const allProducts: ProductWithMetafields[] = [];
+			let hasNextPage = true;
+			let cursor: string | null = null;
+
+			while (hasNextPage) {
+				const productsQuery = `
+					query($cursor: String) {
+						products(first: 250, after: $cursor, sortKey: CREATED_AT, reverse: true) {
+							nodes {
+								id
+								title
+								metafields(first: 10) {
+									nodes {
+										namespace
+										key
+										value
+									}
 								}
+							}
+							pageInfo {
+								hasNextPage
+								endCursor
 							}
 						}
 					}
-				}
-			`;
+				`;
 
-			const result = await this.makeGraphQLRequest<{
-				products: {
-					nodes: Array<{
-						id: string;
-						title: string;
-						metafields: {
-							nodes: Array<{
-								namespace: string;
-								key: string;
-								value: string;
-							}>;
+				const result: {
+					products: {
+						nodes: ProductWithMetafields[];
+						pageInfo: {
+							hasNextPage: boolean;
+							endCursor: string | null;
 						};
-					}>;
-				};
-			}>(productsQuery);
+					};
+				} = await this.makeGraphQLRequest(productsQuery, { cursor });
+
+				if (result.products?.nodes) {
+					allProducts.push(...result.products.nodes);
+				}
+				hasNextPage = result.products?.pageInfo?.hasNextPage ?? false;
+				cursor = result.products?.pageInfo?.endCursor ?? null;
+			}
 
 			// Filter products with image URLs
-			const productsWithImages = result.products.nodes.filter(
-				(product) => {
-					return product.metafields.nodes.some(
-						(meta) =>
-							meta.namespace === "custom" &&
-							meta.key === "image_urls"
-					);
-				}
-			);
+			const productsWithImages = allProducts.filter((product) => {
+				return product.metafields.nodes.some(
+					(meta) =>
+						meta.namespace === "custom" && meta.key === "image_urls"
+				);
+			});
 
 			if (productsWithImages.length === 0) {
 				return 0;
@@ -1974,37 +2033,56 @@ export class ShopifyClient {
 			// Get Online Store publication ID
 			const publicationId = await this.getOnlineStorePublicationId();
 
+			type ProductToPublish = {
+				id: string;
+				title: string;
+				createdAt: string;
+			};
+
 			// Query recently created products
-			const productsQuery = `
-				query {
-					products(first: 250, sortKey: CREATED_AT, reverse: true) {
-						nodes {
-							id
-							title
+			const allProducts: ProductToPublish[] = [];
+			let hasNextPage = true;
+			let cursor: string | null = null;
+
+			while (hasNextPage) {
+				const productsQuery = `
+					query($cursor: String) {
+						products(first: 250, after: $cursor, sortKey: CREATED_AT, reverse: true) {
+							nodes {
+								id
+								title
+								createdAt
+							}
+							pageInfo {
+								hasNextPage
+								endCursor
+							}
 						}
 					}
-				}
-			`;
+				`;
 
-			const result = await this.makeGraphQLRequest<{
-				products: {
-					nodes: Array<{
-						id: string;
-						title: string;
-					}>;
-				};
-			}>(productsQuery);
+				const result: {
+					products: {
+						nodes: ProductToPublish[];
+						pageInfo: {
+							hasNextPage: boolean;
+							endCursor: string | null;
+						};
+					};
+				} = await this.makeGraphQLRequest(productsQuery, { cursor });
+
+				if (result.products?.nodes) {
+					allProducts.push(...result.products.nodes);
+				}
+				hasNextPage = result.products?.pageInfo?.hasNextPage ?? false;
+				cursor = result.products?.pageInfo?.endCursor ?? null;
+			}
 
 			// Filter products created in the last 10 minutes (recently imported)
-			const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
-			const recentProducts = result.products.nodes.filter((product) => {
-				// Extract timestamp from Shopify GID
-				const productId = product.id.split("/").pop();
-				if (!productId) return false;
-
-				// Shopify product IDs are roughly chronological, but we'll publish all recent products to be safe
-				return true; // For now, publish all fetched products since we're getting recently created ones
-			});
+			const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+			const recentProducts = allProducts.filter(
+				(product) => new Date(product.createdAt) > tenMinutesAgo
+			);
 
 			if (recentProducts.length === 0) {
 				console.log("No recent products found to publish");
@@ -2296,26 +2374,53 @@ export class ShopifyClient {
 				let actualProductCount = 0;
 
 				try {
-					const productsQuery = `
-						query {
-							products(first: 250, sortKey: CREATED_AT, reverse: true) {
-								nodes {
-									id
-									createdAt
+					type SimpleProduct = { id: string; createdAt: string };
+					const allProducts: SimpleProduct[] = [];
+					let hasNextPage = true;
+					let cursor: string | null = null;
+
+					while (hasNextPage) {
+						const productsQuery = `
+							query($cursor: String) {
+								products(first: 250, after: $cursor, sortKey: CREATED_AT, reverse: true) {
+									nodes {
+										id
+										createdAt
+									}
+									pageInfo {
+										hasNextPage
+										endCursor
+									}
 								}
 							}
-						}
-					`;
+						`;
 
-					const productsResult = await this.makeGraphQLRequest<{
-						products: {
-							nodes: Array<{ id: string; createdAt: string }>;
-						};
-					}>(productsQuery);
+						const productsResult: {
+							products: {
+								nodes: SimpleProduct[];
+								pageInfo: {
+									hasNextPage: boolean;
+									endCursor: string | null;
+								};
+							};
+						} = await this.makeGraphQLRequest(productsQuery, {
+							cursor,
+						});
+
+						if (productsResult.products?.nodes) {
+							allProducts.push(...productsResult.products.nodes);
+						}
+						hasNextPage =
+							productsResult.products?.pageInfo?.hasNextPage ??
+							false;
+						cursor =
+							productsResult.products?.pageInfo?.endCursor ??
+							null;
+					}
 
 					// Count products created in the last 10 minutes
 					const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-					const recentProducts = productsResult.products.nodes.filter(
+					const recentProducts = allProducts.filter(
 						(product) => new Date(product.createdAt) > tenMinutesAgo
 					);
 
@@ -2408,30 +2513,61 @@ export class ShopifyClient {
 				let actualCustomerCount = 0;
 
 				try {
-					const customersQuery = `
-						query {
-							customers(first: 250, sortKey: CREATED_AT, reverse: true) {
-								nodes {
-									id
-									createdAt
+					type SimpleCustomer = {
+						id: string;
+						createdAt: string;
+					};
+					const allCustomers: SimpleCustomer[] = [];
+					let hasNextPage = true;
+					let cursor: string | null = null;
+
+					while (hasNextPage) {
+						const customersQuery = `
+							query($cursor: String) {
+								customers(first: 250, after: $cursor, sortKey: CREATED_AT, reverse: true) {
+									nodes {
+										id
+										createdAt
+									}
+									pageInfo {
+										hasNextPage
+										endCursor
+									}
 								}
 							}
-						}
-					`;
+						`;
 
-					const customersResult = await this.makeGraphQLRequest<{
-						customers: {
-							nodes: Array<{ id: string; createdAt: string }>;
-						};
-					}>(customersQuery);
+						const customersResult: {
+							customers: {
+								nodes: SimpleCustomer[];
+								pageInfo: {
+									hasNextPage: boolean;
+									endCursor: string | null;
+								};
+							};
+						} = await this.makeGraphQLRequest(customersQuery, {
+							cursor,
+						});
+
+						if (customersResult.customers?.nodes) {
+							allCustomers.push(
+								...customersResult.customers.nodes
+							);
+						}
+						hasNextPage =
+							customersResult.customers?.pageInfo?.hasNextPage ??
+							false;
+						cursor =
+							customersResult.customers?.pageInfo?.endCursor ??
+							null;
+					}
 
 					// Count customers created in the last 10 minutes
 					const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-					const recentCustomers =
-						customersResult.customers.nodes.filter(
-							(customer) =>
-								new Date(customer.createdAt) > tenMinutesAgo
-						);
+					const recentCustomers = allCustomers.filter(
+						(customer) =>
+							new Date(customer.createdAt) > tenMinutesAgo
+					);
 
 					actualCustomerCount = recentCustomers.length;
 					console.log(
@@ -2961,46 +3097,67 @@ export class ShopifyClient {
 		}>
 	> {
 		try {
-			const query = `
-				query {
-					products(first: 250) {
-						nodes {
-							id
-							handle
-							variants(first: 250) {
-								nodes {
-									id
-									sku
-									inventoryItem {
-										id
-									}
-								}
-							}
-						}
-					}
-				}
-			`;
-
-			const result = await this.makeGraphQLRequest<{
-				products: {
+			type ProductWithInventory = {
+				id: string;
+				handle: string;
+				variants: {
 					nodes: Array<{
 						id: string;
-						handle: string;
-						variants: {
-							nodes: Array<{
-								id: string;
-								sku?: string;
-								inventoryItem: {
-									id: string;
-								};
-							}>;
+						sku?: string;
+						inventoryItem: {
+							id: string;
 						};
 					}>;
 				};
-			}>(query);
+			};
+			const allProducts: ProductWithInventory[] = [];
+			let hasNextPage = true;
+			let cursor: string | null = null;
+
+			while (hasNextPage) {
+				const query = `
+					query($cursor: String) {
+						products(first: 250, after: $cursor) {
+							nodes {
+								id
+								handle
+								variants(first: 250) {
+									nodes {
+										id
+										sku
+										inventoryItem {
+											id
+										}
+									}
+								}
+							}
+							pageInfo {
+								hasNextPage
+								endCursor
+							}
+						}
+					}
+				`;
+
+				const result: {
+					products: {
+						nodes: ProductWithInventory[];
+						pageInfo: {
+							hasNextPage: boolean;
+							endCursor: string | null;
+						};
+					};
+				} = await this.makeGraphQLRequest(query, { cursor });
+
+				if (result.products?.nodes) {
+					allProducts.push(...result.products.nodes);
+				}
+				hasNextPage = result.products?.pageInfo?.hasNextPage ?? false;
+				cursor = result.products?.pageInfo?.endCursor ?? null;
+			}
 
 			const inventoryItems = [];
-			for (const product of result.products.nodes) {
+			for (const product of allProducts) {
 				for (const variant of product.variants.nodes) {
 					inventoryItems.push({
 						productId: product.id,
@@ -4069,8 +4226,10 @@ export class ShopifyClient {
 			);
 		}
 
-		console.log(`Successfully parsed ${customers.length} valid customers from CSV`);
-		
+		console.log(
+			`Successfully parsed ${customers.length} valid customers from CSV`
+		);
+
 		return customers;
 	}
 
