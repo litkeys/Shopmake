@@ -4003,14 +4003,18 @@ export class ShopifyClient {
 				}
 			});
 
-			// Only include customers with at least an email
-			if (customer.email) {
+			// Only include customers with a valid email (required for CustomerInput)
+			if (customer.email && this.isValidEmail(customer.email)) {
 				// Add address if there are address fields
 				if (Object.keys(address).length > 0) {
 					customer.addresses = [address];
 				}
 
 				customers.push(customer);
+			} else if (customer.email) {
+				console.warn(
+					`Skipping customer with invalid email: ${customer.email}`
+				);
 			}
 		}
 
@@ -4066,7 +4070,8 @@ export class ShopifyClient {
 				})
 			);
 
-			return JSON.stringify(cleanCustomerInput);
+			// Return the correct format with input wrapper for customerCreate mutation
+			return JSON.stringify({ input: cleanCustomerInput });
 		});
 
 		return jsonlLines.join("\n");

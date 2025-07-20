@@ -1035,6 +1035,11 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			return;
 		}
 
+		// Reset generation progress on fresh start (not resuming)
+		if (resumeFromStep === undefined) {
+			resetGenerationProgress();
+		}
+
 		// Store is already connected, proceed with chunked generation
 		try {
 			setIsGenerating(true);
@@ -1379,7 +1384,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const resetGenerationProgress = () => {
 		setGenerationProgress({
 			currentStep: 0,
-			totalSteps: 4,
+			totalSteps: 6,
 			stepName: "",
 			stepDescription: "",
 			percentage: 0,
