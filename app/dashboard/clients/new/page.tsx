@@ -541,123 +541,6 @@ export default function NewClientPage() {
 					</CardContent>
 				</Card>
 
-				<Card>
-					<CardHeader>
-						<CardTitle>Store Policies</CardTitle>
-						<CardDescription>
-							Store policies and legal information for your
-							customers
-						</CardDescription>
-					</CardHeader>
-					<CardContent className="space-y-4">
-						<div>
-							<Label htmlFor="return_policy">
-								Return and Refund Policy
-							</Label>
-							<Textarea
-								id="return_policy"
-								value={formData.return_policy}
-								onChange={(e) =>
-									handleInputChange(
-										"return_policy",
-										e.target.value
-									)
-								}
-								placeholder="Enter your return and refund policy..."
-								rows={4}
-							/>
-							<p className="text-sm text-muted-foreground mt-1">
-								Your policy for returns, exchanges, and refunds
-							</p>
-						</div>
-
-						<div>
-							<Label htmlFor="privacy_policy">
-								Privacy Policy
-							</Label>
-							<Textarea
-								id="privacy_policy"
-								value={formData.privacy_policy}
-								onChange={(e) =>
-									handleInputChange(
-										"privacy_policy",
-										e.target.value
-									)
-								}
-								placeholder="Enter your privacy policy..."
-								rows={4}
-							/>
-							<p className="text-sm text-muted-foreground mt-1">
-								How you collect, use, and protect customer data
-							</p>
-						</div>
-
-						<div>
-							<Label htmlFor="terms_of_service">
-								Terms of Service
-							</Label>
-							<Textarea
-								id="terms_of_service"
-								value={formData.terms_of_service}
-								onChange={(e) =>
-									handleInputChange(
-										"terms_of_service",
-										e.target.value
-									)
-								}
-								placeholder="Enter your terms of service..."
-								rows={4}
-							/>
-							<p className="text-sm text-muted-foreground mt-1">
-								Terms and conditions for using your store
-							</p>
-						</div>
-
-						<div>
-							<Label htmlFor="shipping_policy">
-								Shipping Policy
-							</Label>
-							<Textarea
-								id="shipping_policy"
-								value={formData.shipping_policy}
-								onChange={(e) =>
-									handleInputChange(
-										"shipping_policy",
-										e.target.value
-									)
-								}
-								placeholder="Enter your shipping policy..."
-								rows={4}
-							/>
-							<p className="text-sm text-muted-foreground mt-1">
-								Shipping methods, costs, and delivery times
-							</p>
-						</div>
-
-						<div>
-							<Label htmlFor="contact_information">
-								Contact Information
-							</Label>
-							<Textarea
-								id="contact_information"
-								value={formData.contact_information}
-								onChange={(e) =>
-									handleInputChange(
-										"contact_information",
-										e.target.value
-									)
-								}
-								placeholder="Enter additional contact information..."
-								rows={4}
-							/>
-							<p className="text-sm text-muted-foreground mt-1">
-								Additional contact details, business hours,
-								support information
-							</p>
-						</div>
-					</CardContent>
-				</Card>
-
 				{/* Product Collections Section */}
 				<Card>
 					<CardHeader>
@@ -1148,6 +1031,123 @@ export default function NewClientPage() {
 							<Plus className="h-4 w-4 mr-2" />
 							Add Location
 						</Button>
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader>
+						<CardTitle>Store Policies</CardTitle>
+						<CardDescription>
+							Store policies and legal information for your
+							customers
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						<div>
+							<Label htmlFor="return_policy">
+								Return and Refund Policy
+							</Label>
+							<Textarea
+								id="return_policy"
+								value={formData.return_policy}
+								onChange={(e) =>
+									handleInputChange(
+										"return_policy",
+										e.target.value
+									)
+								}
+								placeholder="Enter your return and refund policy..."
+								rows={4}
+							/>
+							<p className="text-sm text-muted-foreground mt-1">
+								Your policy for returns, exchanges, and refunds
+							</p>
+						</div>
+
+						<div>
+							<Label htmlFor="privacy_policy">
+								Privacy Policy
+							</Label>
+							<Textarea
+								id="privacy_policy"
+								value={formData.privacy_policy}
+								onChange={(e) =>
+									handleInputChange(
+										"privacy_policy",
+										e.target.value
+									)
+								}
+								placeholder="Enter your privacy policy..."
+								rows={4}
+							/>
+							<p className="text-sm text-muted-foreground mt-1">
+								How you collect, use, and protect customer data
+							</p>
+						</div>
+
+						<div>
+							<Label htmlFor="terms_of_service">
+								Terms of Service
+							</Label>
+							<Textarea
+								id="terms_of_service"
+								value={formData.terms_of_service}
+								onChange={(e) =>
+									handleInputChange(
+										"terms_of_service",
+										e.target.value
+									)
+								}
+								placeholder="Enter your terms of service..."
+								rows={4}
+							/>
+							<p className="text-sm text-muted-foreground mt-1">
+								Terms and conditions for using your store
+							</p>
+						</div>
+
+						<div>
+							<Label htmlFor="shipping_policy">
+								Shipping Policy
+							</Label>
+							<Textarea
+								id="shipping_policy"
+								value={formData.shipping_policy}
+								onChange={(e) =>
+									handleInputChange(
+										"shipping_policy",
+										e.target.value
+									)
+								}
+								placeholder="Enter your shipping policy..."
+								rows={4}
+							/>
+							<p className="text-sm text-muted-foreground mt-1">
+								Shipping methods, costs, and delivery times
+							</p>
+						</div>
+
+						<div>
+							<Label htmlFor="contact_information">
+								Contact Information
+							</Label>
+							<Textarea
+								id="contact_information"
+								value={formData.contact_information}
+								onChange={(e) =>
+									handleInputChange(
+										"contact_information",
+										e.target.value
+									)
+								}
+								placeholder="Enter additional contact information..."
+								rows={4}
+							/>
+							<p className="text-sm text-muted-foreground mt-1">
+								Additional contact details, business hours,
+								support information
+							</p>
+						</div>
 					</CardContent>
 				</Card>
 
