@@ -80,6 +80,11 @@ export default function NewClientPage() {
 		description: "",
 		main_product_category: "",
 		contact_email: "",
+		return_policy: "",
+		privacy_policy: "",
+		terms_of_service: "",
+		shipping_policy: "",
+		contact_information: "",
 	});
 
 	const handleInputChange = (field: keyof StoreFormData, value: string) => {
@@ -345,6 +350,11 @@ export default function NewClientPage() {
 				description: formData.description,
 				main_product_category: formData.main_product_category,
 				contact_email: formData.contact_email,
+				return_policy: formData.return_policy,
+				privacy_policy: formData.privacy_policy,
+				terms_of_service: formData.terms_of_service,
+				shipping_policy: formData.shipping_policy,
+				contact_information: formData.contact_information,
 			});
 
 			// Create any temporary locations
@@ -526,6 +536,123 @@ export default function NewClientPage() {
 							/>
 							<p className="text-sm text-muted-foreground mt-1">
 								Used in the footer and contact forms
+							</p>
+						</div>
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader>
+						<CardTitle>Store Policies</CardTitle>
+						<CardDescription>
+							Store policies and legal information for your
+							customers
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						<div>
+							<Label htmlFor="return_policy">
+								Return and Refund Policy
+							</Label>
+							<Textarea
+								id="return_policy"
+								value={formData.return_policy}
+								onChange={(e) =>
+									handleInputChange(
+										"return_policy",
+										e.target.value
+									)
+								}
+								placeholder="Enter your return and refund policy..."
+								rows={4}
+							/>
+							<p className="text-sm text-muted-foreground mt-1">
+								Your policy for returns, exchanges, and refunds
+							</p>
+						</div>
+
+						<div>
+							<Label htmlFor="privacy_policy">
+								Privacy Policy
+							</Label>
+							<Textarea
+								id="privacy_policy"
+								value={formData.privacy_policy}
+								onChange={(e) =>
+									handleInputChange(
+										"privacy_policy",
+										e.target.value
+									)
+								}
+								placeholder="Enter your privacy policy..."
+								rows={4}
+							/>
+							<p className="text-sm text-muted-foreground mt-1">
+								How you collect, use, and protect customer data
+							</p>
+						</div>
+
+						<div>
+							<Label htmlFor="terms_of_service">
+								Terms of Service
+							</Label>
+							<Textarea
+								id="terms_of_service"
+								value={formData.terms_of_service}
+								onChange={(e) =>
+									handleInputChange(
+										"terms_of_service",
+										e.target.value
+									)
+								}
+								placeholder="Enter your terms of service..."
+								rows={4}
+							/>
+							<p className="text-sm text-muted-foreground mt-1">
+								Terms and conditions for using your store
+							</p>
+						</div>
+
+						<div>
+							<Label htmlFor="shipping_policy">
+								Shipping Policy
+							</Label>
+							<Textarea
+								id="shipping_policy"
+								value={formData.shipping_policy}
+								onChange={(e) =>
+									handleInputChange(
+										"shipping_policy",
+										e.target.value
+									)
+								}
+								placeholder="Enter your shipping policy..."
+								rows={4}
+							/>
+							<p className="text-sm text-muted-foreground mt-1">
+								Shipping methods, costs, and delivery times
+							</p>
+						</div>
+
+						<div>
+							<Label htmlFor="contact_information">
+								Contact Information
+							</Label>
+							<Textarea
+								id="contact_information"
+								value={formData.contact_information}
+								onChange={(e) =>
+									handleInputChange(
+										"contact_information",
+										e.target.value
+									)
+								}
+								placeholder="Enter additional contact information..."
+								rows={4}
+							/>
+							<p className="text-sm text-muted-foreground mt-1">
+								Additional contact details, business hours,
+								support information
 							</p>
 						</div>
 					</CardContent>

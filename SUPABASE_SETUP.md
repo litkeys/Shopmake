@@ -47,6 +47,12 @@ CREATE TABLE store_data (
     main_product_category TEXT,
     contact_email TEXT,
     logo_url TEXT,
+    -- Store Policies
+    return_policy TEXT,
+    privacy_policy TEXT,
+    terms_of_service TEXT,
+    shipping_policy TEXT,
+    contact_information TEXT,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -347,6 +353,8 @@ store-files/
 6. **Clerk Integration**: The system uses Clerk JWTs with Supabase RLS policies that reference the `sub` claim for user identification.
 
 7. **Shopify Integration**: Shopify access tokens are stored securely in the `shopify_tokens` table and never exposed to the client.
+
+8. **Store Policies**: The system supports comprehensive store policies including return policy, privacy policy, terms of service, shipping policy, and additional contact information stored as text/HTML content.
 
 ## Shopify App Setup
 

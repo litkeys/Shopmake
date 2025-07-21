@@ -25,6 +25,12 @@ export interface StoreData {
 	main_product_category?: string;
 	contact_email?: string;
 	logo_url?: string;
+	// Store Policies
+	return_policy?: string;
+	privacy_policy?: string;
+	terms_of_service?: string;
+	shipping_policy?: string;
+	contact_information?: string;
 	updated_at: string;
 }
 
@@ -78,6 +84,12 @@ export interface StoreFormData {
 	description: string;
 	main_product_category: string;
 	contact_email: string;
+	// Store Policies
+	return_policy: string;
+	privacy_policy: string;
+	terms_of_service: string;
+	shipping_policy: string;
+	contact_information: string;
 	logo_file?: File;
 	csv_files?: {
 		products?: File;
