@@ -4775,4 +4775,110 @@ export class ShopifyClient {
 
 		return true;
 	}
+
+	// Update store policies using shopPolicyUpdate mutation
+	async updateStorePolicies(storeData: StoreData): Promise<{
+		policies_updated: number;
+		skipped_policies: number;
+	}> {
+		try {
+			console.log("Starting store policies update...");
+
+			let policies_updated = 0;
+			let skipped_policies = 0;
+
+			const policyTypes = [
+				{ type: "REFUND_POLICY", value: storeData.return_policy },
+				{ type: "PRIVACY_POLICY", value: storeData.privacy_policy },
+				{ type: "TERMS_OF_SERVICE", value: storeData.terms_of_service },
+				{ type: "SHIPPING_POLICY", value: storeData.shipping_policy },
+				{
+					type: "CONTACT_INFORMATION",
+					value: storeData.contact_information,
+				},
+			];
+
+			for (const policy of policyTypes) {
+				// Skip if policy value is empty
+				if (!policy.value || policy.value.trim() === "") {
+					console.log(`Skipping empty policy: ${policy.type}`);
+					skipped_policies++;
+					continue;
+				}
+
+				try {
+					await this.updateSinglePolicy(
+						policy.type,
+						policy.value.trim()
+					);
+					policies_updated++;
+					console.log(`Successfully updated ${policy.type}`);
+				} catch (error) {
+					console.error(`Failed to update ${policy.type}:`, error);
+					// Don't throw error, just log and continue with other policies
+				}
+			}
+
+			console.log(
+				`Store policies update completed. Updated: ${policies_updated}, Skipped: ${skipped_policies}`
+			);
+
+			return {
+				policies_updated,
+				skipped_policies,
+			};
+		} catch (error) {
+			console.error("Error updating store policies:", error);
+			throw error;
+		}
+	}
+
+	// Update a single policy using shopPolicyUpdate mutation
+	private async updateSinglePolicy(
+		type: string,
+		body: string
+	): Promise<void> {
+		const mutation = `
+			mutation shopPolicyUpdate($shopPolicy: ShopPolicyInput!) {
+				shopPolicyUpdate(shopPolicy: $shopPolicy) {
+					shopPolicy {
+						id
+						type
+						body
+						url
+					}
+					userErrors {
+						field
+						message
+					}
+				}
+			}
+		`;
+
+		const variables = {
+			shopPolicy: {
+				type: type,
+				body: body,
+			},
+		};
+
+		const result = await this.makeGraphQLRequest<{
+			shopPolicyUpdate: {
+				shopPolicy: {
+					id: string;
+					type: string;
+					body: string;
+					url: string;
+				};
+				userErrors: Array<{ field: string; message: string }>;
+			};
+		}>(mutation, variables);
+
+		if (result.shopPolicyUpdate.userErrors.length > 0) {
+			const errors = result.shopPolicyUpdate.userErrors
+				.map((error) => error.message)
+				.join("; ");
+			throw new Error(`Policy update errors for ${type}: ${errors}`);
+		}
+	}
 }

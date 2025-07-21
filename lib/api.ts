@@ -352,6 +352,30 @@ export async function generateStoreCustomersAPI(storeId: string): Promise<{
 	return result.data;
 }
 
+export async function updateStorePoliciesAPI(storeId: string): Promise<{
+	policies_updated: number;
+	skipped_policies: number;
+}> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/shopify/generate/policy`,
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ storeId }),
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to update store policies");
+	}
+
+	const result = await response.json();
+	return result.result;
+}
+
 export async function disconnectShopifyStoreAPI(
 	storeId: string
 ): Promise<void> {

@@ -43,6 +43,7 @@ import {
 	processStoreInventoryAPI,
 	generateStoreCollectionsAPI,
 	generateStoreCustomersAPI,
+	updateStorePoliciesAPI,
 	connectShopifyStoreAPI,
 	disconnectShopifyStoreAPI,
 	deleteStoreAPI,
@@ -103,7 +104,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [generationProgress, setGenerationProgress] = useState({
 		currentStep: 0,
-		totalSteps: 6,
+		totalSteps: 7,
 		stepName: "",
 		stepDescription: "",
 		percentage: 0,
@@ -117,6 +118,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		inventory?: any;
 		collections?: any;
 		customers?: any;
+		policies?: any;
 	}>({});
 	const [store, setStore] = useState<Store | null>(null);
 	const [storeData, setStoreData] = useState<StoreData | null>(null);
@@ -1082,7 +1084,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 0) {
 				setGenerationProgress({
 					currentStep: 1,
-					totalSteps: 6,
+					totalSteps: 7,
 					stepName: "Foundation",
 					stepDescription:
 						"Setting up theme, locations, and branding...",
@@ -1125,7 +1127,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 1) {
 				setGenerationProgress({
 					currentStep: 2,
-					totalSteps: 6,
+					totalSteps: 7,
 					stepName: "Products",
 					stepDescription:
 						"Importing products, images, and categories...",
@@ -1167,7 +1169,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 2) {
 				setGenerationProgress({
 					currentStep: 3,
-					totalSteps: 6,
+					totalSteps: 7,
 					stepName: "Publish",
 					stepDescription:
 						"Adding variants and publishing products...",
@@ -1209,7 +1211,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 3) {
 				setGenerationProgress({
 					currentStep: 4,
-					totalSteps: 6,
+					totalSteps: 7,
 					stepName: "Inventory",
 					stepDescription: "Adding inventory quantities...",
 					percentage: 50,
@@ -1253,7 +1255,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 4) {
 				setGenerationProgress({
 					currentStep: 5,
-					totalSteps: 6,
+					totalSteps: 7,
 					stepName: "Collections",
 					stepDescription: "Creating smart collections...",
 					percentage: 70,
@@ -1297,7 +1299,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 5) {
 				setGenerationProgress({
 					currentStep: 6,
-					totalSteps: 6,
+					totalSteps: 7,
 					stepName: "Customers",
 					stepDescription: "Importing customers...",
 					percentage: 80,
@@ -1314,7 +1316,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 					setGenerationProgress((prev) => ({
 						...prev,
-						percentage: 100,
+						percentage: 90,
 						lastCompletedStep: 5,
 					}));
 
@@ -1334,6 +1336,47 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				}
 			}
 
+			// Step 7: Policies
+			if (startStep <= 6) {
+				setGenerationProgress({
+					currentStep: 7,
+					totalSteps: 7,
+					stepName: "Policies",
+					stepDescription: "Updating store policies...",
+					percentage: 90,
+					canResume: true,
+					lastCompletedStep: 5,
+				});
+
+				try {
+					const policiesResult = await updateStorePoliciesAPI(
+						store.id
+					);
+					currentResults.policies = policiesResult;
+					setGenerationResults(currentResults);
+
+					setGenerationProgress((prev) => ({
+						...prev,
+						percentage: 100,
+						lastCompletedStep: 6,
+					}));
+
+					console.log("Policies update completed:", policiesResult);
+				} catch (err) {
+					console.error("Policies update error:", err);
+					setGenerationProgress((prev) => ({
+						...prev,
+						canResume: true,
+						lastCompletedStep: 5,
+					}));
+					throw new Error(
+						`Policies update failed: ${
+							err instanceof Error ? err.message : "Unknown error"
+						}`
+					);
+				}
+			}
+
 			// Success - all steps completed
 			const storeUrl = `https://${store.shopify_store_domain}.myshopify.com`;
 			setSuccess(
@@ -1344,7 +1387,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				// Reset progress after success
 				setGenerationProgress({
 					currentStep: 0,
-					totalSteps: 6,
+					totalSteps: 7,
 					stepName: "",
 					stepDescription: "",
 					percentage: 0,
@@ -1412,7 +1455,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const resetGenerationProgress = () => {
 		setGenerationProgress({
 			currentStep: 0,
-			totalSteps: 6,
+			totalSteps: 7,
 			stepName: "",
 			stepDescription: "",
 			percentage: 0,
@@ -2597,7 +2640,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 								{!isGenerating &&
 									generationProgress.canResume &&
 									generationProgress.lastCompletedStep <
-										3 && (
+										6 && (
 										<div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
 											<div className="flex items-center justify-between">
 												<div>
@@ -2682,7 +2725,8 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 									generationResults.publish ||
 									generationResults.inventory ||
 									generationResults.collections ||
-									generationResults.customers) && (
+									generationResults.customers ||
+									generationResults.policies) && (
 									<div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
 										<h4 className="text-sm font-medium text-green-800 mb-2">
 											Generation Progress
@@ -2832,6 +2876,31 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 															.customers_created
 													}{" "}
 													customers imported
+												</div>
+											)}
+											{generationResults.policies && (
+												<div className="flex items-center">
+													<svg
+														className="h-4 w-4 text-green-500 mr-2"
+														fill="currentColor"
+														viewBox="0 0 20 20"
+													>
+														<path
+															fillRule="evenodd"
+															d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+															clipRule="evenodd"
+														/>
+													</svg>
+													Policies:{" "}
+													{
+														generationResults
+															.policies
+															.policies_updated
+													}{" "}
+													policies updated
+													{generationResults.policies
+														.skipped_policies > 0 &&
+														`, ${generationResults.policies.skipped_policies} skipped`}
 												</div>
 											)}
 										</div>
