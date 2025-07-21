@@ -536,9 +536,11 @@ export class ShopifyClient {
 		return { product_id: result.product.id };
 	}
 
-	// Set theme logo using GraphQL themeFilesUpsert mutation
-	async setThemeLogo(themeId: number, logoUrl: string): Promise<void> {
+	// Upload logo to Shopify Files using stagedUploadsCreate and fileCreate mutations
+	async uploadLogoToFiles(logoUrl: string): Promise<string | null> {
 		try {
+			console.log("Starting logo upload to Shopify Files...");
+
 			// Download the logo file
 			const logoResponse = await fetch(logoUrl);
 			if (!logoResponse.ok) {
@@ -546,20 +548,46 @@ export class ShopifyClient {
 			}
 
 			const logoBuffer = await logoResponse.arrayBuffer();
-			const logoBase64 = Buffer.from(logoBuffer).toString("base64");
 
-			// Get file extension from URL
-			const urlParts = logoUrl.split(".");
-			const extension = urlParts[urlParts.length - 1].split("?")[0]; // Remove query params
-			const filename = `logo.${extension}`;
+			// Create staged upload for the logo file
+			const stagedUpload = await this.createStagedUploadForLogo();
 
-			// Use GraphQL themeFilesUpsert mutation to upload logo to theme assets
-			const mutation = `
-			mutation themeFilesUpsert($files: [OnlineStoreThemeFilesUpsertFileInput!]!, $themeId: ID!) {
-				themeFilesUpsert(files: $files, themeId: $themeId) {
-					upsertedThemeFiles {
-						filename
-						size
+			// Upload logo file to the staged upload URL
+			await this.uploadLogoFile(
+				stagedUpload.url,
+				stagedUpload.parameters,
+				logoBuffer
+			);
+
+			// Register the uploaded file in Shopify Files
+			const fileId = await this.createLogoFile(stagedUpload.resourceUrl);
+
+			console.log(
+				`Logo uploaded successfully to Shopify Files with ID: ${fileId}`
+			);
+			return fileId;
+		} catch (error) {
+			console.error("Error uploading logo to Shopify Files:", error);
+			throw error;
+		}
+	}
+
+	// Create staged upload for logo file
+	private async createStagedUploadForLogo(): Promise<{
+		url: string;
+		parameters: Array<{ name: string; value: string }>;
+		resourceUrl: string;
+	}> {
+		const mutation = `
+			mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+				stagedUploadsCreate(input: $input) {
+					stagedTargets {
+						url
+						parameters {
+							name
+							value
+						}
+						resourceUrl
 					}
 					userErrors {
 						field
@@ -569,45 +597,121 @@ export class ShopifyClient {
 			}
 		`;
 
-			const variables = {
-				themeId: `gid://shopify/OnlineStoreTheme/${themeId}`,
-				files: [
-					{
-						filename: `assets/${filename}`,
-						body: {
-							type: "BASE64",
-							value: logoBase64,
-						},
-					},
-				],
+		const variables = {
+			input: [
+				{
+					filename: "logo.png",
+					mimeType: "image/png",
+					resource: "FILE",
+					httpMethod: "POST",
+				},
+			],
+		};
+
+		const result = await this.makeGraphQLRequest<{
+			stagedUploadsCreate: {
+				stagedTargets: Array<{
+					url: string;
+					parameters: Array<{ name: string; value: string }>;
+					resourceUrl: string;
+				}>;
+				userErrors: Array<{ field: string; message: string }>;
 			};
+		}>(mutation, variables);
 
-			const result = await this.makeGraphQLRequest<{
-				themeFilesUpsert: {
-					upsertedThemeFiles: Array<{
-						filename: string;
-						size: number;
-					}>;
-					userErrors: Array<{ field: string; message: string }>;
-				};
-			}>(mutation, variables);
-
-			if (result.themeFilesUpsert.userErrors.length > 0) {
-				const errors = result.themeFilesUpsert.userErrors
-					.map((error) => error.message)
-					.join("; ");
-				throw new Error(`Theme file upload errors: ${errors}`);
-			}
-
-			console.log(`Logo uploaded successfully as assets/${filename}`);
-			console.log(
-				`Uploaded files:`,
-				result.themeFilesUpsert.upsertedThemeFiles
-			);
-		} catch (error) {
-			console.error("Error setting theme logo:", error);
-			throw error;
+		if (result.stagedUploadsCreate.userErrors.length > 0) {
+			const errors = result.stagedUploadsCreate.userErrors
+				.map((error) => error.message)
+				.join("; ");
+			throw new Error(`Staged upload creation errors: ${errors}`);
 		}
+
+		if (result.stagedUploadsCreate.stagedTargets.length === 0) {
+			throw new Error("No staged upload was created");
+		}
+
+		return result.stagedUploadsCreate.stagedTargets[0];
+	}
+
+	// Upload logo file to staged upload URL
+	private async uploadLogoFile(
+		url: string,
+		parameters: Array<{ name: string; value: string }>,
+		logoBuffer: ArrayBuffer
+	): Promise<void> {
+		const formData = new FormData();
+
+		// Add parameters to form data
+		parameters.forEach((param) => {
+			formData.append(param.name, param.value);
+		});
+
+		// Add the file content as "logo.png"
+		const blob = new Blob([logoBuffer], { type: "image/png" });
+		formData.append("file", blob, "logo.png");
+
+		const response = await fetch(url, {
+			method: "POST",
+			body: formData,
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			throw new Error(
+				`Failed to upload logo file: ${response.status} ${response.statusText} - ${errorText}`
+			);
+		}
+	}
+
+	// Register uploaded file in Shopify Files
+	private async createLogoFile(resourceUrl: string): Promise<string> {
+		const mutation = `
+			mutation fileCreate($files: [FileCreateInput!]!) {
+				fileCreate(files: $files) {
+					files {
+						id
+						alt
+					}
+					userErrors {
+						field
+						message
+					}
+				}
+			}
+		`;
+
+		const variables = {
+			files: [
+				{
+					alt: "Store logo",
+					originalSource: resourceUrl,
+					contentType: "IMAGE",
+				},
+			],
+		};
+
+		const result = await this.makeGraphQLRequest<{
+			fileCreate: {
+				files: Array<{
+					id: string;
+					alt: string;
+				}>;
+				userErrors: Array<{ field: string; message: string }>;
+			};
+		}>(mutation, variables);
+
+		if (result.fileCreate.userErrors.length > 0) {
+			const errors = result.fileCreate.userErrors
+				.map((error) => error.message)
+				.join("; ");
+			throw new Error(`File creation errors: ${errors}`);
+		}
+
+		if (result.fileCreate.files.length === 0) {
+			throw new Error("No file was created");
+		}
+
+		return result.fileCreate.files[0].id;
 	}
 
 	// Set contact email in store metafields using GraphQL
@@ -2609,8 +2713,7 @@ export class ShopifyClient {
 	// Update store branding
 	async updateStoreBranding(
 		storeData: StoreData,
-		storeId: string,
-		themeId: number
+		storeId: string
 	): Promise<{
 		logo_uploaded: boolean;
 		contact_email_set: boolean;
@@ -2621,18 +2724,23 @@ export class ShopifyClient {
 		try {
 			console.log("Updating store branding...");
 
-			// 1. Upload logo to theme settings if available
+			// 1. Upload logo to Shopify Files if available
 			if (storeData.logo_url) {
 				try {
-					await this.setThemeLogo(themeId, storeData.logo_url);
-					logo_uploaded = true;
-					console.log("Logo successfully uploaded to theme");
+					const fileId = await this.uploadLogoToFiles(
+						storeData.logo_url
+					);
+					logo_uploaded = fileId !== null;
+					console.log("Logo successfully uploaded to Shopify Files");
 				} catch (logoError) {
-					console.error("Error uploading logo to theme:", logoError);
+					console.error(
+						"Error uploading logo to Shopify Files:",
+						logoError
+					);
 				}
 			}
 
-			// 2. Set contact email in theme settings/metafields
+			// 2. Set contact email in store metafields
 			if (storeData.contact_email) {
 				try {
 					await this.setContactEmail(storeData.contact_email);
@@ -3741,11 +3849,10 @@ export class ShopifyClient {
 				);
 			}
 
-			// 3. Update store branding (including logo and contact email)
+			// 3. Update store branding (including logo upload to Shopify Files)
 			const brandingResult = await this.updateStoreBranding(
 				storeData,
-				storeId,
-				theme_id
+				storeId
 			);
 
 			console.log("Store foundation generation completed");
