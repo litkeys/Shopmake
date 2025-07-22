@@ -158,6 +158,9 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		description: "",
 		main_product_category: "",
 		contact_email: "",
+		text_color: "#000000",
+		accent_color: "#3B82F6",
+		background_color: "#FFFFFF",
 		return_policy: "",
 		privacy_policy: "",
 		terms_of_service: "",
@@ -271,6 +274,10 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					main_product_category:
 						storeDataResult.main_product_category || "",
 					contact_email: storeDataResult.contact_email || "",
+					text_color: storeDataResult.text_color || "#000000",
+					accent_color: storeDataResult.accent_color || "#3B82F6",
+					background_color:
+						storeDataResult.background_color || "#FFFFFF",
 					return_policy: storeDataResult.return_policy || "",
 					privacy_policy: storeDataResult.privacy_policy || "",
 					terms_of_service: storeDataResult.terms_of_service || "",
@@ -290,6 +297,9 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					description: "",
 					main_product_category: "",
 					contact_email: "",
+					text_color: "#000000",
+					accent_color: "#3B82F6",
+					background_color: "#FFFFFF",
 					return_policy: "",
 					privacy_policy: "",
 					terms_of_service: "",
@@ -373,6 +383,9 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				description: debouncedFormData.description,
 				main_product_category: debouncedFormData.main_product_category,
 				contact_email: debouncedFormData.contact_email,
+				text_color: debouncedFormData.text_color,
+				accent_color: debouncedFormData.accent_color,
+				background_color: debouncedFormData.background_color,
 				return_policy: debouncedFormData.return_policy,
 				privacy_policy: debouncedFormData.privacy_policy,
 				terms_of_service: debouncedFormData.terms_of_service,
@@ -729,6 +742,9 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				description: formData.description,
 				main_product_category: formData.main_product_category,
 				contact_email: formData.contact_email,
+				text_color: formData.text_color,
+				accent_color: formData.accent_color,
+				background_color: formData.background_color,
 				return_policy: formData.return_policy,
 				privacy_policy: formData.privacy_policy,
 				terms_of_service: formData.terms_of_service,
@@ -1664,6 +1680,121 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 							<p className="text-sm text-muted-foreground mt-1">
 								Used in the footer and contact forms
 							</p>
+						</div>
+
+						<div className="space-y-4">
+							<Label className="text-base font-medium">
+								Store Colors
+							</Label>
+							<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+								<div>
+									<Label htmlFor="text_color">
+										Text Color
+									</Label>
+									<div className="flex items-center space-x-2 mt-1">
+										<Input
+											id="text_color"
+											type="color"
+											value={formData.text_color}
+											onChange={(e) =>
+												handleInputChange(
+													"text_color",
+													e.target.value
+												)
+											}
+											className="w-12 h-10 p-1 border rounded cursor-pointer"
+										/>
+										<Input
+											type="text"
+											value={formData.text_color}
+											onChange={(e) =>
+												handleInputChange(
+													"text_color",
+													e.target.value
+												)
+											}
+											placeholder="#000000"
+											pattern="^#[0-9A-Fa-f]{6}$"
+											className="flex-1"
+										/>
+									</div>
+									<p className="text-sm text-muted-foreground mt-1">
+										Primary text color
+									</p>
+								</div>
+
+								<div>
+									<Label htmlFor="accent_color">
+										Accent Color
+									</Label>
+									<div className="flex items-center space-x-2 mt-1">
+										<Input
+											id="accent_color"
+											type="color"
+											value={formData.accent_color}
+											onChange={(e) =>
+												handleInputChange(
+													"accent_color",
+													e.target.value
+												)
+											}
+											className="w-12 h-10 p-1 border rounded cursor-pointer"
+										/>
+										<Input
+											type="text"
+											value={formData.accent_color}
+											onChange={(e) =>
+												handleInputChange(
+													"accent_color",
+													e.target.value
+												)
+											}
+											placeholder="#3B82F6"
+											pattern="^#[0-9A-Fa-f]{6}$"
+											className="flex-1"
+										/>
+									</div>
+									<p className="text-sm text-muted-foreground mt-1">
+										Brand accent color
+									</p>
+								</div>
+
+								<div>
+									<Label htmlFor="background_color">
+										Background Color
+									</Label>
+									<div className="flex items-center space-x-2 mt-1">
+										<Input
+											id="background_color"
+											type="color"
+											value={formData.background_color}
+											onChange={(e) =>
+												handleInputChange(
+													"background_color",
+													e.target.value
+												)
+											}
+											className="w-12 h-10 p-1 border rounded cursor-pointer"
+										/>
+										<Input
+											type="text"
+											value={formData.background_color}
+											onChange={(e) =>
+												handleInputChange(
+													"background_color",
+													e.target.value
+												)
+											}
+											placeholder="#FFFFFF"
+											pattern="^#[0-9A-Fa-f]{6}$"
+											className="flex-1"
+										/>
+									</div>
+									<p className="text-sm text-muted-foreground mt-1">
+										Main background color
+									</p>
+								</div>
+							</div>
 						</div>
 					</CardContent>
 				</Card>

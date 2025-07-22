@@ -47,6 +47,10 @@ CREATE TABLE store_data (
     main_product_category TEXT,
     contact_email TEXT,
     logo_url TEXT,
+    -- Store Colors
+    text_color TEXT DEFAULT '#000000',
+    accent_color TEXT DEFAULT '#3B82F6',
+    background_color TEXT DEFAULT '#FFFFFF',
     -- Store Policies
     return_policy TEXT,
     privacy_policy TEXT,

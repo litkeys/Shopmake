@@ -25,6 +25,10 @@ export interface StoreData {
 	main_product_category?: string;
 	contact_email?: string;
 	logo_url?: string;
+	// Store Colors
+	text_color?: string;
+	accent_color?: string;
+	background_color?: string;
 	// Store Policies
 	return_policy?: string;
 	privacy_policy?: string;
@@ -84,6 +88,10 @@ export interface StoreFormData {
 	description: string;
 	main_product_category: string;
 	contact_email: string;
+	// Store Colors
+	text_color: string;
+	accent_color: string;
+	background_color: string;
 	// Store Policies
 	return_policy: string;
 	privacy_policy: string;
