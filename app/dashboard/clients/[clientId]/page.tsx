@@ -38,6 +38,7 @@ import {
 	deleteFileAPI,
 	generateShopifyStoreAPI,
 	generateStoreFoundationAPI,
+	generateStoreVisualsAPI,
 	generateStoreProductsAPI,
 	generateStorePublishAPI,
 	processStoreInventoryAPI,
@@ -104,7 +105,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [generationProgress, setGenerationProgress] = useState({
 		currentStep: 0,
-		totalSteps: 7,
+		totalSteps: 8,
 		stepName: "",
 		stepDescription: "",
 		percentage: 0,
@@ -113,6 +114,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	});
 	const [generationResults, setGenerationResults] = useState<{
 		foundation?: any;
+		visuals?: any;
 		products?: any;
 		publish?: any;
 		inventory?: any;
@@ -1110,7 +1112,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 0) {
 				setGenerationProgress({
 					currentStep: 1,
-					totalSteps: 7,
+					totalSteps: 8,
 					stepName: "Foundation",
 					stepDescription:
 						"Setting up theme, locations, and branding...",
@@ -1149,17 +1151,58 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				}
 			}
 
-			// Step 2: Products (Import, Images, Taxonomy)
+			// Step 2: Visuals (Theme Colors and Fonts)
 			if (startStep <= 1) {
 				setGenerationProgress({
 					currentStep: 2,
-					totalSteps: 7,
-					stepName: "Products",
-					stepDescription:
-						"Importing products, images, and categories...",
+					totalSteps: 8,
+					stepName: "Visuals",
+					stepDescription: "Updating theme colors and fonts...",
 					percentage: 10,
 					canResume: true,
 					lastCompletedStep: 0,
+				});
+
+				try {
+					const visualsResult = await generateStoreVisualsAPI(
+						store.id
+					);
+					currentResults.visuals = visualsResult;
+					setGenerationResults(currentResults);
+
+					setGenerationProgress((prev) => ({
+						...prev,
+						percentage: 15,
+						lastCompletedStep: 1,
+					}));
+
+					console.log("Visuals completed:", visualsResult);
+				} catch (err) {
+					console.error("Visuals generation error:", err);
+					setGenerationProgress((prev) => ({
+						...prev,
+						canResume: true,
+						lastCompletedStep: 0,
+					}));
+					throw new Error(
+						`Visuals setup failed: ${
+							err instanceof Error ? err.message : "Unknown error"
+						}`
+					);
+				}
+			}
+
+			// Step 3: Products (Import, Images, Taxonomy)
+			if (startStep <= 2) {
+				setGenerationProgress({
+					currentStep: 3,
+					totalSteps: 8,
+					stepName: "Products",
+					stepDescription:
+						"Importing products, images, and categories...",
+					percentage: 15,
+					canResume: true,
+					lastCompletedStep: 1,
 				});
 
 				try {
@@ -1172,7 +1215,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					setGenerationProgress((prev) => ({
 						...prev,
 						percentage: 30,
-						lastCompletedStep: 1,
+						lastCompletedStep: 2,
 					}));
 
 					console.log("Products completed:", productsResult);
@@ -1181,7 +1224,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					setGenerationProgress((prev) => ({
 						...prev,
 						canResume: true,
-						lastCompletedStep: 0,
+						lastCompletedStep: 1,
 					}));
 					throw new Error(
 						`Product setup failed: ${
@@ -1191,17 +1234,17 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				}
 			}
 
-			// Step 3: Publish (Variants and Publishing)
-			if (startStep <= 2) {
+			// Step 4: Publish (Variants and Publishing)
+			if (startStep <= 3) {
 				setGenerationProgress({
-					currentStep: 3,
-					totalSteps: 7,
+					currentStep: 4,
+					totalSteps: 8,
 					stepName: "Publish",
 					stepDescription:
 						"Adding variants and publishing products...",
 					percentage: 30,
 					canResume: true,
-					lastCompletedStep: 1,
+					lastCompletedStep: 2,
 				});
 
 				try {
@@ -1214,7 +1257,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					setGenerationProgress((prev) => ({
 						...prev,
 						percentage: 50,
-						lastCompletedStep: 2,
+						lastCompletedStep: 3,
 					}));
 
 					console.log("Publish completed:", publishResult);
@@ -1223,7 +1266,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					setGenerationProgress((prev) => ({
 						...prev,
 						canResume: true,
-						lastCompletedStep: 1,
+						lastCompletedStep: 2,
 					}));
 					throw new Error(
 						`Product publishing failed: ${
@@ -1233,16 +1276,16 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				}
 			}
 
-			// Step 4: Inventory
-			if (startStep <= 3) {
+			// Step 5: Inventory
+			if (startStep <= 4) {
 				setGenerationProgress({
-					currentStep: 4,
-					totalSteps: 7,
+					currentStep: 5,
+					totalSteps: 8,
 					stepName: "Inventory",
 					stepDescription: "Adding inventory quantities...",
 					percentage: 50,
 					canResume: true,
-					lastCompletedStep: 2,
+					lastCompletedStep: 3,
 				});
 
 				try {
@@ -1255,7 +1298,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					setGenerationProgress((prev) => ({
 						...prev,
 						percentage: 70,
-						lastCompletedStep: 3,
+						lastCompletedStep: 4,
 					}));
 
 					console.log(
@@ -1267,7 +1310,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					setGenerationProgress((prev) => ({
 						...prev,
 						canResume: true,
-						lastCompletedStep: 2,
+						lastCompletedStep: 3,
 					}));
 					throw new Error(
 						`Store inventory processing failed: ${
@@ -1277,16 +1320,16 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				}
 			}
 
-			// Step 5: Collections
-			if (startStep <= 4) {
+			// Step 6: Collections
+			if (startStep <= 5) {
 				setGenerationProgress({
-					currentStep: 5,
-					totalSteps: 7,
+					currentStep: 6,
+					totalSteps: 8,
 					stepName: "Collections",
 					stepDescription: "Creating smart collections...",
 					percentage: 70,
 					canResume: true,
-					lastCompletedStep: 3,
+					lastCompletedStep: 4,
 				});
 
 				try {
@@ -1299,7 +1342,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					setGenerationProgress((prev) => ({
 						...prev,
 						percentage: 80,
-						lastCompletedStep: 4,
+						lastCompletedStep: 5,
 					}));
 
 					console.log(
@@ -1311,7 +1354,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					setGenerationProgress((prev) => ({
 						...prev,
 						canResume: true,
-						lastCompletedStep: 3,
+						lastCompletedStep: 4,
 					}));
 					throw new Error(
 						`Store collections generation failed: ${
@@ -1321,16 +1364,16 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				}
 			}
 
-			// Step 6: Customers
-			if (startStep <= 5) {
+			// Step 7: Customers
+			if (startStep <= 6) {
 				setGenerationProgress({
-					currentStep: 6,
-					totalSteps: 7,
+					currentStep: 7,
+					totalSteps: 8,
 					stepName: "Customers",
 					stepDescription: "Importing customers...",
 					percentage: 80,
 					canResume: true,
-					lastCompletedStep: 4,
+					lastCompletedStep: 5,
 				});
 
 				try {
@@ -1343,7 +1386,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					setGenerationProgress((prev) => ({
 						...prev,
 						percentage: 90,
-						lastCompletedStep: 5,
+						lastCompletedStep: 6,
 					}));
 
 					console.log("Customers import completed:", customersResult);
@@ -1352,7 +1395,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					setGenerationProgress((prev) => ({
 						...prev,
 						canResume: true,
-						lastCompletedStep: 4,
+						lastCompletedStep: 5,
 					}));
 					throw new Error(
 						`Customers import failed: ${
@@ -1362,16 +1405,16 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				}
 			}
 
-			// Step 7: Policies
-			if (startStep <= 6) {
+			// Step 8: Policies
+			if (startStep <= 7) {
 				setGenerationProgress({
-					currentStep: 7,
-					totalSteps: 7,
+					currentStep: 8,
+					totalSteps: 8,
 					stepName: "Policies",
 					stepDescription: "Updating store policies...",
-					percentage: 90,
+					percentage: 95,
 					canResume: true,
-					lastCompletedStep: 5,
+					lastCompletedStep: 6,
 				});
 
 				try {
@@ -1384,7 +1427,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					setGenerationProgress((prev) => ({
 						...prev,
 						percentage: 100,
-						lastCompletedStep: 6,
+						lastCompletedStep: 7,
 					}));
 
 					console.log("Policies update completed:", policiesResult);
@@ -1393,7 +1436,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					setGenerationProgress((prev) => ({
 						...prev,
 						canResume: true,
-						lastCompletedStep: 5,
+						lastCompletedStep: 6,
 					}));
 					throw new Error(
 						`Policies update failed: ${
@@ -1413,7 +1456,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				// Reset progress after success
 				setGenerationProgress({
 					currentStep: 0,
-					totalSteps: 7,
+					totalSteps: 8,
 					stepName: "",
 					stepDescription: "",
 					percentage: 0,
