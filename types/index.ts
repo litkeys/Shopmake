@@ -29,8 +29,9 @@ export interface StoreData {
 	text_color?: string;
 	accent_color?: string;
 	background_color?: string;
-	// Store Typography
-	font_handle?: string;
+	// Store Fonts
+	header_font?: string;
+	body_font?: string;
 	// Store Policies
 	return_policy?: string;
 	privacy_policy?: string;
@@ -94,8 +95,9 @@ export interface StoreFormData {
 	text_color: string;
 	accent_color: string;
 	background_color: string;
-	// Store Typography
-	font_handle: string;
+	// Store Fonts
+	header_font: string;
+	body_font: string;
 	// Store Policies
 	return_policy: string;
 	privacy_policy: string;
