@@ -161,6 +161,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		text_color: "#000000",
 		accent_color: "#3B82F6",
 		background_color: "#FFFFFF",
+		font_handle: "",
 		return_policy: "",
 		privacy_policy: "",
 		terms_of_service: "",
@@ -278,6 +279,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					accent_color: storeDataResult.accent_color || "#3B82F6",
 					background_color:
 						storeDataResult.background_color || "#FFFFFF",
+					font_handle: storeDataResult.font_handle || "",
 					return_policy: storeDataResult.return_policy || "",
 					privacy_policy: storeDataResult.privacy_policy || "",
 					terms_of_service: storeDataResult.terms_of_service || "",
@@ -300,6 +302,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					text_color: "#000000",
 					accent_color: "#3B82F6",
 					background_color: "#FFFFFF",
+					font_handle: "",
 					return_policy: "",
 					privacy_policy: "",
 					terms_of_service: "",
@@ -386,6 +389,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				text_color: debouncedFormData.text_color,
 				accent_color: debouncedFormData.accent_color,
 				background_color: debouncedFormData.background_color,
+				font_handle: debouncedFormData.font_handle,
 				return_policy: debouncedFormData.return_policy,
 				privacy_policy: debouncedFormData.privacy_policy,
 				terms_of_service: debouncedFormData.terms_of_service,
@@ -745,6 +749,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				text_color: formData.text_color,
 				accent_color: formData.accent_color,
 				background_color: formData.background_color,
+				font_handle: formData.font_handle,
 				return_policy: formData.return_policy,
 				privacy_policy: formData.privacy_policy,
 				terms_of_service: formData.terms_of_service,
@@ -1795,6 +1800,33 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 									</p>
 								</div>
 							</div>
+						</div>
+
+						<div>
+							<Label htmlFor="font_handle">Font Handle</Label>
+							<Input
+								id="font_handle"
+								type="text"
+								value={formData.font_handle}
+								onChange={(e) =>
+									handleInputChange(
+										"font_handle",
+										e.target.value
+									)
+								}
+								placeholder="e.g., quicksand_n4, helvetica_n4"
+							/>
+							<p className="text-sm text-muted-foreground mt-1">
+								Shopify font handle for theme customization.{" "}
+								<a
+									href="https://shopify.dev/docs/storefronts/themes/architecture/settings/fonts#available-fonts"
+									target="_blank"
+									rel="noopener noreferrer"
+									className="text-blue-600 hover:text-blue-800 underline"
+								>
+									View available fonts
+								</a>
+							</p>
 						</div>
 					</CardContent>
 				</Card>

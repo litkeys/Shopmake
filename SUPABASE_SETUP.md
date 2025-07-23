@@ -51,6 +51,8 @@ CREATE TABLE store_data (
     text_color TEXT DEFAULT '#000000',
     accent_color TEXT DEFAULT '#3B82F6',
     background_color TEXT DEFAULT '#FFFFFF',
+    -- Store Typography
+    font_handle TEXT,
     -- Store Policies
     return_policy TEXT,
     privacy_policy TEXT,
