@@ -4279,6 +4279,9 @@ export class ShopifyClient {
 		locations_created: number;
 		inventory_updated: number;
 		visuals_updated: boolean;
+		collections_created: number;
+		customers_created: number;
+		policies_updated: number;
 	}> {
 		try {
 			console.log("Starting full store generation (legacy method)...");
@@ -4301,6 +4304,17 @@ export class ShopifyClient {
 			// Step 5: Inventory Processing
 			const inventoryResult = await this.processStoreInventory(storeId);
 
+			// Step 6: Collections
+			const collectionsResult = await this.generateStoreCollections(
+				storeId
+			);
+
+			// Step 7: Customers
+			const customersResult = await this.importCustomersFromCSV(storeId);
+
+			// Step 8: Policies
+			const policiesResult = await this.updateStorePolicies(storeData);
+
 			return {
 				theme_id: foundationResult.theme_id,
 				products_created: productsResult.products_created,
@@ -4309,6 +4323,9 @@ export class ShopifyClient {
 				locations_created: foundationResult.locations_created,
 				inventory_updated: inventoryResult.inventory_updated,
 				visuals_updated: visualsResult.visuals_updated,
+				collections_created: collectionsResult.collections_created,
+				customers_created: customersResult.customers_created,
+				policies_updated: policiesResult.policies_updated,
 			};
 		} catch (error) {
 			console.error("Error generating store:", error);
