@@ -194,6 +194,87 @@ export class ShopifyClient {
 		return data;
 	}
 
+	// Separate method for visuals API requests using 2024-07 version
+	private async makeVisualsRequest<T>(
+		endpoint: string,
+		options: RequestInit = {}
+	): Promise<T> {
+		const url = `https://${this.shop}.myshopify.com/admin/api/2024-07${endpoint}`;
+
+		console.log("Making Shopify Visuals API request to:", url);
+		console.log("Request method:", options.method || "GET");
+		console.log("Access token length:", this.accessToken?.length || 0);
+
+		const response = await fetch(url, {
+			...options,
+			headers: {
+				"X-Shopify-Access-Token": this.accessToken,
+				"Content-Type": "application/json",
+				...options.headers,
+			},
+		});
+
+		console.log("Visuals API response status:", response.status);
+		console.log("Visuals API response ok:", response.ok);
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			console.error("Shopify Visuals API error response:", errorText);
+			console.error(
+				"Response headers:",
+				Object.fromEntries(response.headers.entries())
+			);
+
+			if (response.status === 401 || response.status === 403) {
+				throw new Error(
+					"Insufficient Shopify permissions. Please reconnect your store with the required permissions."
+				);
+			}
+
+			if (response.status === 422) {
+				// Parse the error response to get more specific information
+				try {
+					console.log("Full 422 error response:", errorText);
+					const errorData = JSON.parse(errorText);
+					if (errorData.errors) {
+						const errorMessages = Object.entries(errorData.errors)
+							.map(
+								([field, messages]) =>
+									`${field}: ${
+										Array.isArray(messages)
+											? messages.join(", ")
+											: messages
+									}`
+							)
+							.join("; ");
+						throw new Error(
+							`Shopify validation error: ${errorMessages}`
+						);
+					}
+				} catch (parseError) {
+					console.error(
+						"Could not parse 422 error response:",
+						parseError
+					);
+				}
+				throw new Error(
+					`Shopify validation error: ${errorText.substring(
+						0,
+						500
+					)}...`
+				);
+			}
+
+			throw new Error(
+				`Shopify API error: ${response.status} ${response.statusText} - ${errorText}`
+			);
+		}
+
+		const data = await response.json();
+		console.log("Visuals API response data:", data);
+		return data;
+	}
+
 	// GraphQL request method for Admin API 2025-07
 	private async makeGraphQLRequest<T>(
 		query: string,
@@ -3869,6 +3950,173 @@ export class ShopifyClient {
 		}
 	}
 
+	// Generate store visuals (theme colors and fonts)
+	async generateStoreVisuals(storeData: StoreData): Promise<{
+		visuals_updated: boolean;
+	}> {
+		try {
+			console.log("Starting store visuals generation...");
+
+			// Get the active theme ID
+			const activeTheme = await this.getActiveTheme();
+			if (!activeTheme) {
+				throw new Error("No active theme found");
+			}
+
+			console.log(`Updating visuals for theme ID: ${activeTheme.id}`);
+
+			// Fetch current settings_data.json
+			const settingsData = await this.getThemeSettingsData(
+				activeTheme.id
+			);
+
+			// Update the settings with store data colors and fonts
+			this.updateSettingsDataWithStoreData(settingsData, storeData);
+
+			// Update the theme with new settings
+			await this.updateThemeSettingsData(activeTheme.id, settingsData);
+
+			console.log("Store visuals generation completed");
+
+			return {
+				visuals_updated: true,
+			};
+		} catch (error) {
+			console.error("Error generating store visuals:", error);
+			// Don't throw - visuals are not critical for store generation
+			console.log("Continuing store generation despite visuals error...");
+			return {
+				visuals_updated: false,
+			};
+		}
+	}
+
+	// Helper method to get the active theme
+	private async getActiveTheme(): Promise<{
+		id: number;
+		name: string;
+	} | null> {
+		try {
+			const response = await this.makeVisualsRequest<{
+				themes: Array<{ id: number; name: string; role: string }>;
+			}>("/themes.json");
+
+			const activeTheme = response.themes.find(
+				(theme) => theme.role === "main"
+			);
+
+			return activeTheme || null;
+		} catch (error) {
+			console.error("Error getting active theme:", error);
+			return null;
+		}
+	}
+
+	// Helper method to fetch theme settings_data.json
+	private async getThemeSettingsData(themeId: number): Promise<any> {
+		try {
+			const response = await this.makeVisualsRequest<{
+				asset: { value: string };
+			}>(
+				`/themes/${themeId}/assets.json?asset[key]=config/settings_data.json`
+			);
+
+			return JSON.parse(response.asset.value);
+		} catch (error) {
+			console.error("Error fetching theme settings data:", error);
+			throw new Error("Failed to fetch theme settings data");
+		}
+	}
+
+	// Helper method to update settings_data.json with store data
+	private updateSettingsDataWithStoreData(
+		settingsData: any,
+		storeData: StoreData
+	): void {
+		if (!settingsData.current) {
+			settingsData.current = {};
+		}
+
+		let hasUpdates = false;
+
+		// Update colors
+		if (storeData.background_color?.trim()) {
+			settingsData.current.colors_solid_button_labels =
+				storeData.background_color.trim();
+			settingsData.current.colors_background_1 =
+				storeData.background_color.trim();
+			settingsData.current.colors_background_2 =
+				storeData.background_color.trim();
+			hasUpdates = true;
+		}
+
+		if (storeData.accent_color?.trim()) {
+			settingsData.current.colors_accent_1 =
+				storeData.accent_color.trim();
+			settingsData.current.colors_accent_2 =
+				storeData.accent_color.trim();
+			hasUpdates = true;
+		}
+
+		if (storeData.text_color?.trim()) {
+			settingsData.current.colors_text = storeData.text_color.trim();
+			settingsData.current.colors_outline_button_labels =
+				storeData.text_color.trim();
+			hasUpdates = true;
+		}
+
+		// Update fonts
+		if (storeData.header_font?.trim()) {
+			settingsData.current.type_header_font =
+				storeData.header_font.trim();
+			hasUpdates = true;
+		}
+
+		if (storeData.body_font?.trim()) {
+			settingsData.current.type_body_font = storeData.body_font.trim();
+			hasUpdates = true;
+		}
+
+		if (hasUpdates) {
+			console.log("Updated theme settings with store data:", {
+				background_color: storeData.background_color,
+				accent_color: storeData.accent_color,
+				text_color: storeData.text_color,
+				header_font: storeData.header_font,
+				body_font: storeData.body_font,
+			});
+		} else {
+			console.log(
+				"No visual updates to apply - no valid color or font data provided"
+			);
+		}
+	}
+
+	// Helper method to update theme settings_data.json
+	private async updateThemeSettingsData(
+		themeId: number,
+		settingsData: any
+	): Promise<void> {
+		try {
+			const updatedSettings = JSON.stringify(settingsData);
+
+			await this.makeVisualsRequest(`/themes/${themeId}/assets.json`, {
+				method: "PUT",
+				body: JSON.stringify({
+					asset: {
+						key: "config/settings_data.json",
+						value: updatedSettings,
+					},
+				}),
+			});
+
+			console.log("Successfully updated theme settings_data.json");
+		} catch (error) {
+			console.error("Error updating theme settings data:", error);
+			throw new Error("Failed to update theme settings data");
+		}
+	}
+
 	// Generate products (import, images, taxonomy only - no variants or publishing)
 	async generateStoreProducts(storeId: string): Promise<{
 		products_created: number;
@@ -4030,6 +4278,7 @@ export class ShopifyClient {
 		contact_email_set: boolean;
 		locations_created: number;
 		inventory_updated: number;
+		visuals_updated: boolean;
 	}> {
 		try {
 			console.log("Starting full store generation (legacy method)...");
@@ -4040,13 +4289,16 @@ export class ShopifyClient {
 				storeId
 			);
 
-			// Step 2: Products
+			// Step 2: Visuals
+			const visualsResult = await this.generateStoreVisuals(storeData);
+
+			// Step 3: Products
 			const productsResult = await this.generateStoreProducts(storeId);
 
-			// Step 3: Publish
+			// Step 4: Publish
 			const publishResult = await this.generateStorePublish();
 
-			// Step 4: Inventory Processing
+			// Step 5: Inventory Processing
 			const inventoryResult = await this.processStoreInventory(storeId);
 
 			return {
@@ -4056,6 +4308,7 @@ export class ShopifyClient {
 				contact_email_set: foundationResult.contact_email_set,
 				locations_created: foundationResult.locations_created,
 				inventory_updated: inventoryResult.inventory_updated,
+				visuals_updated: visualsResult.visuals_updated,
 			};
 		} catch (error) {
 			console.error("Error generating store:", error);

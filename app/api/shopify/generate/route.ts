@@ -133,6 +133,7 @@ export async function POST(request: NextRequest) {
 				contact_email_set: result.contact_email_set,
 				locations_created: result.locations_created,
 				inventory_updated: result.inventory_updated,
+				visuals_updated: result.visuals_updated,
 				store_url: `https://${shopifyToken.shopify_store_domain}.myshopify.com`,
 			},
 		});
