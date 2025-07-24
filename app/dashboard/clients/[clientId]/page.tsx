@@ -621,8 +621,16 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		if (!file || !store) return;
 
 		// Validate file type
-		if (file.type !== "image/png") {
-			setError("Please upload a PNG file");
+		const allowedTypes = [
+			"image/png",
+			"image/jpeg",
+			"image/jpg",
+			"image/svg+xml",
+			"image/webp",
+			"image/gif",
+		];
+		if (!allowedTypes.includes(file.type)) {
+			setError("Please upload a PNG, JPG, JPEG, SVG, WebP, or GIF file");
 			return;
 		}
 
@@ -1954,12 +1962,15 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 							)}
 
 							<div>
-								<Label htmlFor="logo">Upload New Logo</Label>
+								<Label htmlFor="logo">
+									Upload New Logo (PNG, JPG, JPEG, SVG, WebP,
+									GIF)
+								</Label>
 								<div className="mt-2">
 									<input
 										id="logo"
 										type="file"
-										accept="image/png"
+										accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp,image/gif,.png,.jpg,.jpeg,.svg,.webp,.gif"
 										onChange={handleLogoUpload}
 										className="hidden"
 									/>
