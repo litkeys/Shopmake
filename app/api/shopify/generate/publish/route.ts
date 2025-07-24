@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
 		);
 
 		// Publish products
-		const result = await shopifyClient.generateStorePublish();
+		const result = await shopifyClient.generateStorePublish(storeId);
 
 		return NextResponse.json({
 			success: true,

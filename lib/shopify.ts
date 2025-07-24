@@ -1813,9 +1813,29 @@ export class ShopifyClient {
 	}
 
 	// Add variants with pricing to recently created products
-	private async addVariantsToProducts(): Promise<number> {
+	private async addVariantsToProducts(storeId: string): Promise<number> {
 		try {
 			console.log("Adding variants and pricing to products...");
+
+			// First, check if products CSV has been uploaded
+			const productsCsvUploads = await this.getStoreUploads(
+				storeId,
+				"csv_products"
+			);
+
+			if (productsCsvUploads.length === 0) {
+				console.log(
+					"Skipping product variant updates - no products CSV uploaded"
+				);
+				console.log(
+					"To update product variants with pricing, please upload a products CSV file first"
+				);
+				return 0;
+			}
+
+			console.log(
+				`Found ${productsCsvUploads.length} products CSV file(s), proceeding with variant updates`
+			);
 
 			type ProductWithVariants = {
 				id: string;
@@ -4289,7 +4309,7 @@ export class ShopifyClient {
 	}
 
 	// Publish products (variants and publishing)
-	async generateStorePublish(): Promise<{
+	async generateStorePublish(storeId: string): Promise<{
 		variants_updated: number;
 		products_published: number;
 	}> {
@@ -4299,7 +4319,7 @@ export class ShopifyClient {
 			// 1. Add variants with pricing
 			let variants_updated = 0;
 			try {
-				variants_updated = await this.addVariantsToProducts();
+				variants_updated = await this.addVariantsToProducts(storeId);
 			} catch (error) {
 				console.error("Failed to add variants:", error);
 			}
@@ -4425,7 +4445,7 @@ export class ShopifyClient {
 			const productsResult = await this.generateStoreProducts(storeId);
 
 			// Step 4: Publish
-			const publishResult = await this.generateStorePublish();
+			const publishResult = await this.generateStorePublish(storeId);
 
 			// Step 5: Inventory Processing
 			const inventoryResult = await this.processStoreInventory(storeId);
