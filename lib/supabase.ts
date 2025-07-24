@@ -218,12 +218,45 @@ export async function deleteShopifyAdminToken(storeId: string): Promise<void> {
 	}
 }
 
+// Helper function to extract file path from a logo URL
+function extractFilePathFromUrl(url: string): string | null {
+	try {
+		const urlObj = new URL(url);
+		// Extract path after /storage/v1/object/public/store-files/
+		const pathMatch = urlObj.pathname.match(
+			/\/storage\/v1\/object\/public\/store-files\/(.+)$/
+		);
+		return pathMatch ? pathMatch[1] : null;
+	} catch {
+		return null;
+	}
+}
+
 // File upload operations
 export async function uploadFile(
 	storeId: string,
 	file: File,
 	fileType: string
 ): Promise<{ path: string; url: string }> {
+	// If uploading a logo, check for and delete existing logo first
+	if (fileType === "logo") {
+		try {
+			// Get current store data to check for existing logo
+			const storeData = await getStoreData(storeId);
+			if (storeData?.logo_url) {
+				const oldFilePath = extractFilePathFromUrl(storeData.logo_url);
+				if (oldFilePath) {
+					console.log("Deleting old logo file:", oldFilePath);
+					// Delete the old logo file from storage and database
+					await deleteFile(oldFilePath);
+				}
+			}
+		} catch (error) {
+			console.error("Error deleting old logo file:", error);
+			// Continue with upload even if old file deletion fails
+		}
+	}
+
 	const fileExt = file.name.split(".").pop();
 	const fileName = `${Date.now()}.${fileExt}`;
 	const filePath = `${storeId}/${fileType}/${fileName}`;
