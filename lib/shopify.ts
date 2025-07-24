@@ -618,7 +618,10 @@ export class ShopifyClient {
 	}
 
 	// Upload logo to Shopify Files using stagedUploadsCreate and fileCreate mutations
-	async uploadLogoToFiles(logoUrl: string): Promise<string | null> {
+	// Supports multiple image types: png, jpeg, svg, webp, gif
+	async uploadLogoToFiles(
+		logoUrl: string
+	): Promise<{ fileId: string; extension: string } | null> {
 		try {
 			console.log("Starting logo upload to Shopify Files...");
 
@@ -630,14 +633,24 @@ export class ShopifyClient {
 
 			const logoBuffer = await logoResponse.arrayBuffer();
 
+			// Extract file extension from URL or content-type
+			const extension = this.extractImageExtension(
+				logoUrl,
+				logoResponse.headers.get("content-type")
+			);
+			console.log(`Detected logo extension: ${extension}`);
+
 			// Create staged upload for the logo file
-			const stagedUpload = await this.createStagedUploadForLogo();
+			const stagedUpload = await this.createStagedUploadForLogo(
+				extension
+			);
 
 			// Upload logo file to the staged upload URL
 			await this.uploadLogoFile(
 				stagedUpload.url,
 				stagedUpload.parameters,
-				logoBuffer
+				logoBuffer,
+				extension
 			);
 
 			// Register the uploaded file in Shopify Files
@@ -646,15 +659,67 @@ export class ShopifyClient {
 			console.log(
 				`Logo uploaded successfully to Shopify Files with ID: ${fileId}`
 			);
-			return fileId;
+			return { fileId, extension };
 		} catch (error) {
 			console.error("Error uploading logo to Shopify Files:", error);
 			throw error;
 		}
 	}
 
-	// Create staged upload for logo file
-	private async createStagedUploadForLogo(): Promise<{
+	// Extract image extension from URL or content-type header
+	private extractImageExtension(
+		url: string,
+		contentType: string | null
+	): string {
+		// First try to extract from URL
+		const urlMatch = url.match(/\.([a-zA-Z0-9]+)(?:\?|$)/);
+		if (urlMatch) {
+			const ext = urlMatch[1].toLowerCase();
+			if (["png", "jpg", "jpeg", "svg", "webp", "gif"].includes(ext)) {
+				return ext;
+			}
+		}
+
+		// Fallback to content-type
+		if (contentType) {
+			const mimeMap: { [key: string]: string } = {
+				"image/png": "png",
+				"image/jpeg": "jpeg",
+				"image/jpg": "jpg",
+				"image/svg+xml": "svg",
+				"image/webp": "webp",
+				"image/gif": "gif",
+			};
+
+			const ext = mimeMap[contentType.toLowerCase()];
+			if (ext) {
+				return ext;
+			}
+		}
+
+		// Default fallback
+		console.warn(
+			`Could not determine image type from URL ${url} or content-type ${contentType}, defaulting to png`
+		);
+		return "png";
+	}
+
+	// Get MIME type for file extension
+	private getMimeTypeForExtension(extension: string): string {
+		const mimeTypes: { [key: string]: string } = {
+			png: "image/png",
+			jpeg: "image/jpeg",
+			jpg: "image/jpeg",
+			svg: "image/svg+xml",
+			webp: "image/webp",
+			gif: "image/gif",
+		};
+
+		return mimeTypes[extension.toLowerCase()] || "image/png";
+	}
+
+	// Create staged upload for logo file with support for multiple image types
+	private async createStagedUploadForLogo(extension: string): Promise<{
 		url: string;
 		parameters: Array<{ name: string; value: string }>;
 		resourceUrl: string;
@@ -678,11 +743,14 @@ export class ShopifyClient {
 			}
 		`;
 
+		const mimeType = this.getMimeTypeForExtension(extension);
+		const filename = `logo.${extension}`;
+
 		const variables = {
 			input: [
 				{
-					filename: "logo.png",
-					mimeType: "image/png",
+					filename: filename,
+					mimeType: mimeType,
 					resource: "FILE",
 					httpMethod: "POST",
 				},
@@ -714,11 +782,12 @@ export class ShopifyClient {
 		return result.stagedUploadsCreate.stagedTargets[0];
 	}
 
-	// Upload logo file to staged upload URL
+	// Upload logo file to staged upload URL with support for multiple image types
 	private async uploadLogoFile(
 		url: string,
 		parameters: Array<{ name: string; value: string }>,
-		logoBuffer: ArrayBuffer
+		logoBuffer: ArrayBuffer,
+		extension: string
 	): Promise<void> {
 		const formData = new FormData();
 
@@ -727,9 +796,11 @@ export class ShopifyClient {
 			formData.append(param.name, param.value);
 		});
 
-		// Add the file content as "logo.png"
-		const blob = new Blob([logoBuffer], { type: "image/png" });
-		formData.append("file", blob, "logo.png");
+		// Add the file content with correct MIME type and filename
+		const mimeType = this.getMimeTypeForExtension(extension);
+		const filename = `logo.${extension}`;
+		const blob = new Blob([logoBuffer], { type: mimeType });
+		formData.append("file", blob, filename);
 
 		const response = await fetch(url, {
 			method: "POST",
@@ -793,6 +864,41 @@ export class ShopifyClient {
 		}
 
 		return result.fileCreate.files[0].id;
+	}
+
+	// Update theme logo in config/settings_data.json using REST API 2024-07
+	async updateThemeLogo(extension: string): Promise<void> {
+		try {
+			console.log("Updating theme logo in settings_data.json...");
+
+			// Get the active theme
+			const activeTheme = await this.getActiveTheme();
+			if (!activeTheme) {
+				throw new Error("No active theme found");
+			}
+
+			// Fetch current settings_data.json
+			const settingsData = await this.getThemeSettingsData(
+				activeTheme.id
+			);
+
+			// Update the logo field
+			if (!settingsData.current) {
+				settingsData.current = {};
+			}
+
+			settingsData.current.logo = `shopify://shop_images/logo.${extension}`;
+
+			// Update the theme with new settings
+			await this.updateThemeSettingsData(activeTheme.id, settingsData);
+
+			console.log(
+				`Successfully updated theme logo to: shopify://shop_images/logo.${extension}`
+			);
+		} catch (error) {
+			console.error("Error updating theme logo:", error);
+			throw error;
+		}
 	}
 
 	// Set contact email in store metafields using GraphQL
@@ -2805,14 +2911,34 @@ export class ShopifyClient {
 		try {
 			console.log("Updating store branding...");
 
-			// 1. Upload logo to Shopify Files if available
+			// 1. Upload logo to Shopify Files and update theme if available
 			if (storeData.logo_url) {
 				try {
-					const fileId = await this.uploadLogoToFiles(
+					const logoResult = await this.uploadLogoToFiles(
 						storeData.logo_url
 					);
-					logo_uploaded = fileId !== null;
-					console.log("Logo successfully uploaded to Shopify Files");
+					if (logoResult) {
+						const { fileId, extension } = logoResult;
+
+						// Update theme's config/settings_data.json with the logo
+						try {
+							await this.updateThemeLogo(extension);
+							console.log(
+								`Logo successfully uploaded to Shopify Files and theme updated with extension: ${extension}`
+							);
+						} catch (themeError) {
+							console.error(
+								"Error updating theme logo:",
+								themeError
+							);
+							// Still mark as uploaded since file upload succeeded
+							console.log(
+								"Logo uploaded to Shopify Files but theme update failed"
+							);
+						}
+
+						logo_uploaded = true;
+					}
 				} catch (logoError) {
 					console.error(
 						"Error uploading logo to Shopify Files:",
