@@ -1101,18 +1101,21 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			return;
 		}
 
-		// Reset generation progress on fresh start (not resuming)
-		if (resumeFromStep === undefined) {
-			resetGenerationProgress();
-		}
-
 		// Store is already connected, proceed with chunked generation
 		try {
 			setIsGenerating(true);
 			setError(null);
 
 			const startStep = resumeFromStep || 0;
-			let currentResults = { ...generationResults };
+
+			// Reset generation progress and results on fresh start (not resuming)
+			let currentResults;
+			if (resumeFromStep === undefined) {
+				resetGenerationProgress();
+				currentResults = {};
+			} else {
+				currentResults = { ...generationResults };
+			}
 
 			console.log("Starting store generation for store:", store.id);
 
