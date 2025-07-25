@@ -85,6 +85,12 @@ export default function NewClientPage() {
 		background_color: "#FFFFFF",
 		header_font: "quicksand_n6",
 		body_font: "quicksand_n4",
+		trading_name: "",
+		business_address: "",
+		business_phone: "",
+		business_registration_number: "",
+		vat_number: "",
+		return_address: "",
 		return_policy: "",
 		privacy_policy: "",
 		terms_of_service: "",
@@ -360,6 +366,13 @@ export default function NewClientPage() {
 				background_color: formData.background_color,
 				header_font: formData.header_font,
 				body_font: formData.body_font,
+				trading_name: formData.trading_name,
+				business_address: formData.business_address,
+				business_phone: formData.business_phone,
+				business_registration_number:
+					formData.business_registration_number,
+				vat_number: formData.vat_number,
+				return_address: formData.return_address,
 				return_policy: formData.return_policy,
 				privacy_policy: formData.privacy_policy,
 				terms_of_service: formData.terms_of_service,
@@ -1217,6 +1230,148 @@ export default function NewClientPage() {
 							<Plus className="h-4 w-4 mr-2" />
 							Add Location
 						</Button>
+					</CardContent>
+				</Card>
+
+				{/* Legal Information Section */}
+				<Card>
+					<CardHeader>
+						<CardTitle>Legal Information</CardTitle>
+						<CardDescription>
+							Business and legal information for your store
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+							<div>
+								<Label htmlFor="trading_name">
+									Trading Name
+								</Label>
+								<Input
+									id="trading_name"
+									type="text"
+									value={formData.trading_name}
+									onChange={(e) =>
+										handleInputChange(
+											"trading_name",
+											e.target.value
+										)
+									}
+									placeholder="Enter your trading name"
+								/>
+								<p className="text-sm text-muted-foreground mt-1">
+									The name under which your business operates
+								</p>
+							</div>
+
+							<div>
+								<Label htmlFor="business_phone">
+									Business Phone Number
+								</Label>
+								<Input
+									id="business_phone"
+									type="tel"
+									value={formData.business_phone}
+									onChange={(e) =>
+										handleInputChange(
+											"business_phone",
+											e.target.value
+										)
+									}
+									placeholder="+1 (555) 123-4567"
+								/>
+								<p className="text-sm text-muted-foreground mt-1">
+									Primary business contact number
+								</p>
+							</div>
+						</div>
+
+						<div>
+							<Label htmlFor="business_address">
+								Business Address
+							</Label>
+							<Textarea
+								id="business_address"
+								value={formData.business_address}
+								onChange={(e) =>
+									handleInputChange(
+										"business_address",
+										e.target.value
+									)
+								}
+								placeholder="Enter your complete business address"
+								rows={3}
+							/>
+							<p className="text-sm text-muted-foreground mt-1">
+								Full registered business address
+							</p>
+						</div>
+
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+							<div>
+								<Label htmlFor="business_registration_number">
+									Business Registration Number
+								</Label>
+								<Input
+									id="business_registration_number"
+									type="text"
+									value={
+										formData.business_registration_number
+									}
+									onChange={(e) =>
+										handleInputChange(
+											"business_registration_number",
+											e.target.value
+										)
+									}
+									placeholder="12345678"
+								/>
+								<p className="text-sm text-muted-foreground mt-1">
+									Company or business registration number
+								</p>
+							</div>
+
+							<div>
+								<Label htmlFor="vat_number">VAT Number</Label>
+								<Input
+									id="vat_number"
+									type="text"
+									value={formData.vat_number}
+									onChange={(e) =>
+										handleInputChange(
+											"vat_number",
+											e.target.value
+										)
+									}
+									placeholder="VAT123456789"
+								/>
+								<p className="text-sm text-muted-foreground mt-1">
+									Value Added Tax registration number
+								</p>
+							</div>
+						</div>
+
+						<div>
+							<Label htmlFor="return_address">
+								Return Address
+							</Label>
+							<Textarea
+								id="return_address"
+								value={formData.return_address}
+								onChange={(e) =>
+									handleInputChange(
+										"return_address",
+										e.target.value
+									)
+								}
+								placeholder="Enter the address where customers should return items"
+								rows={3}
+							/>
+							<p className="text-sm text-muted-foreground mt-1">
+								Address where customers should send returns and
+								exchanges
+							</p>
+						</div>
 					</CardContent>
 				</Card>
 

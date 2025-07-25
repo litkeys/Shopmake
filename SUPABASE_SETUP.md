@@ -54,6 +54,13 @@ CREATE TABLE store_data (
     -- Store Fonts
     header_font TEXT DEFAULT 'quicksand_n6',
     body_font TEXT DEFAULT 'quicksand_n4',
+    -- Legal Information
+    trading_name TEXT,
+    business_address TEXT,
+    business_phone TEXT,
+    business_registration_number TEXT,
+    vat_number TEXT,
+    return_address TEXT,
     -- Store Policies
     return_policy TEXT,
     privacy_policy TEXT,

@@ -32,6 +32,13 @@ export interface StoreData {
 	// Store Fonts
 	header_font?: string;
 	body_font?: string;
+	// Legal Information
+	trading_name?: string;
+	business_address?: string;
+	business_phone?: string;
+	business_registration_number?: string;
+	vat_number?: string;
+	return_address?: string;
 	// Store Policies
 	return_policy?: string;
 	privacy_policy?: string;
@@ -98,6 +105,13 @@ export interface StoreFormData {
 	// Store Fonts
 	header_font: string;
 	body_font: string;
+	// Legal Information
+	trading_name: string;
+	business_address: string;
+	business_phone: string;
+	business_registration_number: string;
+	vat_number: string;
+	return_address: string;
 	// Store Policies
 	return_policy: string;
 	privacy_policy: string;
