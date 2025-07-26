@@ -77,6 +77,7 @@ import {
 	ShippingOption,
 	ShippingOptionFormData,
 } from "@/types";
+import { policyTemplates } from "@/lib/policy-templates";
 import Link from "next/link";
 
 // Debounce hook
@@ -1779,6 +1780,69 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		setSuccess(null);
 	};
 
+	const handleMagicGeneratePolicies = () => {
+		// Generate shipping options list
+		const shippingOptionsList = shippingOptions
+			.map((option) => {
+				const name =
+					shippingOptionFormData[option.id]?.name || option.name;
+				const minDays =
+					shippingOptionFormData[option.id]?.delivery_min_days ||
+					option.delivery_min_days;
+				const maxDays =
+					shippingOptionFormData[option.id]?.delivery_max_days ||
+					option.delivery_max_days;
+				return `<li><strong>${name}:</strong> ${minDays}–${maxDays} business days</li>`;
+			})
+			.join("\n");
+
+		// Function to replace variables in template
+		const replaceVariables = (template: string) => {
+			return template
+				.replace(/\[STORE NAME\]/g, formData.brand_name || "")
+				.replace(/\[CONTACT EMAIL\]/g, formData.contact_email || "")
+				.replace(/\[TRADING NAME\]/g, formData.trading_name || "")
+				.replace(
+					/\[BUSINESS ADDRESS\]/g,
+					formData.business_address || ""
+				)
+				.replace(
+					/\[BUSINESS PHONE NUMBER\]/g,
+					formData.business_phone || ""
+				)
+				.replace(
+					/\[BUSINESS REGISTRATION NUMBER\]/g,
+					formData.business_registration_number || ""
+				)
+				.replace(/\[VAT NUMBER\]/g, formData.vat_number || "")
+				.replace(/\[RETURN ADDRESS\]/g, formData.return_address || "")
+				.replace(
+					/\[PROCESSING MIN DAYS\]/g,
+					String(formData.order_processing_min_days || 1)
+				)
+				.replace(
+					/\[PROCESSING MAX DAYS\]/g,
+					String(formData.order_processing_max_days || 3)
+				)
+				.replace(/\[SHIPPING OPTIONS\]/g, shippingOptionsList);
+		};
+
+		// Update form data with populated templates
+		setFormData((prev) => ({
+			...prev,
+			return_policy: replaceVariables(policyTemplates.returnPolicy),
+			privacy_policy: replaceVariables(policyTemplates.privacyPolicy),
+			terms_of_service: replaceVariables(policyTemplates.termsOfService),
+			shipping_policy: replaceVariables(policyTemplates.shippingPolicy),
+			contact_information: replaceVariables(
+				policyTemplates.contactInformation
+			),
+		}));
+
+		setSuccess("Policy templates generated successfully!");
+		setTimeout(() => setSuccess(null), 3000);
+	};
+
 	if (isLoading && !store) {
 		return (
 			<div className="max-w-2xl mx-auto">
@@ -3284,11 +3348,24 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 				<Card>
 					<CardHeader>
-						<CardTitle>Store Policies</CardTitle>
-						<CardDescription>
-							Store policies and legal information for your
-							customers
-						</CardDescription>
+						<div className="flex items-center justify-between">
+							<div>
+								<CardTitle>Store Policies</CardTitle>
+								<CardDescription>
+									Store policies and legal information for
+									your customers
+								</CardDescription>
+							</div>
+							<Button
+								type="button"
+								variant="outline"
+								onClick={handleMagicGeneratePolicies}
+								className="flex items-center"
+							>
+								<Zap className="h-4 w-4 mr-2" />
+								Magic Generate
+							</Button>
+						</div>
 					</CardHeader>
 					<CardContent className="space-y-4">
 						<div>
