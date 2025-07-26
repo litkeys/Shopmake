@@ -128,9 +128,7 @@ export const policyTemplates = {
 	<h3>Shipping Rates &amp; Delivery Estimates</h3>
 	<p>Shipping charges for your order will be calculated and displayed at checkout.</p>
 	<ul>
-	<li><strong>[SHIPPING OPTION NAME]:</strong> [SHIPPING MIN DAYS]–[SHIPPING MAX DAYS] business days</li>
-	<li><strong>[SHIPPING OPTION NAME]:</strong> [SHIPPING MIN DAYS]–[SHIPPING MAX DAYS] business days</li>
-	<li><strong>[SHIPPING OPTION NAME]:</strong> [SHIPPING MIN DAYS]–[SHIPPING MAX DAYS] business days</li>
+	[SHIPPING OPTIONS]
 	</ul>
 	<p>Delivery delays can occasionally occur due to carrier issues, weather, or customs delays.</p>
 	<h3>Shipment Confirmation &amp; Order Tracking</h3>
