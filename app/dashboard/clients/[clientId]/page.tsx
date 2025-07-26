@@ -276,6 +276,17 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		}
 	}, [debouncedMappingFormData, store, isLoading]);
 
+	// Auto-save effect for shipping options
+	useEffect(() => {
+		if (
+			store &&
+			!isLoading &&
+			Object.keys(debouncedShippingOptionFormData).length > 0
+		) {
+			handleAutoSaveShippingOptions();
+		}
+	}, [debouncedShippingOptionFormData, store, isLoading]);
+
 	const loadStoreData = async () => {
 		try {
 			setIsLoading(true);
@@ -368,6 +379,26 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				params.clientId
 			);
 			setCollections(collectionsResult);
+
+			// Load shipping options
+			const shippingOptionsResult = await getShippingOptionsAPI(
+				params.clientId
+			);
+			setShippingOptions(shippingOptionsResult);
+
+			// Initialize shipping option form data
+			const initialShippingOptionFormData: Record<
+				string,
+				ShippingOptionFormData
+			> = {};
+			shippingOptionsResult.forEach((shippingOption) => {
+				initialShippingOptionFormData[shippingOption.id] = {
+					name: shippingOption.name,
+					delivery_min_days: shippingOption.delivery_min_days,
+					delivery_max_days: shippingOption.delivery_max_days,
+				};
+			});
+			setShippingOptionFormData(initialShippingOptionFormData);
 
 			// Initialize collection form data
 			const initialCollectionFormData: Record<
@@ -660,6 +691,74 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			setIsSaving(false);
 		}
 	}, [store, debouncedMappingFormData, collections, isSaving]);
+
+	const handleAutoSaveShippingOptions = useCallback(async () => {
+		if (!store || isSaving) return;
+
+		setIsSaving(true);
+		try {
+			// Update each shipping option that has changes
+			const updatePromises = Object.entries(
+				debouncedShippingOptionFormData
+			).map(async ([shippingOptionId, formData]) => {
+				const currentShippingOption = shippingOptions.find(
+					(option) => option.id === shippingOptionId
+				);
+				if (currentShippingOption) {
+					// Check if there are actual changes
+					const hasChanges =
+						currentShippingOption.name !== formData.name ||
+						currentShippingOption.delivery_min_days !==
+							formData.delivery_min_days ||
+						currentShippingOption.delivery_max_days !==
+							formData.delivery_max_days;
+
+					if (
+						hasChanges &&
+						formData.name?.trim() &&
+						formData.delivery_min_days &&
+						formData.delivery_max_days
+					) {
+						const updatedShippingOption =
+							await updateShippingOptionAPI(
+								store.id,
+								shippingOptionId,
+								{
+									name: formData.name,
+									delivery_min_days:
+										formData.delivery_min_days,
+									delivery_max_days:
+										formData.delivery_max_days,
+								}
+							);
+						return updatedShippingOption;
+					}
+				}
+				return null;
+			});
+
+			const results = await Promise.all(updatePromises);
+			const updatedShippingOptions = results.filter(Boolean);
+
+			if (updatedShippingOptions.length > 0) {
+				// Update shipping options state with the updated data
+				setShippingOptions((prevShippingOptions) =>
+					prevShippingOptions.map((option) => {
+						const updated = updatedShippingOptions.find(
+							(u) => u && u.id === option.id
+						);
+						return updated || option;
+					})
+				);
+				setSuccess("Shipping option changes saved automatically");
+				setTimeout(() => setSuccess(null), 2000);
+			}
+		} catch (err) {
+			console.error("Shipping option auto-save failed:", err);
+		} finally {
+			setIsSaving(false);
+		}
+	}, [store, debouncedShippingOptionFormData, shippingOptions, isSaving]);
 
 	const handleInputChange = (field: keyof StoreFormData, value: string) => {
 		setFormData((prev) => ({
@@ -1113,6 +1212,76 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		} catch (err) {
 			setError(
 				err instanceof Error ? err.message : "Failed to delete mapping"
+			);
+		}
+	};
+
+	// Shipping options management functions
+	const handleAddShippingOption = async () => {
+		if (!store) return;
+
+		try {
+			const newShippingOption = await createShippingOptionAPI(store.id, {
+				name: "New Shipping Option",
+				delivery_min_days: 1,
+				delivery_max_days: 5,
+			});
+			setShippingOptions([...shippingOptions, newShippingOption]);
+
+			// Add to form data for immediate editing
+			setShippingOptionFormData((prev) => ({
+				...prev,
+				[newShippingOption.id]: {
+					name: newShippingOption.name,
+					delivery_min_days: newShippingOption.delivery_min_days,
+					delivery_max_days: newShippingOption.delivery_max_days,
+				},
+			}));
+		} catch (err) {
+			setError(
+				err instanceof Error
+					? err.message
+					: "Failed to add shipping option"
+			);
+		}
+	};
+
+	const handleShippingOptionInputChange = (
+		shippingOptionId: string,
+		field: keyof ShippingOptionFormData,
+		value: string | number
+	) => {
+		setShippingOptionFormData((prev) => ({
+			...prev,
+			[shippingOptionId]: {
+				...prev[shippingOptionId],
+				[field]: value,
+			},
+		}));
+	};
+
+	const handleDeleteShippingOption = async (shippingOptionId: string) => {
+		if (!store) return;
+
+		try {
+			await deleteShippingOptionAPI(store.id, shippingOptionId);
+			setShippingOptions(
+				shippingOptions.filter(
+					(option) => option.id !== shippingOptionId
+				)
+			);
+
+			// Remove from form data
+			setShippingOptionFormData((prev) => {
+				const updated = { ...prev };
+				delete updated[shippingOptionId];
+				return updated;
+			});
+		} catch (err) {
+			setError(
+				err instanceof Error
+					? err.message
+					: "Failed to delete shipping option"
 			);
 		}
 	};
@@ -2733,6 +2902,241 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 							<Plus className="h-4 w-4 mr-2" />
 							Add Location
 						</Button>
+					</CardContent>
+				</Card>
+
+				{/* Shipping Logistics Section */}
+				<Card>
+					<CardHeader>
+						<CardTitle className="flex items-center">
+							<Package className="h-5 w-5 mr-2" />
+							Shipping Logistics
+						</CardTitle>
+						<CardDescription>
+							Order processing time and shipping options
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-6">
+						{/* Order Processing Time */}
+						<div className="space-y-4">
+							<Label className="text-base font-medium">
+								Order Processing Time
+							</Label>
+							<p className="text-sm text-muted-foreground">
+								How many business days do you need to process
+								orders before shipping?
+							</p>
+							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+								<div>
+									<Label htmlFor="order_processing_min_days">
+										Minimum Days *
+									</Label>
+									<Input
+										id="order_processing_min_days"
+										type="number"
+										min="1"
+										value={
+											formData.order_processing_min_days ||
+											""
+										}
+										onChange={(e) =>
+											handleInputChange(
+												"order_processing_min_days",
+												e.target.value
+											)
+										}
+										placeholder="1"
+									/>
+									<p className="text-sm text-muted-foreground mt-1">
+										Minimum business days for processing
+									</p>
+								</div>
+								<div>
+									<Label htmlFor="order_processing_max_days">
+										Maximum Days *
+									</Label>
+									<Input
+										id="order_processing_max_days"
+										type="number"
+										min="1"
+										value={
+											formData.order_processing_max_days ||
+											""
+										}
+										onChange={(e) =>
+											handleInputChange(
+												"order_processing_max_days",
+												e.target.value
+											)
+										}
+										placeholder="3"
+									/>
+									<p className="text-sm text-muted-foreground mt-1">
+										Maximum business days for processing
+									</p>
+								</div>
+							</div>
+						</div>
+
+						{/* Shipping Options */}
+						<div className="space-y-4">
+							<Label className="text-base font-medium">
+								Shipping Options
+							</Label>
+							<p className="text-sm text-muted-foreground">
+								Add shipping methods with delivery timeframes
+							</p>
+
+							{shippingOptions.length === 0 ? (
+								<div className="text-center py-8 text-gray-500">
+									<Package className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+									<p>No shipping options added yet</p>
+									<p className="text-sm">
+										Add your first shipping option to get
+										started
+									</p>
+								</div>
+							) : (
+								<div className="space-y-4">
+									{shippingOptions.map((shippingOption) => (
+										<div
+											key={shippingOption.id}
+											className="p-4 border rounded-lg bg-gray-50 space-y-4"
+										>
+											<div className="flex items-center justify-between">
+												<h4 className="font-medium">
+													Shipping Option Details
+												</h4>
+												<Button
+													type="button"
+													variant="outline"
+													size="sm"
+													onClick={() =>
+														handleDeleteShippingOption(
+															shippingOption.id
+														)
+													}
+												>
+													<Trash2 className="h-4 w-4 mr-2" />
+													Remove
+												</Button>
+											</div>
+											<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+												<div>
+													<Label
+														htmlFor={`shipping-name-${shippingOption.id}`}
+													>
+														Shipping Option Name *
+													</Label>
+													<Input
+														id={`shipping-name-${shippingOption.id}`}
+														type="text"
+														value={
+															shippingOptionFormData[
+																shippingOption
+																	.id
+															]?.name ??
+															shippingOption.name
+														}
+														onChange={(e) =>
+															handleShippingOptionInputChange(
+																shippingOption.id,
+																"name",
+																e.target.value
+															)
+														}
+														placeholder="Standard Shipping"
+													/>
+												</div>
+												<div>
+													<Label
+														htmlFor={`shipping-min-${shippingOption.id}`}
+													>
+														Minimum Delivery Days *
+													</Label>
+													<Input
+														id={`shipping-min-${shippingOption.id}`}
+														type="number"
+														min="1"
+														value={
+															shippingOptionFormData[
+																shippingOption
+																	.id
+															]
+																?.delivery_min_days ??
+															shippingOption.delivery_min_days ??
+															""
+														}
+														onChange={(e) =>
+															handleShippingOptionInputChange(
+																shippingOption.id,
+																"delivery_min_days",
+																e.target
+																	.value ===
+																	""
+																	? ""
+																	: parseInt(
+																			e
+																				.target
+																				.value
+																	  ) || ""
+															)
+														}
+														placeholder="1"
+													/>
+												</div>
+												<div>
+													<Label
+														htmlFor={`shipping-max-${shippingOption.id}`}
+													>
+														Maximum Delivery Days *
+													</Label>
+													<Input
+														id={`shipping-max-${shippingOption.id}`}
+														type="number"
+														min="1"
+														value={
+															shippingOptionFormData[
+																shippingOption
+																	.id
+															]
+																?.delivery_max_days ??
+															shippingOption.delivery_max_days ??
+															""
+														}
+														onChange={(e) =>
+															handleShippingOptionInputChange(
+																shippingOption.id,
+																"delivery_max_days",
+																e.target
+																	.value ===
+																	""
+																	? ""
+																	: parseInt(
+																			e
+																				.target
+																				.value
+																	  ) || ""
+															)
+														}
+														placeholder="5"
+													/>
+												</div>
+											</div>
+										</div>
+									))}
+								</div>
+							)}
+							<Button
+								type="button"
+								variant="outline"
+								onClick={handleAddShippingOption}
+								className="w-full"
+							>
+								<Plus className="h-4 w-4 mr-2" />
+								Add Shipping Option
+							</Button>
+						</div>
 					</CardContent>
 				</Card>
 

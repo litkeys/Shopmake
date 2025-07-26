@@ -1349,7 +1349,8 @@ export default function NewClientPage() {
 										type="number"
 										min="1"
 										value={
-											formData.order_processing_min_days
+											formData.order_processing_min_days ||
+											""
 										}
 										onChange={(e) =>
 											handleInputChange(
@@ -1372,7 +1373,8 @@ export default function NewClientPage() {
 										type="number"
 										min="1"
 										value={
-											formData.order_processing_max_days
+											formData.order_processing_max_days ||
+											""
 										}
 										onChange={(e) =>
 											handleInputChange(
@@ -1474,17 +1476,23 @@ export default function NewClientPage() {
 																shippingOption
 																	.id
 															]
-																?.delivery_min_days ||
-															shippingOption.delivery_min_days
+																?.delivery_min_days ??
+															shippingOption.delivery_min_days ??
+															""
 														}
 														onChange={(e) =>
 															handleShippingOptionInputChange(
 																shippingOption.id,
 																"delivery_min_days",
-																parseInt(
-																	e.target
-																		.value
-																) || 1
+																e.target
+																	.value ===
+																	""
+																	? ""
+																	: parseInt(
+																			e
+																				.target
+																				.value
+																	  ) || ""
 															)
 														}
 														placeholder="1"
@@ -1505,17 +1513,23 @@ export default function NewClientPage() {
 																shippingOption
 																	.id
 															]
-																?.delivery_max_days ||
-															shippingOption.delivery_max_days
+																?.delivery_max_days ??
+															shippingOption.delivery_max_days ??
+															""
 														}
 														onChange={(e) =>
 															handleShippingOptionInputChange(
 																shippingOption.id,
 																"delivery_max_days",
-																parseInt(
-																	e.target
-																		.value
-																) || 5
+																e.target
+																	.value ===
+																	""
+																	? ""
+																	: parseInt(
+																			e
+																				.target
+																				.value
+																	  ) || ""
 															)
 														}
 														placeholder="5"
