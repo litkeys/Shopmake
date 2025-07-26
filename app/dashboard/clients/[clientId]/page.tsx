@@ -59,6 +59,10 @@ import {
 	createCollectionMappingAPI,
 	updateCollectionMappingAPI,
 	deleteCollectionMappingAPI,
+	getShippingOptionsAPI,
+	createShippingOptionAPI,
+	updateShippingOptionAPI,
+	deleteShippingOptionAPI,
 } from "@/lib/api";
 import {
 	Store,
@@ -70,6 +74,8 @@ import {
 	CollectionWithMappings,
 	CollectionFormData,
 	MappingFormData,
+	ShippingOption,
+	ShippingOptionFormData,
 } from "@/types";
 import Link from "next/link";
 
@@ -141,6 +147,12 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const [expandedCollections, setExpandedCollections] = useState<
 		Record<string, boolean>
 	>({});
+	const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>(
+		[]
+	);
+	const [shippingOptionFormData, setShippingOptionFormData] = useState<
+		Record<string, ShippingOptionFormData>
+	>({});
 	const [logoPreview, setLogoPreview] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [success, setSuccess] = useState<string | null>(null);
@@ -171,6 +183,8 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		business_registration_number: "",
 		vat_number: "",
 		return_address: "",
+		order_processing_min_days: 1,
+		order_processing_max_days: 3,
 		return_policy: "",
 		privacy_policy: "",
 		terms_of_service: "",
@@ -183,6 +197,10 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const debouncedLocationFormData = useDebounce(locationFormData, 500);
 	const debouncedCollectionFormData = useDebounce(collectionFormData, 500);
 	const debouncedMappingFormData = useDebounce(mappingFormData, 500);
+	const debouncedShippingOptionFormData = useDebounce(
+		shippingOptionFormData,
+		500
+	);
 
 	// Load store data on mount
 	useEffect(() => {
@@ -297,6 +315,10 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 						storeDataResult.business_registration_number || "",
 					vat_number: storeDataResult.vat_number || "",
 					return_address: storeDataResult.return_address || "",
+					order_processing_min_days:
+						storeDataResult.order_processing_min_days || 1,
+					order_processing_max_days:
+						storeDataResult.order_processing_max_days || 3,
 					return_policy: storeDataResult.return_policy || "",
 					privacy_policy: storeDataResult.privacy_policy || "",
 					terms_of_service: storeDataResult.terms_of_service || "",
@@ -327,6 +349,8 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					business_registration_number: "",
 					vat_number: "",
 					return_address: "",
+					order_processing_min_days: 1,
+					order_processing_max_days: 3,
 					return_policy: "",
 					privacy_policy: "",
 					terms_of_service: "",
@@ -422,6 +446,10 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					debouncedFormData.business_registration_number,
 				vat_number: debouncedFormData.vat_number,
 				return_address: debouncedFormData.return_address,
+				order_processing_min_days:
+					debouncedFormData.order_processing_min_days,
+				order_processing_max_days:
+					debouncedFormData.order_processing_max_days,
 				return_policy: debouncedFormData.return_policy,
 				privacy_policy: debouncedFormData.privacy_policy,
 				terms_of_service: debouncedFormData.terms_of_service,
@@ -798,6 +826,8 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					formData.business_registration_number,
 				vat_number: formData.vat_number,
 				return_address: formData.return_address,
+				order_processing_min_days: formData.order_processing_min_days,
+				order_processing_max_days: formData.order_processing_max_days,
 				return_policy: formData.return_policy,
 				privacy_policy: formData.privacy_policy,
 				terms_of_service: formData.terms_of_service,

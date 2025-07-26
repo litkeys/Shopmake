@@ -9,6 +9,7 @@ import {
 	MappingFormData,
 	ShopifyStoreGenerationRequest,
 	ShopifyCustomAppConnection,
+	ShippingOption,
 } from "@/types";
 
 // Helper to get the base URL
@@ -680,5 +681,96 @@ export async function deleteCollectionMappingAPI(
 	if (!response.ok) {
 		const error = await response.json();
 		throw new Error(error.error || "Failed to delete collection mapping");
+	}
+}
+
+// Shipping options API functions
+export async function getShippingOptionsAPI(
+	storeId: string
+): Promise<ShippingOption[]> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/stores/${storeId}/shipping-options`
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to fetch shipping options");
+	}
+
+	const result = await response.json();
+	return result.data;
+}
+
+export async function createShippingOptionAPI(
+	storeId: string,
+	shippingOptionData: Omit<
+		ShippingOption,
+		"id" | "store_id" | "created_at" | "updated_at"
+	>
+): Promise<ShippingOption> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/stores/${storeId}/shipping-options`,
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(shippingOptionData),
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to create shipping option");
+	}
+
+	const result = await response.json();
+	return result.data;
+}
+
+export async function updateShippingOptionAPI(
+	storeId: string,
+	shippingOptionId: string,
+	shippingOptionData: Partial<
+		Omit<ShippingOption, "id" | "store_id" | "created_at" | "updated_at">
+	>
+): Promise<ShippingOption> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/stores/${storeId}/shipping-options/${shippingOptionId}`,
+		{
+			method: "PUT",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(shippingOptionData),
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to update shipping option");
+	}
+
+	const result = await response.json();
+	return result.data;
+}
+
+export async function deleteShippingOptionAPI(
+	storeId: string,
+	shippingOptionId: string
+): Promise<void> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/stores/${storeId}/shipping-options/${shippingOptionId}`,
+		{
+			method: "DELETE",
+			headers: {
+				"Content-Type": "application/json",
+			},
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to delete shipping option");
 	}
 }

@@ -61,6 +61,9 @@ CREATE TABLE store_data (
     business_registration_number TEXT,
     vat_number TEXT,
     return_address TEXT,
+    -- Shipping Logistics
+    order_processing_min_days INTEGER DEFAULT 1,
+    order_processing_max_days INTEGER DEFAULT 3,
     -- Store Policies
     return_policy TEXT,
     privacy_policy TEXT,
@@ -211,7 +214,32 @@ CREATE POLICY "Users can access their collection mappings" ON collection_mapping
     );
 ```
 
-### 8. Add updated_at triggers
+### 8. shipping_options
+
+```sql
+CREATE TABLE shipping_options (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    store_id UUID REFERENCES stores(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    delivery_min_days INTEGER NOT NULL CHECK (delivery_min_days > 0),
+    delivery_max_days INTEGER NOT NULL CHECK (delivery_max_days >= delivery_min_days),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Add RLS policies
+ALTER TABLE shipping_options ENABLE ROW LEVEL SECURITY;
+
+-- Users can only access shipping_options for their own stores
+CREATE POLICY "Users can access their shipping options" ON shipping_options
+    FOR ALL USING (
+        store_id IN (
+            SELECT id FROM stores WHERE created_by = (auth.jwt() ->> 'sub')::text
+        )
+    );
+```
+
+### 9. Add updated_at triggers
 
 ```sql
 -- Function to update updated_at timestamp
@@ -246,6 +274,10 @@ CREATE TRIGGER update_store_collections_updated_at
 
 CREATE TRIGGER update_collection_mappings_updated_at
     BEFORE UPDATE ON collection_mappings
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_shipping_options_updated_at
+    BEFORE UPDATE ON shipping_options
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 ```
 

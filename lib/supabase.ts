@@ -8,6 +8,7 @@ import {
 	StoreCollection,
 	CollectionMapping,
 	CollectionWithMappings,
+	ShippingOption,
 } from "@/types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -566,5 +567,81 @@ export async function deleteCollectionMapping(
 		throw new Error(
 			`Failed to delete collection mapping: ${error.message}`
 		);
+	}
+}
+
+// ==================
+// SHIPPING OPTIONS
+// ==================
+
+export async function getShippingOptions(
+	storeId: string
+): Promise<ShippingOption[]> {
+	const { data, error } = await supabaseAdmin
+		.from("shipping_options")
+		.select("*")
+		.eq("store_id", storeId)
+		.order("name");
+
+	if (error) {
+		throw new Error(`Failed to fetch shipping options: ${error.message}`);
+	}
+
+	return data || [];
+}
+
+export async function createShippingOption(
+	storeId: string,
+	shippingOptionData: Omit<
+		ShippingOption,
+		"id" | "store_id" | "created_at" | "updated_at"
+	>
+): Promise<ShippingOption> {
+	const { data, error } = await supabaseAdmin
+		.from("shipping_options")
+		.insert({
+			store_id: storeId,
+			...shippingOptionData,
+		})
+		.select()
+		.single();
+
+	if (error) {
+		throw new Error(`Failed to create shipping option: ${error.message}`);
+	}
+
+	return data;
+}
+
+export async function updateShippingOption(
+	shippingOptionId: string,
+	shippingOptionData: Partial<
+		Omit<ShippingOption, "id" | "store_id" | "created_at" | "updated_at">
+	>
+): Promise<ShippingOption> {
+	const { data, error } = await supabaseAdmin
+		.from("shipping_options")
+		.update(shippingOptionData)
+		.eq("id", shippingOptionId)
+		.select()
+		.single();
+
+	if (error) {
+		throw new Error(`Failed to update shipping option: ${error.message}`);
+	}
+
+	return data;
+}
+
+export async function deleteShippingOption(
+	shippingOptionId: string
+): Promise<void> {
+	const { error } = await supabaseAdmin
+		.from("shipping_options")
+		.delete()
+		.eq("id", shippingOptionId);
+
+	if (error) {
+		throw new Error(`Failed to delete shipping option: ${error.message}`);
 	}
 }

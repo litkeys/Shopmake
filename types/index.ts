@@ -39,6 +39,9 @@ export interface StoreData {
 	business_registration_number?: string;
 	vat_number?: string;
 	return_address?: string;
+	// Shipping Logistics
+	order_processing_min_days?: number;
+	order_processing_max_days?: number;
 	// Store Policies
 	return_policy?: string;
 	privacy_policy?: string;
@@ -66,6 +69,17 @@ export interface StoreLocation {
 	city?: string;
 	country?: string;
 	phone?: string;
+	created_at: string;
+	updated_at: string;
+}
+
+// Shipping option related types
+export interface ShippingOption {
+	id: string;
+	store_id: string;
+	name: string;
+	delivery_min_days: number;
+	delivery_max_days: number;
 	created_at: string;
 	updated_at: string;
 }
@@ -112,6 +126,9 @@ export interface StoreFormData {
 	business_registration_number: string;
 	vat_number: string;
 	return_address: string;
+	// Shipping Logistics
+	order_processing_min_days: number;
+	order_processing_max_days: number;
 	// Store Policies
 	return_policy: string;
 	privacy_policy: string;
@@ -133,6 +150,13 @@ export interface LocationFormData {
 	city: string;
 	country: string;
 	phone: string;
+}
+
+// Shipping option form data (for frontend state management)
+export interface ShippingOptionFormData {
+	name: string;
+	delivery_min_days: number;
+	delivery_max_days: number;
 }
 
 // Collection related types
