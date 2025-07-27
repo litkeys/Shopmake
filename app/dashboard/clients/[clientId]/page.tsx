@@ -2566,7 +2566,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 									mapping rules.
 								</CardDescription>
 							</div>
-							<div className="text-right flex-shrink-0">
+							<div className="flex flex-col items-end flex-shrink-0">
 								<Button
 									type="button"
 									variant="outline"
@@ -3461,9 +3461,11 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 				<Card>
 					<CardHeader>
-						<div className="flex items-center justify-between">
-							<div>
-								<CardTitle>Store Policies</CardTitle>
+						<div className="flex items-start justify-between gap-4">
+							<div className="flex-1">
+								<CardTitle className="mb-2">
+									Store Policies
+								</CardTitle>
 								<CardDescription>
 									Store policies and legal information for
 									your customers
@@ -3473,7 +3475,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 								type="button"
 								variant="outline"
 								onClick={handleMagicGeneratePolicies}
-								className="flex items-center"
+								className="flex items-center flex-shrink-0"
 							>
 								<Zap className="h-4 w-4 mr-2" />
 								Magic Generate
