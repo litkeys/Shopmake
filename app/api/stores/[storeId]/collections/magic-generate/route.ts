@@ -153,7 +153,7 @@ Available Product Tags: ${distinctTags.join(", ") || "None"}
 For each collection, you must:
 1. Create a customer-friendly title
 2. Write a concise description of what products belong in this collection
-3. Define mapping rules that specify which products belong in this collection
+3. Define at least one mapping rule that specifies which products belong in this collection
 
 Each mapping rule should use one of these types:
 - "product_tag": Match products that have a specific tag
@@ -204,6 +204,7 @@ Make sure the collections are diverse and cover different aspects of the product
 											},
 											mapping_rules: {
 												type: "array",
+												minItems: 1,
 												items: {
 													type: "object",
 													properties: {
@@ -268,6 +269,33 @@ Make sure the collections are diverse and cover different aspects of the product
 
 		for (const generatedCollection of generatedCollections) {
 			try {
+				// Validate that the collection has mapping rules
+				if (
+					!generatedCollection.mapping_rules ||
+					generatedCollection.mapping_rules.length === 0
+				) {
+					console.warn(
+						`Skipping collection "${generatedCollection.title}" - no mapping rules provided`
+					);
+					continue;
+				}
+
+				// Validate that all mapping rules have required fields
+				const validMappingRules =
+					generatedCollection.mapping_rules.filter(
+						(rule) =>
+							rule.mapping_type &&
+							rule.mapping_value &&
+							rule.mapping_value.trim()
+					);
+
+				if (validMappingRules.length === 0) {
+					console.warn(
+						`Skipping collection "${generatedCollection.title}" - no valid mapping rules`
+					);
+					continue;
+				}
+
 				// Create the collection
 				const collection = await createStoreCollection(storeId, {
 					title: generatedCollection.title,
@@ -276,12 +304,12 @@ Make sure the collections are diverse and cover different aspects of the product
 
 				// Create the mapping rules for this collection
 				const mappings = [];
-				for (const rule of generatedCollection.mapping_rules) {
+				for (const rule of validMappingRules) {
 					const mapping = await createCollectionMapping(
 						collection.id,
 						{
 							mapping_type: rule.mapping_type,
-							mapping_value: rule.mapping_value,
+							mapping_value: rule.mapping_value.trim(),
 						}
 					);
 					mappings.push(mapping);

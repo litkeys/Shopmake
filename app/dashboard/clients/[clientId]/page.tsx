@@ -2563,8 +2563,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 								</CardTitle>
 								<CardDescription>
 									Create and manage product collections with
-									mapping rules. Use Magic Generate to create
-									collections based on product types and tags.
+									mapping rules.
 								</CardDescription>
 							</div>
 							<div className="text-right">
