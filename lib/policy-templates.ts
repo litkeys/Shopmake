@@ -145,11 +145,11 @@ export const policyTemplates = {
 	<p>If you have any questions about our shipping policies, please contact us at <a href="mailto:[CONTACT EMAIL]">[CONTACT EMAIL]</a>.</p>
 	`,
 
-	contactInformation: `<p>Trade name: [STORE NAME]</p>
-	<p>Phone number:</p>
-	<p>Email: [CONTACT EMAIL]</p>
-	<p>Physical address: Australia</p>
-	<p>VAT number:</p>
-	<p>Trade number:</p>
-	`,
+	contactInformation: `<p>Trade name: [TRADING NAME]</p>
+<p>Phone number: [BUSINESS PHONE NUMBER]</p>
+<p>Email: [CONTACT EMAIL]</p>
+<p>Physical address: [BUSINESS ADDRESS]</p>
+<p>VAT number: [VAT NUMBER]</p>
+<p>Trade number: [BUSINESS REGISTRATION NUMBER]</p>
+`,
 };
