@@ -159,7 +159,7 @@ Each mapping rule should use one of these types:
 - "product_tag": Match products that have a specific tag
 - "product_type": Match products of a specific type
 
-The mapping rules for each collection are used to match products that satisfy ANY of the rules. You can use multiple rules per collection to include products with different tags or types 
+The mapping rules for each collection are used to match products that satisfy ANY of the rules. You can use multiple rules of DIFFERENT types per collection to include products with a mix of different product tags and/or product types. 
 
 Make sure the collections are diverse and cover different aspects of the product catalog. Generated collections do NOT have to cover all product types and tags.`;
 

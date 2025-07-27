@@ -2555,9 +2555,9 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				{/* Product Collections Section */}
 				<Card>
 					<CardHeader>
-						<div className="flex items-center justify-between">
-							<div>
-								<CardTitle className="flex items-center">
+						<div className="flex items-start justify-between gap-4">
+							<div className="flex-1">
+								<CardTitle className="flex items-center mb-2">
 									<Package className="h-5 w-5 mr-2" />
 									Product Collections
 								</CardTitle>
@@ -2566,7 +2566,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 									mapping rules.
 								</CardDescription>
 							</div>
-							<div className="text-right">
+							<div className="text-right flex-shrink-0">
 								<Button
 									type="button"
 									variant="outline"
