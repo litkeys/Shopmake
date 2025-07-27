@@ -63,6 +63,7 @@ import {
 	createShippingOptionAPI,
 	updateShippingOptionAPI,
 	deleteShippingOptionAPI,
+	magicGenerateCollectionsAPI,
 } from "@/lib/api";
 import {
 	Store,
@@ -156,6 +157,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	>({});
 	const [logoPreview, setLogoPreview] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const [isMagicGenerating, setIsMagicGenerating] = useState(false);
 	const [success, setSuccess] = useState<string | null>(null);
 	const [showShopifyForm, setShowShopifyForm] = useState(false);
 	const [isConnecting, setIsConnecting] = useState(false);
@@ -1780,6 +1782,80 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		setSuccess(null);
 	};
 
+	const handleMagicGenerateCollections = async () => {
+		if (!store) return;
+
+		// Check if there are product uploads
+		const productUploads = getCsvUploads("products");
+		if (productUploads.length === 0) {
+			setError(
+				"Please upload a products CSV before generating collections."
+			);
+			setTimeout(() => setError(null), 5000);
+			return;
+		}
+
+		try {
+			setIsMagicGenerating(true);
+			setError(null);
+
+			const result = await magicGenerateCollectionsAPI(store.id);
+
+			// Refresh collections to include the newly generated ones
+			const collectionsResult = await getStoreCollectionsAPI(store.id);
+			setCollections(collectionsResult);
+
+			// Initialize form data for the new collections
+			const newCollectionFormData: Record<string, CollectionFormData> =
+				{};
+			const newMappingFormData: Record<
+				string,
+				Record<string, MappingFormData>
+			> = {};
+
+			collectionsResult.forEach((collection) => {
+				if (!collectionFormData[collection.id]) {
+					newCollectionFormData[collection.id] = {
+						title: collection.title,
+						description: collection.description || "",
+					};
+
+					newMappingFormData[collection.id] = {};
+					collection.mappings.forEach((mapping) => {
+						newMappingFormData[collection.id][mapping.id] = {
+							mapping_type: mapping.mapping_type,
+							mapping_value: mapping.mapping_value,
+						};
+					});
+				}
+			});
+
+			setCollectionFormData((prev) => ({
+				...prev,
+				...newCollectionFormData,
+			}));
+
+			setMappingFormData((prev) => ({
+				...prev,
+				...newMappingFormData,
+			}));
+
+			setSuccess(
+				`Successfully generated ${result.collections_created} new collections using AI!`
+			);
+			setTimeout(() => setSuccess(null), 5000);
+		} catch (err) {
+			setError(
+				err instanceof Error
+					? err.message
+					: "Failed to generate collections"
+			);
+			setTimeout(() => setError(null), 5000);
+		} finally {
+			setIsMagicGenerating(false);
+		}
+	};
+
 	const handleMagicGeneratePolicies = () => {
 		// Generate shipping options list
 		const shippingOptionsList = shippingOptions
@@ -2479,14 +2555,52 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				{/* Product Collections Section */}
 				<Card>
 					<CardHeader>
-						<CardTitle className="flex items-center">
-							<Package className="h-5 w-5 mr-2" />
-							Product Collections
-						</CardTitle>
-						<CardDescription>
-							Create and manage product collections with mapping
-							rules
-						</CardDescription>
+						<div className="flex items-center justify-between">
+							<div>
+								<CardTitle className="flex items-center">
+									<Package className="h-5 w-5 mr-2" />
+									Product Collections
+								</CardTitle>
+								<CardDescription>
+									Create and manage product collections with
+									mapping rules. Use Magic Generate to create
+									collections based on product types and tags.
+								</CardDescription>
+							</div>
+							<div className="text-right">
+								<Button
+									type="button"
+									variant="outline"
+									onClick={handleMagicGenerateCollections}
+									disabled={
+										isMagicGenerating ||
+										getCsvUploads("products").length === 0
+									}
+									className="flex items-center"
+								>
+									{isMagicGenerating ? (
+										<>
+											<div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+											Generating...
+										</>
+									) : (
+										<>
+											<Zap className="h-4 w-4 mr-2" />
+											Magic Generate
+										</>
+									)}
+								</Button>
+								{getCsvUploads("products").length === 0 ? (
+									<p className="text-xs text-muted-foreground mt-1">
+										Upload a products CSV first
+									</p>
+								) : (
+									<p className="text-xs text-muted-foreground mt-1">
+										Requires products with types and tags
+									</p>
+								)}
+							</div>
+						</div>
 					</CardHeader>
 					<CardContent className="space-y-4">
 						{collections.length === 0 ? (

@@ -611,6 +611,29 @@ export async function deleteStoreCollectionAPI(
 	}
 }
 
+export async function magicGenerateCollectionsAPI(storeId: string): Promise<{
+	collections_created: number;
+	collections: CollectionWithMappings[];
+}> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/stores/${storeId}/collections/magic-generate`,
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to generate collections");
+	}
+
+	const result = await response.json();
+	return result.data;
+}
+
 // Collection mappings API functions
 export async function createCollectionMappingAPI(
 	storeId: string,
