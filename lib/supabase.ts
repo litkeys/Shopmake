@@ -581,7 +581,7 @@ export async function getShippingOptions(
 		.from("shipping_options")
 		.select("*")
 		.eq("store_id", storeId)
-		.order("name");
+		.order("created_at");
 
 	if (error) {
 		throw new Error(`Failed to fetch shipping options: ${error.message}`);
