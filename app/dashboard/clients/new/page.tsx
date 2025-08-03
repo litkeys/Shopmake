@@ -48,7 +48,10 @@ import {
 	MappingFormData,
 	ShippingOption,
 	ShippingOptionFormData,
+	StoreLayout,
+	DEFAULT_STORE_LAYOUT,
 } from "@/types";
+import { StoreLayoutEditor } from "@/components/ui/store-layout-editor";
 import Link from "next/link";
 
 export default function NewClientPage() {
@@ -85,6 +88,8 @@ export default function NewClientPage() {
 	>({});
 	const [tempShippingOptionCounter, setTempShippingOptionCounter] =
 		useState(0);
+	const [storeLayout, setStoreLayout] =
+		useState<StoreLayout>(DEFAULT_STORE_LAYOUT);
 
 	const [formData, setFormData] = useState<StoreFormData>({
 		brand_name: "",
@@ -448,6 +453,7 @@ export default function NewClientPage() {
 				terms_of_service: formData.terms_of_service,
 				shipping_policy: formData.shipping_policy,
 				contact_information: formData.contact_information,
+				store_layout: storeLayout,
 			});
 
 			// Create any temporary locations
@@ -1811,6 +1817,13 @@ export default function NewClientPage() {
 						</div>
 					</CardContent>
 				</Card>
+
+				{/* Store Layout Section */}
+				<StoreLayoutEditor
+					storeLayout={storeLayout}
+					onChange={setStoreLayout}
+					disabled={isLoading}
+				/>
 
 				<div className="flex items-center justify-between">
 					<div className="flex items-center space-x-2"></div>

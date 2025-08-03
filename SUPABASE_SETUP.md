@@ -70,6 +70,15 @@ CREATE TABLE store_data (
     terms_of_service TEXT,
     shipping_policy TEXT,
     contact_information TEXT,
+    -- Store Layout
+    store_layout JSONB DEFAULT '{
+        "index": {"include": true, "sections": []},
+        "product": {"include": true, "sections": ["main-product", "related-products"]},
+        "collection": {"include": true, "sections": ["main-collection-banner", "main-collection-product-grid"]},
+        "list-collections": {"include": true, "sections": ["main-list-collections"]},
+        "article": {"include": true, "sections": ["main-article"]},
+        "blog": {"include": true, "sections": ["main-blog"]}
+    }',
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

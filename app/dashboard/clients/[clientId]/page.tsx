@@ -77,7 +77,10 @@ import {
 	MappingFormData,
 	ShippingOption,
 	ShippingOptionFormData,
+	StoreLayout,
+	DEFAULT_STORE_LAYOUT,
 } from "@/types";
+import { StoreLayoutEditor } from "@/components/ui/store-layout-editor";
 import { policyTemplates } from "@/lib/policy-templates";
 import Link from "next/link";
 
@@ -155,6 +158,8 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const [shippingOptionFormData, setShippingOptionFormData] = useState<
 		Record<string, ShippingOptionFormData>
 	>({});
+	const [storeLayout, setStoreLayout] =
+		useState<StoreLayout>(DEFAULT_STORE_LAYOUT);
 	const [logoPreview, setLogoPreview] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [isMagicGenerating, setIsMagicGenerating] = useState(false);
@@ -204,6 +209,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		shippingOptionFormData,
 		500
 	);
+	const debouncedStoreLayout = useDebounce(storeLayout, 500);
 
 	// Load store data on mount
 	useEffect(() => {
@@ -290,6 +296,13 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		}
 	}, [debouncedShippingOptionFormData, store, isLoading]);
 
+	// Auto-save effect for store layout
+	useEffect(() => {
+		if (store && !isLoading) {
+			handleAutoSaveStoreLayout();
+		}
+	}, [debouncedStoreLayout, store, isLoading]);
+
 	const loadStoreData = async () => {
 		try {
 			setIsLoading(true);
@@ -345,6 +358,13 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				if (storeDataResult.logo_url) {
 					setLogoPreview(storeDataResult.logo_url);
 				}
+
+				// Set store layout
+				if (storeDataResult.store_layout) {
+					setStoreLayout(storeDataResult.store_layout);
+				} else {
+					setStoreLayout(DEFAULT_STORE_LAYOUT);
+				}
 			} else {
 				// No store data yet, use store name
 				setFormData({
@@ -371,6 +391,9 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					shipping_policy: "",
 					contact_information: "",
 				});
+
+				// Set default store layout
+				setStoreLayout(DEFAULT_STORE_LAYOUT);
 			}
 
 			// Load uploads
@@ -762,6 +785,40 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			setIsSaving(false);
 		}
 	}, [store, debouncedShippingOptionFormData, shippingOptions, isSaving]);
+
+	const handleAutoSaveStoreLayout = useCallback(async () => {
+		if (!store || isSaving) return;
+
+		setIsSaving(true);
+		try {
+			const currentStoreLayout = storeData?.store_layout;
+
+			// Check if there are actual changes
+			const hasChanges =
+				JSON.stringify(currentStoreLayout) !==
+				JSON.stringify(debouncedStoreLayout);
+
+			if (hasChanges) {
+				await updateStoreDataAPI(store.id, {
+					store_layout: debouncedStoreLayout,
+				});
+
+				// Update store data state
+				setStoreData((prev) =>
+					prev
+						? { ...prev, store_layout: debouncedStoreLayout }
+						: prev
+				);
+
+				setSuccess("Store layout changes saved automatically");
+				setTimeout(() => setSuccess(null), 2000);
+			}
+		} catch (err) {
+			console.error("Store layout auto-save failed:", err);
+		} finally {
+			setIsSaving(false);
+		}
+	}, [store, debouncedStoreLayout, storeData, isSaving]);
 
 	const handleInputChange = (field: keyof StoreFormData, value: string) => {
 		setFormData((prev) => ({
@@ -3590,6 +3647,13 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 						</div>
 					</CardContent>
 				</Card>
+
+				{/* Store Layout Section */}
+				<StoreLayoutEditor
+					storeLayout={storeLayout}
+					onChange={setStoreLayout}
+					disabled={isLoading || isSaving}
+				/>
 
 				{/* Generate Store Section */}
 				<Card>

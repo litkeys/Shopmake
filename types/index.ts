@@ -48,6 +48,8 @@ export interface StoreData {
 	terms_of_service?: string;
 	shipping_policy?: string;
 	contact_information?: string;
+	// Store Layout
+	store_layout?: StoreLayout;
 	updated_at: string;
 }
 
@@ -207,3 +209,137 @@ export interface PaginatedResponse<T = any> {
 	hasNext: boolean;
 	hasPrev: boolean;
 }
+
+// Store Layout types
+export interface StorePageLayout {
+	include: boolean;
+	sections: string[];
+}
+
+export interface StoreLayout {
+	index: StorePageLayout;
+	product: StorePageLayout;
+	collection: StorePageLayout;
+	"list-collections": StorePageLayout;
+	article: StorePageLayout;
+	blog: StorePageLayout;
+}
+
+export interface AvailableSection {
+	id: string;
+	displayName: string;
+	description?: string;
+}
+
+export interface StorePage {
+	id: string;
+	displayName: string;
+	filename: string;
+	requiredSections?: string[];
+}
+
+// Constants for store layout
+export const AVAILABLE_SECTIONS: AvailableSection[] = [
+	{ id: "featured-collection", displayName: "Featured collection" },
+	{ id: "featured-product", displayName: "Featured product" },
+	{ id: "collection-list", displayName: "Collection list" },
+	{ id: "rich-text", displayName: "Rich text" },
+	{ id: "image-with-text", displayName: "Image with text" },
+	{ id: "image-banner", displayName: "Image banner with text" },
+	{ id: "slideshow", displayName: "Image slides with text" },
+	{ id: "collage", displayName: "Featured product or collection" },
+	{ id: "multicolumn", displayName: "Multicolumn text" },
+	{ id: "multirow", displayName: "Multirow text" },
+	{ id: "collapsible-content", displayName: "Collapsible text" },
+	{ id: "newsletter", displayName: "Email signup form" },
+	{ id: "contact-form", displayName: "Contact form" },
+	{ id: "video", displayName: "Video" },
+	{ id: "featured-blog", displayName: "Blog posts" },
+	{ id: "bundle-deals", displayName: "Bundle deal" },
+	{ id: "comparison-table", displayName: "Comparison table" },
+	{ id: "content-tabs", displayName: "Tabs of image with text" },
+	{ id: "icon-bar", displayName: "Icon bar with text" },
+	{ id: "image-slider", displayName: "Image and video slides" },
+	{ id: "pricing-table", displayName: "Pricing table" },
+	{ id: "results", displayName: "Results table" },
+	{ id: "slideshow-hero", displayName: "Hero banner slides with text" },
+	{ id: "testimonials", displayName: "Testimonials table" },
+];
+
+export const STORE_PAGES: StorePage[] = [
+	{
+		id: "index",
+		displayName: "Home page",
+		filename: "index.json",
+	},
+	{
+		id: "product",
+		displayName: "Product page",
+		filename: "product.json",
+		requiredSections: ["main-product", "related-products"],
+	},
+	{
+		id: "collection",
+		displayName: "Collection page",
+		filename: "collection.json",
+		requiredSections: [
+			"main-collection-banner",
+			"main-collection-product-grid",
+		],
+	},
+	{
+		id: "list-collections",
+		displayName: "Collections list page",
+		filename: "list-collections.json",
+		requiredSections: ["main-list-collections"],
+	},
+	{
+		id: "article",
+		displayName: "Blog post page",
+		filename: "article.json",
+		requiredSections: ["main-article"],
+	},
+	{
+		id: "blog",
+		displayName: "Blogs page",
+		filename: "blog.json",
+		requiredSections: ["main-blog"],
+	},
+];
+
+export const REQUIRED_SECTIONS: AvailableSection[] = [
+	{ id: "main-product", displayName: "Product information" },
+	{ id: "related-products", displayName: "Related products" },
+	{ id: "main-collection-banner", displayName: "Collection banner" },
+	{ id: "main-collection-product-grid", displayName: "Product grid" },
+	{ id: "main-list-collections", displayName: "Collections list page" },
+	{ id: "main-article", displayName: "Blog post" },
+	{ id: "main-blog", displayName: "Blog posts" },
+];
+
+export const DEFAULT_STORE_LAYOUT: StoreLayout = {
+	index: {
+		include: true,
+		sections: [],
+	},
+	product: {
+		include: true,
+		sections: ["main-product", "related-products"],
+	},
+	collection: {
+		include: true,
+		sections: ["main-collection-banner", "main-collection-product-grid"],
+	},
+	"list-collections": {
+		include: true,
+		sections: ["main-list-collections"],
+	},
+	article: {
+		include: true,
+		sections: ["main-article"],
+	},
+	blog: {
+		include: true,
+		sections: ["main-blog"],
+	},
+};
