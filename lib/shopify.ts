@@ -2484,6 +2484,192 @@ export class ShopifyClient {
 		}
 	}
 
+	// Publish recently created collections to Online Store sales channel
+	private async publishCollectionsToOnlineStore(): Promise<number> {
+		try {
+			console.log(
+				"Publishing collections to Online Store sales channel..."
+			);
+
+			// Get Online Store publication ID
+			const publicationId = await this.getOnlineStorePublicationId();
+
+			type CollectionToPublish = {
+				id: string;
+				title: string;
+				createdAt: string;
+			};
+
+			// Query recently created collections (within last 5 minutes)
+			const fiveMinutesAgo = new Date(
+				Date.now() - 5 * 60 * 1000
+			).toISOString();
+			const allCollections: CollectionToPublish[] = [];
+			let hasNextPage = true;
+			let cursor: string | null = null;
+			let publishedCount = 0;
+
+			while (hasNextPage) {
+				const query = `
+					query getCollections($first: Int!, $after: String, $query: String!) {
+						collections(first: $first, after: $after, query: $query) {
+							edges {
+								node {
+									id
+									title
+									createdAt
+									publishedOnPublication(publicationId: "${publicationId}")
+								}
+								cursor
+							}
+							pageInfo {
+								hasNextPage
+							}
+						}
+					}
+				`;
+
+				const variables: {
+					first: number;
+					after: string | null;
+					query: string;
+				} = {
+					first: 50,
+					after: cursor,
+					query: `created_at:>=${fiveMinutesAgo}`,
+				};
+
+				const result = await this.makeGraphQLRequest<{
+					collections: {
+						edges: Array<{
+							node: {
+								id: string;
+								title: string;
+								createdAt: string;
+								publishedOnPublication: boolean;
+							};
+							cursor: string;
+						}>;
+						pageInfo: {
+							hasNextPage: boolean;
+						};
+					};
+				}>(query, variables);
+
+				const collections = result.collections.edges
+					.map(
+						(edge: {
+							node: CollectionToPublish & {
+								publishedOnPublication: boolean;
+							};
+							cursor: string;
+						}) => edge.node
+					)
+					.filter(
+						(
+							collection: CollectionToPublish & {
+								publishedOnPublication: boolean;
+							}
+						) => !collection.publishedOnPublication
+					); // Only unpublished collections
+
+				allCollections.push(...collections);
+
+				hasNextPage = result.collections.pageInfo.hasNextPage;
+				if (hasNextPage && result.collections.edges.length > 0) {
+					cursor =
+						result.collections.edges[
+							result.collections.edges.length - 1
+						].cursor;
+				}
+			}
+
+			console.log(
+				`Found ${allCollections.length} collections to publish`
+			);
+
+			// Publish each collection
+			for (const collection of allCollections) {
+				try {
+					await this.publishCollectionToOnlineStore(
+						collection.id,
+						publicationId
+					);
+					publishedCount++;
+					console.log(`Published collection: ${collection.title}`);
+				} catch (error) {
+					console.error(
+						`Failed to publish collection ${collection.title}:`,
+						error
+					);
+				}
+			}
+
+			console.log(
+				`Successfully published ${publishedCount} collections to Online Store`
+			);
+			return publishedCount;
+		} catch (error) {
+			console.error(
+				"Error publishing collections to Online Store:",
+				error
+			);
+			return 0;
+		}
+	}
+
+	// Publish a single collection to Online Store sales channel
+	private async publishCollectionToOnlineStore(
+		collectionId: string,
+		publicationId: string
+	): Promise<void> {
+		const mutation = `
+			mutation publishablePublish($id: ID!, $input: [PublicationInput!]!, $publicationId: ID!) {
+				publishablePublish(id: $id, input: $input) {
+					publishable {
+						... on Collection {
+							id
+							title
+							publishedOnPublication(publicationId: $publicationId)
+						}
+					}
+					userErrors {
+						field
+						message
+					}
+				}
+			}
+		`;
+
+		const variables = {
+			id: collectionId,
+			input: [
+				{
+					publicationId: publicationId,
+				},
+			],
+			publicationId: publicationId, // For the fragment query
+		};
+
+		const result = await this.makeGraphQLRequest<{
+			publishablePublish: {
+				publishable: {
+					id: string;
+					title: string;
+					publishedOnPublication: boolean;
+				};
+				userErrors: Array<{ field: string; message: string }>;
+			};
+		}>(mutation, variables);
+
+		if (result.publishablePublish.userErrors.length > 0) {
+			const errors = result.publishablePublish.userErrors
+				.map((error) => error.message)
+				.join("; ");
+			throw new Error(`Collection publish errors: ${errors}`);
+		}
+	}
+
 	// Create staged upload for JSONL file
 	private async createStagedUpload(): Promise<{
 		url: string;
@@ -4029,6 +4215,18 @@ export class ShopifyClient {
 					);
 					// Continue with other collections instead of failing the entire process
 				}
+			}
+
+			// Publish newly created collections to Online Store sales channel
+			if (collections_created > 0) {
+				console.log(
+					"Publishing collections to Online Store sales channel..."
+				);
+				const publishedCount =
+					await this.publishCollectionsToOnlineStore();
+				console.log(
+					`Published ${publishedCount} collections to Online Store`
+				);
 			}
 
 			console.log("Store collections generation completed");
