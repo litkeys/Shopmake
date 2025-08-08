@@ -1,0 +1,89 @@
+{
+	"type": "image-slider",
+	"blocks": {
+		"image_slide_ENMgip": {
+			"type": "image_slide",
+			"settings": {
+				"link": "",
+				"description": "",
+				"desc_alignment": "center",
+				"desc_color_scheme": "background-2"
+			}
+		},
+		"image_slide_zzKCBi": {
+			"type": "image_slide",
+			"settings": {
+				"link": "",
+				"description": "",
+				"desc_alignment": "center",
+				"desc_color_scheme": "background-2"
+			}
+		},
+		"image_slide_W4yQY3": {
+			"type": "image_slide",
+			"settings": {
+				"link": "",
+				"description": "",
+				"desc_alignment": "center",
+				"desc_color_scheme": "background-2"
+			}
+		},
+		"image_slide_y7XR3G": {
+			"type": "image_slide",
+			"settings": {
+				"link": "",
+				"description": "",
+				"desc_alignment": "center",
+				"desc_color_scheme": "background-2"
+			}
+		}
+	},
+	"block_order": [
+		"image_slide_ENMgip",
+		"image_slide_zzKCBi",
+		"image_slide_W4yQY3",
+		"image_slide_y7XR3G"
+	],
+	"name": "Image/Video Slider",
+	"settings": {
+		"display_id": false,
+		"visibility": "always-display",
+		"title": "Image/Video slider",
+		"title_highlight_color": "#6D388B",
+		"heading_size": "h2",
+		"color_scheme": "background-1",
+		"type": "loop",
+		"drag": "enabled",
+		"autoplay": true,
+		"autoplay_speed": 5,
+		"center_mode": false,
+		"arrows_color_scheme": "inverse",
+		"transparent_arrows": false,
+		"dots_color_scheme": "inverse",
+		"desktop_page_width": "normal",
+		"desktop_border_radius": 0,
+		"slides_desktop": 3,
+		"per_move_desktop": 1,
+		"desktop_spacing": 28,
+		"desktop_side_padding": 0,
+		"desktop_padding_calc": true,
+		"desktop_adaptive_height": false,
+		"desktop_dots_position": "under",
+		"desktop_arrows_position": "sides",
+		"mobile_full_page": false,
+		"mobile_border_radius": 0,
+		"slides_mobile": 2,
+		"per_move_mobile": 1,
+		"mobile_spacing": 12,
+		"mobile_side_padding": 0,
+		"mobile_padding_calc": true,
+		"mobile_adaptive_height": false,
+		"mobile_dots_position": "under",
+		"mobile_arrows_position": "sides",
+		"padding_top": 36,
+		"padding_bottom": 36,
+		"custom_colors_background": "#FFFFFF",
+		"custom_gradient_background": "",
+		"custom_colors_text": "#121212"
+	}
+}

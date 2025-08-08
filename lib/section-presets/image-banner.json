@@ -1,0 +1,21 @@
+{
+	"type": "image-banner",
+	"name": "t:sections.image-banner.presets.name",
+	"settings": {
+		"display_id": false,
+		"visibility": "always-display",
+		"image_1_visibility": "always-display",
+		"image_2_visibility": "always-display",
+		"image_overlay_opacity": 50,
+		"image_height": "small",
+		"url": "",
+		"desktop_content_position": "middle-center",
+		"show_text_box": true,
+		"desktop_content_alignment": "center",
+		"color_scheme": "background-1",
+		"transparent_container_color": "white",
+		"mobile_content_alignment": "center",
+		"stack_images_on_mobile": false,
+		"show_text_below": false
+	}
+}

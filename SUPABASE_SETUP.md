@@ -72,11 +72,11 @@ CREATE TABLE store_data (
     contact_information TEXT,
     -- Store Layout
     store_layout JSONB DEFAULT '{
-        "index": {"include": true, "sections": []},
+        "index": {"include": true, "sections": ["slideshow-hero", "image-with-text", "collection-list", "featured-collection", "icon-bar", "multicolumn", "testimonials", "featured-blog"]},
         "product": {"include": true, "sections": ["main-product", "related-products"]},
-        "collection": {"include": true, "sections": ["main-collection-banner", "main-collection-product-grid"]},
-        "list-collections": {"include": true, "sections": ["main-list-collections"]},
-        "article": {"include": true, "sections": ["main-article"]},
+        "collection": {"include": true, "sections": ["main-collection-banner", "image-banner", "featured-collection", "main-collection-product-grid"]},
+        "list-collections": {"include": true, "sections": ["image-banner", "collection-list", "main-list-collections"]},
+        "article": {"include": true, "sections": ["main-article", "featured-blog", "featured-collection"]},
         "blog": {"include": true, "sections": ["main-blog"]}
     }',
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

@@ -1,0 +1,102 @@
+{
+	"type": "multicolumn",
+	"blocks": {
+		"column_N87m7D": {
+			"type": "column",
+			"settings": {
+				"muted_autoplay": true,
+				"title": "Brand Value/Benefit",
+				"text": "<p>Describe in 10-15 words about the value/benefit.</p>",
+				"link_label": "",
+				"link": ""
+			}
+		},
+		"column_6qFAy6": {
+			"type": "column",
+			"settings": {
+				"muted_autoplay": true,
+				"title": "Brand Value/Benefit",
+				"text": "<p>Describe in 10-15 words about the value/benefit.</p>",
+				"link_label": "",
+				"link": ""
+			}
+		},
+		"column_bGqwAw": {
+			"type": "column",
+			"settings": {
+				"muted_autoplay": true,
+				"title": "Brand Value/Benefit",
+				"text": "<p>Describe in 10-15 words about the value/benefit.</p>",
+				"link_label": "",
+				"link": ""
+			}
+		}
+	},
+	"block_order": ["column_N87m7D", "column_6qFAy6", "column_bGqwAw"],
+	"name": "t:sections.multicolumn.presets.name",
+	"settings": {
+		"display_id": false,
+		"visibility": "always-display",
+		"title": "Brand Value Proposition",
+		"title_highlight_color": "#000000",
+		"heading_size": "h2",
+		"button_label": "",
+		"button_link": "",
+		"atc_button_label": "",
+		"atc_product": "",
+		"atc_skip_cart": false,
+		"color_scheme": "background-1",
+		"cards_color_scheme": "accent-1",
+		"cards_corner_radius": 20,
+		"stretch_cards": true,
+		"stretched_cards_content_alignment": "center",
+		"image_width": "full",
+		"image_ratio": "square",
+		"media_position": "top",
+		"column_alignment": "center",
+		"desktop_heading_size": 24,
+		"mobile_heading_size": 22,
+		"desktop_text_size": 16,
+		"mobile_text_size": 15,
+		"desktop_text_top_margin": 10,
+		"mobile_text_top_margin": 10,
+		"desktop_container_padding_y": 24,
+		"desktop_container_padding_x": 24,
+		"mobile_container_padding_y": 24,
+		"mobile_container_padding_x": 24,
+		"type": "slide",
+		"autoplay": false,
+		"autoplay_speed": 5,
+		"arrows_color_scheme": "inverse",
+		"transparent_arrows": true,
+		"dots_color_scheme": "inverse",
+		"desktop_full_page": false,
+		"columns_desktop": 3,
+		"slider_desktop": false,
+		"per_move_desktop": 1,
+		"desktop_spacing": 40,
+		"desktop_side_padding": 0,
+		"desktop_padding_calc": true,
+		"desktop_adaptive_height": false,
+		"desktop_dots_position": "under",
+		"desktop_arrows_position": "sides",
+		"columns_mobile": "1",
+		"slider_mobile": true,
+		"enable_mobile_preview": false,
+		"mobile_adaptive_height": false,
+		"mobile_dots_position": "under",
+		"mobile_arrows_position": "under",
+		"padding_top": 36,
+		"padding_bottom": 36,
+		"custom_colors_background": "#ffffff",
+		"custom_gradient_background": "",
+		"custom_colors_text": "#2e2a39",
+		"custom_colors_solid_button_background": "#dd1d1d",
+		"custom_colors_solid_button_text": "#ffffff",
+		"custom_colors_outline_button": "#dd1d1d",
+		"custom_cards_colors_background": "#f3f3f3",
+		"custom_cards_gradient_background": "",
+		"custom_cards_colors_heading": "#222126",
+		"custom_cards_colors_text": "#2e2a39"
+	}
+}

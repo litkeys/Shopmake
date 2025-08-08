@@ -1,0 +1,93 @@
+{
+	"type": "collection-list",
+	"blocks": {
+		"featured_collection_g9e9jX": {
+			"type": "featured_collection",
+			"settings": {
+				"collection": "",
+				"custom_title": ""
+			}
+		},
+		"featured_collection_wE9VBV": {
+			"type": "featured_collection",
+			"settings": {
+				"collection": "",
+				"custom_title": ""
+			}
+		},
+		"featured_collection_jBtfrm": {
+			"type": "featured_collection",
+			"settings": {
+				"collection": "",
+				"custom_title": ""
+			}
+		}
+	},
+	"block_order": [
+		"featured_collection_g9e9jX",
+		"featured_collection_wE9VBV",
+		"featured_collection_jBtfrm"
+	],
+	"name": "t:sections.collection-list.presets.name",
+	"settings": {
+		"display_id": false,
+		"visibility": "always-display",
+		"title": "Shop By Collection",
+		"title_highlight_color": "#000000",
+		"heading_size": "h2",
+		"color_scheme": "background-1",
+		"image_ratio": "square",
+		"show_view_all": false,
+		"custon_styling": false,
+		"card_style": "card",
+		"cards_color_scheme": "background-1",
+		"card_text_alignment": "left",
+		"cards_corner_radius": 10,
+		"card_title_limited_lines": "1",
+		"card_title_position": "over-bottom",
+		"cards_title_overlay_color": "#000000",
+		"cards_title_overlay_opacity": 40,
+		"cards_title_over_color": "#ffffff",
+		"cards_desktop_title_size": 24,
+		"cards_mobile_title_size": 20,
+		"cards_show_arrow": true,
+		"cards_cta_label": "",
+		"cards_cta_style": "secondary",
+		"cards_cta_full_width": false,
+		"cards_cta_color": "#000000",
+		"cards_desktop_cta_size": 16,
+		"cards_mobile_cta_size": 14,
+		"cards_cta_height": 220,
+		"cards_cta_padding": 200,
+		"cards_cta_top_margin": 100,
+		"type": "loop",
+		"autoplay": true,
+		"autoplay_speed": 5,
+		"arrows_color_scheme": "inverse",
+		"transparent_arrows": true,
+		"dots_color_scheme": "inverse",
+		"desktop_page_width": "normal",
+		"columns_desktop": 3,
+		"desktop_spacing": 40,
+		"slider_desktop": true,
+		"per_move_desktop": 1,
+		"desktop_side_padding": 0,
+		"desktop_padding_calc": true,
+		"desktop_adaptive_height": false,
+		"desktop_dots_position": "under",
+		"desktop_arrows_position": "sides",
+		"mobile_full_page": true,
+		"columns_mobile_int": 1,
+		"mobile_spacing": 15,
+		"slider_mobile": true,
+		"enable_mobile_preview": false,
+		"mobile_adaptive_height": false,
+		"mobile_dots_position": "under",
+		"mobile_arrows_position": "under",
+		"padding_top": 36,
+		"padding_bottom": 36,
+		"custom_colors_background": "#ffffff",
+		"custom_gradient_background": "",
+		"custom_colors_text": "#2e2a39"
+	}
+}

@@ -241,26 +241,16 @@ export interface StorePage {
 // Constants for store layout
 export const AVAILABLE_SECTIONS: AvailableSection[] = [
 	{ id: "featured-collection", displayName: "Featured collection" },
-	{ id: "featured-product", displayName: "Featured product" },
 	{ id: "collection-list", displayName: "Collection list" },
 	{ id: "rich-text", displayName: "Rich text" },
 	{ id: "image-with-text", displayName: "Image with text" },
 	{ id: "image-banner", displayName: "Image banner with text" },
-	{ id: "slideshow", displayName: "Image slides with text" },
 	{ id: "collage", displayName: "Featured product or collection" },
 	{ id: "multicolumn", displayName: "Multicolumn text" },
-	{ id: "multirow", displayName: "Multirow text" },
-	{ id: "collapsible-content", displayName: "Collapsible text" },
-	{ id: "newsletter", displayName: "Email signup form" },
-	{ id: "contact-form", displayName: "Contact form" },
 	{ id: "video", displayName: "Video" },
 	{ id: "featured-blog", displayName: "Blog posts" },
-	{ id: "bundle-deals", displayName: "Bundle deal" },
-	{ id: "comparison-table", displayName: "Comparison table" },
-	{ id: "content-tabs", displayName: "Tabs of image with text" },
 	{ id: "icon-bar", displayName: "Icon bar with text" },
 	{ id: "image-slider", displayName: "Image and video slides" },
-	{ id: "pricing-table", displayName: "Pricing table" },
 	{ id: "results", displayName: "Results table" },
 	{ id: "slideshow-hero", displayName: "Hero banner slides with text" },
 	{ id: "testimonials", displayName: "Testimonials table" },
@@ -320,7 +310,16 @@ export const REQUIRED_SECTIONS: AvailableSection[] = [
 export const DEFAULT_STORE_LAYOUT: StoreLayout = {
 	index: {
 		include: true,
-		sections: [],
+		sections: [
+			"slideshow-hero",
+			"image-with-text",
+			"collection-list",
+			"featured-collection",
+			"icon-bar",
+			"multicolumn",
+			"testimonials",
+			"featured-blog",
+		],
 	},
 	product: {
 		include: true,
@@ -328,15 +327,20 @@ export const DEFAULT_STORE_LAYOUT: StoreLayout = {
 	},
 	collection: {
 		include: true,
-		sections: ["main-collection-banner", "main-collection-product-grid"],
+		sections: [
+			"main-collection-banner",
+			"image-banner",
+			"featured-collection",
+			"main-collection-product-grid",
+		],
 	},
 	"list-collections": {
 		include: true,
-		sections: ["main-list-collections"],
+		sections: ["image-banner", "collection-list", "main-list-collections"],
 	},
 	article: {
 		include: true,
-		sections: ["main-article"],
+		sections: ["main-article", "featured-blog", "featured-collection"],
 	},
 	blog: {
 		include: true,

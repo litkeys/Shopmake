@@ -1,0 +1,91 @@
+{
+	"type": "icon-bar",
+	"blocks": {
+		"column_94EFw8": {
+			"type": "column",
+			"settings": {
+				"icon": "check_circle",
+				"filled_icon": false,
+				"title": "Icon",
+				"text": "<p>A unique quality of your products and collections</p>"
+			}
+		},
+		"column_izwFrt": {
+			"type": "column",
+			"settings": {
+				"icon": "check_circle",
+				"filled_icon": false,
+				"title": "Icon",
+				"text": "<p>A unique quality of your products and collections</p>"
+			}
+		},
+		"column_MgzKGG": {
+			"type": "column",
+			"settings": {
+				"icon": "check_circle",
+				"filled_icon": false,
+				"title": "Icon",
+				"text": "<p>A unique quality of your products and collections</p>"
+			}
+		},
+		"column_TrN4Ng": {
+			"type": "column",
+			"settings": {
+				"icon": "check_circle",
+				"filled_icon": false,
+				"title": "Icon",
+				"text": "<p>A unique quality of your products and collections</p>"
+			}
+		}
+	},
+	"block_order": [
+		"column_94EFw8",
+		"column_izwFrt",
+		"column_MgzKGG",
+		"column_TrN4Ng"
+	],
+	"name": "Icon Bar",
+	"settings": {
+		"display_id": false,
+		"visibility": "always-display",
+		"title": "Brand Qualities",
+		"title_highlight_color": "#6D388B",
+		"heading_size": "h2",
+		"text": "",
+		"color_scheme": "background-1",
+		"icon_layout": "vertical",
+		"icon_size": "medium",
+		"icon_color": "accent-1",
+		"cards_color_scheme": "background-1",
+		"type": "slide",
+		"autoplay": false,
+		"autoplay_speed": 5,
+		"arrows_color_scheme": "inverse",
+		"transparent_arrows": true,
+		"dots_color_scheme": "inverse",
+		"desktop_full_page": false,
+		"columns_desktop": 4,
+		"slider_desktop": false,
+		"per_move_desktop": 1,
+		"desktop_spacing": 40,
+		"desktop_side_padding": 0,
+		"desktop_padding_calc": true,
+		"desktop_adaptive_height": false,
+		"desktop_dots_position": "under",
+		"desktop_arrows_position": "sides",
+		"columns_mobile": "1",
+		"slider_mobile": true,
+		"enable_mobile_preview": false,
+		"mobile_adaptive_height": false,
+		"mobile_dots_position": "under",
+		"mobile_arrows_position": "under",
+		"padding_top": 36,
+		"padding_bottom": 36,
+		"custom_colors_background": "#FFFFFF",
+		"custom_gradient_background": "",
+		"custom_colors_text": "#2E2A39",
+		"custom_cards_colors_background": "#F3F3F3",
+		"custom_cards_gradient_background": "",
+		"custom_cards_colors_text": "#2E2A39"
+	}
+}

@@ -1,0 +1,60 @@
+{
+	"type": "results",
+	"blocks": {
+		"row_aTQdR4": {
+			"type": "row",
+			"settings": {
+				"percentage": 90,
+				"row_text": "<p>Noticed that this product has significantly improved their life.</p>"
+			}
+		},
+		"row_BPBdPP": {
+			"type": "row",
+			"settings": {
+				"percentage": 90,
+				"row_text": "<p>Noticed that this product has significantly improved their life.</p>"
+			}
+		},
+		"row_Rgmb8x": {
+			"type": "row",
+			"settings": {
+				"percentage": 90,
+				"row_text": "<p>Noticed that this product has significantly improved their life.</p>"
+			}
+		}
+	},
+	"block_order": ["row_aTQdR4", "row_BPBdPP", "row_Rgmb8x"],
+	"name": "Results",
+	"settings": {
+		"display_id": false,
+		"visibility": "always-display",
+		"title": "Results",
+		"title_highlight_color": "#6d388b",
+		"heading_size": "h2",
+		"text": "<p>Talk about results of your customers and how your product improved their life.</p>",
+		"video_muted_autoplay": true,
+		"color_scheme": "background-1",
+		"layout": "results_second",
+		"results_headline": "Results heading",
+		"results_title_highlight_color": "#6d388b",
+		"results_headline_size": "h3",
+		"results_text": "",
+		"results_headline_alignment": "left",
+		"caption": "<p>Caption about the results and/or link for their proof.</p>",
+		"button_label": "",
+		"link": "",
+		"button_style_secondary": false,
+		"atc_button_label": "",
+		"atc_product": "",
+		"atc_skip_cart": false,
+		"padding_top": 36,
+		"padding_bottom": 36,
+		"custom_colors_background": "#ffffff",
+		"custom_gradient_background": "",
+		"custom_colors_text": "#2e2a39",
+		"custom_colors_accent": "#dd1d1d",
+		"custom_colors_solid_button_background": "#dd1d1d",
+		"custom_colors_solid_button_text": "#ffffff",
+		"custom_colors_outline_button": "#dd1d1d"
+	}
+}
