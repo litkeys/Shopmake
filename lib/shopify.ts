@@ -2263,6 +2263,39 @@ export class ShopifyClient {
 		try {
 			console.log("Starting product import...");
 
+			// Parse the JSONL content to extract product titles we're trying to import
+			const titlesToImport = new Set<string>();
+			const lines = jsonlContent
+				.trim()
+				.split("\n")
+				.filter((line) => line.trim());
+
+			for (const line of lines) {
+				try {
+					const productData = JSON.parse(line);
+					if (productData.input && productData.input.title) {
+						titlesToImport.add(
+							productData.input.title.toLowerCase().trim()
+						);
+					}
+				} catch (parseError) {
+					console.warn(
+						"Failed to parse product title from JSONL line:",
+						parseError
+					);
+				}
+			}
+
+			console.log(
+				`Attempting to import ${titlesToImport.size} unique product titles`
+			);
+
+			// Get existing product titles before import
+			const existingTitles = await this.getExistingProductTitles(
+				Array.from(titlesToImport)
+			);
+			console.log(`Found ${existingTitles.size} products already exist`);
+
 			// Create staged upload
 			const stagedUpload = await this.createStagedUpload();
 
@@ -2286,20 +2319,119 @@ export class ShopifyClient {
 				keyParameter.value
 			);
 
-			// Wait for completion and return count
+			// Wait for completion
 			const completedOperation =
 				await this.waitForBulkOperationCompletion(bulkOperation.id);
 
-			const baseProductCount = completedOperation.objectCount || 0;
+			// Check if operation completed successfully
+			if (completedOperation.status !== "COMPLETED") {
+				throw new Error(
+					`Bulk operation failed with status: ${completedOperation.status}`
+				);
+			}
 
-			// Just return the count - other steps are handled by separate methods
-			return baseProductCount;
+			// Get product titles after import to find newly created ones
+			const finalTitles = await this.getExistingProductTitles(
+				Array.from(titlesToImport)
+			);
+
+			// Calculate how many new products were actually created
+			const newlyCreatedTitles = Array.from(titlesToImport).filter(
+				(title) => !existingTitles.has(title) && finalTitles.has(title)
+			);
+
+			const actuallyCreated = newlyCreatedTitles.length;
+			console.log(
+				`Successfully imported ${actuallyCreated} new products`
+			);
+
+			if (actuallyCreated > 0) {
+				console.log(
+					`Newly created product titles:`,
+					newlyCreatedTitles.slice(0, 5)
+				); // Log first 5 for debugging
+			}
+
+			return actuallyCreated;
 		} catch (error) {
 			console.error(
 				"Product import failed:",
 				error instanceof Error ? error.message : String(error)
 			);
 			throw error;
+		}
+	}
+
+	// Get existing product titles for comparison
+	private async getExistingProductTitles(
+		titlesToCheck: string[]
+	): Promise<Set<string>> {
+		try {
+			const existingTitles = new Set<string>();
+
+			// Query products in batches to check which titles already exist
+			const batchSize = 250;
+			for (let i = 0; i < titlesToCheck.length; i += batchSize) {
+				const titleBatch = titlesToCheck.slice(i, i + batchSize);
+
+				// Create a query to search for products by title
+				const titleQueries = titleBatch
+					.map((title) => `title:"${title.replace(/"/g, '\\"')}"`)
+					.join(" OR ");
+
+				let hasNextPage = true;
+				let cursor: string | null = null;
+
+				while (hasNextPage) {
+					const query = `
+						query($cursor: String, $query: String!) {
+							products(first: 250, after: $cursor, query: $query) {
+								nodes {
+									title
+								}
+								pageInfo {
+									hasNextPage
+									endCursor
+								}
+							}
+						}
+					`;
+
+					const result: {
+						products: {
+							nodes: Array<{ title: string }>;
+							pageInfo: {
+								hasNextPage: boolean;
+								endCursor: string | null;
+							};
+						};
+					} = await this.makeGraphQLRequest(query, {
+						cursor,
+						query: titleQueries,
+					});
+
+					if (result.products?.nodes) {
+						result.products.nodes.forEach(
+							(product: { title: string }) => {
+								if (product.title) {
+									existingTitles.add(
+										product.title.toLowerCase().trim()
+									);
+								}
+							}
+						);
+					}
+
+					hasNextPage =
+						result.products?.pageInfo?.hasNextPage ?? false;
+					cursor = result.products?.pageInfo?.endCursor ?? null;
+				}
+			}
+
+			return existingTitles;
+		} catch (error) {
+			console.error("Error checking existing product titles:", error);
+			return new Set<string>(); // Return empty set on error to be safe
 		}
 	}
 
@@ -2782,75 +2914,10 @@ export class ShopifyClient {
 			const operation = result.node;
 
 			if (operation.status === "COMPLETED") {
-				// Query Shopify directly for accurate product count
-				let actualProductCount = 0;
-
-				try {
-					type SimpleProduct = { id: string; createdAt: string };
-					const allProducts: SimpleProduct[] = [];
-					let hasNextPage = true;
-					let cursor: string | null = null;
-
-					while (hasNextPage) {
-						const productsQuery = `
-							query($cursor: String) {
-								products(first: 250, after: $cursor, sortKey: CREATED_AT, reverse: true) {
-									nodes {
-										id
-										createdAt
-									}
-									pageInfo {
-										hasNextPage
-										endCursor
-									}
-								}
-							}
-						`;
-
-						const productsResult: {
-							products: {
-								nodes: SimpleProduct[];
-								pageInfo: {
-									hasNextPage: boolean;
-									endCursor: string | null;
-								};
-							};
-						} = await this.makeGraphQLRequest(productsQuery, {
-							cursor,
-						});
-
-						if (productsResult.products?.nodes) {
-							allProducts.push(...productsResult.products.nodes);
-						}
-						hasNextPage =
-							productsResult.products?.pageInfo?.hasNextPage ??
-							false;
-						cursor =
-							productsResult.products?.pageInfo?.endCursor ??
-							null;
-					}
-
-					// Count products created in the last 10 minutes
-					const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-					const recentProducts = allProducts.filter(
-						(product) => new Date(product.createdAt) > tenMinutesAgo
-					);
-
-					actualProductCount = recentProducts.length;
-					console.log(
-						`Successfully imported ${actualProductCount} products`
-					);
-				} catch (countError) {
-					console.error(
-						"Could not count imported products:",
-						countError
-					);
-					actualProductCount = 0;
-				}
-
+				// Return completion status - actual counting is handled by caller
 				return {
 					status: operation.status,
-					objectCount: actualProductCount,
+					objectCount: 0, // Will be set by the calling method
 				};
 			}
 
