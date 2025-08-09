@@ -45,6 +45,7 @@ import {
 	generateStoreCollectionsAPI,
 	generateStoreCustomersAPI,
 	updateStorePoliciesAPI,
+	generateStoreCompositionAPI,
 	connectShopifyStoreAPI,
 	disconnectShopifyStoreAPI,
 	deleteStoreAPI,
@@ -116,7 +117,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [generationProgress, setGenerationProgress] = useState({
 		currentStep: 0,
-		totalSteps: 8,
+		totalSteps: 9,
 		stepName: "",
 		stepDescription: "",
 		percentage: 0,
@@ -132,6 +133,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		collections?: any;
 		customers?: any;
 		policies?: any;
+		composition?: any;
 	}>({});
 	const [store, setStore] = useState<Store | null>(null);
 	const [storeData, setStoreData] = useState<StoreData | null>(null);
@@ -1415,7 +1417,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 0) {
 				setGenerationProgress({
 					currentStep: 1,
-					totalSteps: 8,
+					totalSteps: 9,
 					stepName: "Foundation",
 					stepDescription:
 						"Setting up theme, locations, and branding...",
@@ -1458,7 +1460,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 1) {
 				setGenerationProgress({
 					currentStep: 2,
-					totalSteps: 8,
+					totalSteps: 9,
 					stepName: "Visuals",
 					stepDescription: "Updating theme colors and fonts...",
 					percentage: 10,
@@ -1499,7 +1501,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 2) {
 				setGenerationProgress({
 					currentStep: 3,
-					totalSteps: 8,
+					totalSteps: 9,
 					stepName: "Products",
 					stepDescription:
 						"Importing products, images, and categories...",
@@ -1541,7 +1543,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 3) {
 				setGenerationProgress({
 					currentStep: 4,
-					totalSteps: 8,
+					totalSteps: 9,
 					stepName: "Variants",
 					stepDescription:
 						"Adding variants and publishing products...",
@@ -1559,7 +1561,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 					setGenerationProgress((prev) => ({
 						...prev,
-						percentage: 50,
+						percentage: 45,
 						lastCompletedStep: 3,
 					}));
 
@@ -1583,10 +1585,10 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 4) {
 				setGenerationProgress({
 					currentStep: 5,
-					totalSteps: 8,
+					totalSteps: 9,
 					stepName: "Inventory",
 					stepDescription: "Adding inventory quantities...",
-					percentage: 50,
+					percentage: 45,
 					canResume: true,
 					lastCompletedStep: 3,
 				});
@@ -1600,7 +1602,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 					setGenerationProgress((prev) => ({
 						...prev,
-						percentage: 70,
+						percentage: 60,
 						lastCompletedStep: 4,
 					}));
 
@@ -1627,10 +1629,10 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 5) {
 				setGenerationProgress({
 					currentStep: 6,
-					totalSteps: 8,
+					totalSteps: 9,
 					stepName: "Collections",
 					stepDescription: "Creating smart collections...",
-					percentage: 70,
+					percentage: 60,
 					canResume: true,
 					lastCompletedStep: 4,
 				});
@@ -1644,7 +1646,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 					setGenerationProgress((prev) => ({
 						...prev,
-						percentage: 80,
+						percentage: 65,
 						lastCompletedStep: 5,
 					}));
 
@@ -1671,10 +1673,10 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 6) {
 				setGenerationProgress({
 					currentStep: 7,
-					totalSteps: 8,
+					totalSteps: 9,
 					stepName: "Customers",
 					stepDescription: "Importing customers...",
-					percentage: 80,
+					percentage: 65,
 					canResume: true,
 					lastCompletedStep: 5,
 				});
@@ -1688,7 +1690,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 					setGenerationProgress((prev) => ({
 						...prev,
-						percentage: 90,
+						percentage: 75,
 						lastCompletedStep: 6,
 					}));
 
@@ -1712,10 +1714,10 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			if (startStep <= 7) {
 				setGenerationProgress({
 					currentStep: 8,
-					totalSteps: 8,
+					totalSteps: 9,
 					stepName: "Policies",
 					stepDescription: "Updating store policies...",
-					percentage: 95,
+					percentage: 75,
 					canResume: true,
 					lastCompletedStep: 6,
 				});
@@ -1729,7 +1731,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 
 					setGenerationProgress((prev) => ({
 						...prev,
-						percentage: 100,
+						percentage: 80,
 						lastCompletedStep: 7,
 					}));
 
@@ -1749,6 +1751,50 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				}
 			}
 
+			// Step 9: Composition (template files)
+			if (startStep <= 8) {
+				setGenerationProgress({
+					currentStep: 9,
+					totalSteps: 9,
+					stepName: "Composition",
+					stepDescription: "Updating store template files...",
+					percentage: 80,
+					canResume: true,
+					lastCompletedStep: 7,
+				});
+
+				try {
+					const compositionResult = await generateStoreCompositionAPI(
+						store.id
+					);
+					currentResults.composition = compositionResult;
+					setGenerationResults(currentResults);
+
+					setGenerationProgress((prev) => ({
+						...prev,
+						percentage: 100,
+						lastCompletedStep: 8,
+					}));
+
+					console.log(
+						"Store composition completed:",
+						compositionResult
+					);
+				} catch (err) {
+					console.error("Store composition error:", err);
+					setGenerationProgress((prev) => ({
+						...prev,
+						canResume: true,
+						lastCompletedStep: 7,
+					}));
+					throw new Error(
+						`Store composition failed: ${
+							err instanceof Error ? err.message : "Unknown error"
+						}`
+					);
+				}
+			}
+
 			// Success - all steps completed
 			const storeUrl = `https://${store.shopify_store_domain}.myshopify.com`;
 			setSuccess(
@@ -1759,7 +1805,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				// Reset progress after success
 				setGenerationProgress({
 					currentStep: 0,
-					totalSteps: 8,
+					totalSteps: 9,
 					stepName: "",
 					stepDescription: "",
 					percentage: 0,

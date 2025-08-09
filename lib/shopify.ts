@@ -4660,6 +4660,7 @@ export class ShopifyClient {
 		collections_created: number;
 		customers_created: number;
 		policies_updated: number;
+		templates_updated: number;
 	}> {
 		try {
 			console.log("Starting full store generation (legacy method)...");
@@ -4693,6 +4694,11 @@ export class ShopifyClient {
 			// Step 8: Policies
 			const policiesResult = await this.updateStorePolicies(storeData);
 
+			// Step 9: Composition (template files)
+			const compositionResult = await this.generateStoreComposition(
+				storeData
+			);
+
 			return {
 				theme_id: foundationResult.theme_id,
 				products_created: productsResult.products_created,
@@ -4706,6 +4712,7 @@ export class ShopifyClient {
 				collections_created: collectionsResult.collections_created,
 				customers_created: customersResult.customers_created,
 				policies_updated: policiesResult.policies_updated,
+				templates_updated: compositionResult.templates_updated,
 			};
 		} catch (error) {
 			console.error("Error generating store:", error);
@@ -5664,6 +5671,233 @@ export class ShopifyClient {
 				.map((error) => error.message)
 				.join("; ");
 			throw new Error(`Policy update errors for ${type}: ${errors}`);
+		}
+	}
+
+	// Generate store composition (update template files based on store layout)
+	async generateStoreComposition(storeData: StoreData): Promise<{
+		templates_updated: number;
+	}> {
+		try {
+			console.log("Starting store composition generation...");
+
+			if (!storeData.store_layout) {
+				console.log("No store layout found, skipping composition");
+				return { templates_updated: 0 };
+			}
+
+			// Get the active theme ID
+			const activeTheme = await this.getActiveTheme();
+			if (!activeTheme) {
+				throw new Error("No active theme found");
+			}
+
+			console.log(
+				`Updating template composition for theme ID: ${activeTheme.id}`
+			);
+
+			let templatesUpdated = 0;
+
+			// Process each page in the store layout
+			for (const [pageKey, pageLayout] of Object.entries(
+				storeData.store_layout
+			)) {
+				if (!pageLayout.include || !pageLayout.sections?.length) {
+					console.log(
+						`Skipping ${pageKey} page (not included or no sections)`
+					);
+					continue;
+				}
+
+				console.log(
+					`Processing ${pageKey} page with ${pageLayout.sections.length} sections`
+				);
+
+				try {
+					// Get the template filename for this page
+					const templateFilename = this.getTemplateFilename(pageKey);
+
+					// Update the template file
+					await this.updateTemplateFile(
+						activeTheme.id,
+						templateFilename,
+						pageLayout.sections
+					);
+					templatesUpdated++;
+					console.log(`Successfully updated ${templateFilename}`);
+				} catch (error) {
+					console.error(`Error updating ${pageKey} template:`, error);
+					// Continue with other templates instead of failing completely
+				}
+			}
+
+			console.log(
+				`Store composition generation completed. Updated ${templatesUpdated} templates`
+			);
+
+			return {
+				templates_updated: templatesUpdated,
+			};
+		} catch (error) {
+			console.error("Error generating store composition:", error);
+			// Don't throw - composition is not critical for store generation
+			console.log(
+				"Continuing store generation despite composition error..."
+			);
+			return {
+				templates_updated: 0,
+			};
+		}
+	}
+
+	// Helper method to get template filename for a page
+	private getTemplateFilename(pageKey: string): string {
+		const templateMap: Record<string, string> = {
+			index: "index.json",
+			product: "product.json",
+			collection: "collection.json",
+			"list-collections": "list-collections.json",
+			article: "article.json",
+			blog: "blog.json",
+		};
+
+		const filename = templateMap[pageKey];
+		if (!filename) {
+			throw new Error(`Unknown page type: ${pageKey}`);
+		}
+
+		return filename;
+	}
+
+	// Helper method to update a template file
+	private async updateTemplateFile(
+		themeId: number,
+		templateFilename: string,
+		sections: string[]
+	): Promise<void> {
+		try {
+			// Step 1: Fetch current template file
+			const currentTemplate = await this.getTemplateFile(
+				themeId,
+				templateFilename
+			);
+
+			// Step 2: Generate new template content
+			const newTemplate = await this.buildTemplateContent(sections);
+
+			// Step 3: Update the template file
+			await this.makeVisualsRequest(`/themes/${themeId}/assets.json`, {
+				method: "PUT",
+				body: JSON.stringify({
+					asset: {
+						key: `templates/${templateFilename}`,
+						value: JSON.stringify(newTemplate),
+					},
+				}),
+			});
+
+			console.log(`Successfully updated templates/${templateFilename}`);
+		} catch (error) {
+			console.error(
+				`Error updating template file ${templateFilename}:`,
+				error
+			);
+			throw error;
+		}
+	}
+
+	// Helper method to fetch a template file
+	private async getTemplateFile(
+		themeId: number,
+		templateFilename: string
+	): Promise<any> {
+		try {
+			const response = await this.makeVisualsRequest<{
+				asset: { value: string };
+			}>(
+				`/themes/${themeId}/assets.json?asset[key]=templates/${templateFilename}`
+			);
+
+			return JSON.parse(response.asset.value);
+		} catch (error) {
+			console.error(
+				`Error fetching template file ${templateFilename}:`,
+				error
+			);
+			// If template doesn't exist, return empty template structure
+			return {
+				sections: {},
+				order: [],
+			};
+		}
+	}
+
+	// Helper method to build template content from sections
+	private async buildTemplateContent(sections: string[]): Promise<{
+		sections: Record<string, any>;
+		order: string[];
+	}> {
+		const templateSections: Record<string, any> = {};
+		const templateOrder: string[] = [];
+		const sectionCounts: Record<string, number> = {};
+
+		for (const sectionType of sections) {
+			// Generate unique section key
+			const uniqueKey = this.generateUniqueSectionKey(
+				sectionType,
+				sectionCounts
+			);
+
+			// Load section preset
+			const sectionPreset = await this.loadSectionPreset(sectionType);
+
+			// Add to template
+			templateSections[uniqueKey] = sectionPreset;
+			templateOrder.push(uniqueKey);
+		}
+
+		return {
+			sections: templateSections,
+			order: templateOrder,
+		};
+	}
+
+	// Helper method to generate unique section keys
+	private generateUniqueSectionKey(
+		sectionType: string,
+		sectionCounts: Record<string, number>
+	): string {
+		if (!sectionCounts[sectionType]) {
+			sectionCounts[sectionType] = 1;
+			return sectionType;
+		} else {
+			sectionCounts[sectionType]++;
+			return `${sectionType}-${sectionCounts[sectionType]}`;
+		}
+	}
+
+	// Helper method to load section preset from file
+	private async loadSectionPreset(sectionType: string): Promise<any> {
+		try {
+			const fs = await import("fs/promises");
+			const path = await import("path");
+
+			const filePath = path.join(
+				process.cwd(),
+				"lib",
+				"section-presets",
+				`${sectionType}.json`
+			);
+			const fileContent = await fs.readFile(filePath, "utf-8");
+
+			return JSON.parse(fileContent);
+		} catch (error) {
+			console.error(
+				`Error loading section preset for ${sectionType}:`,
+				error
+			);
+			// Return empty object if preset file doesn't exist
+			return {};
 		}
 	}
 }

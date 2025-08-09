@@ -402,6 +402,29 @@ export async function updateStorePoliciesAPI(storeId: string): Promise<{
 	return result.result;
 }
 
+export async function generateStoreCompositionAPI(storeId: string): Promise<{
+	templates_updated: number;
+}> {
+	const response = await fetch(
+		`${getBaseUrl()}/api/shopify/generate/composition`,
+		{
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ storeId }),
+		}
+	);
+
+	if (!response.ok) {
+		const error = await response.json();
+		throw new Error(error.error || "Failed to generate store composition");
+	}
+
+	const result = await response.json();
+	return result.result;
+}
+
 export async function disconnectShopifyStoreAPI(
 	storeId: string
 ): Promise<void> {
