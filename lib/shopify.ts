@@ -5884,7 +5884,7 @@ export class ShopifyClient {
 
 			const filePath = path.join(
 				process.cwd(),
-				"lib",
+				"private",
 				"section-presets",
 				`${sectionType}.json`
 			);
