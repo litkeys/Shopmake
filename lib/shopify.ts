@@ -1,4 +1,4 @@
-import { SHOPIFY_CONFIG } from "./constants";
+import { SHOPIFY_CONFIG, SECTION_PRESETS_CONFIG } from "./constants";
 import { ShopifyAdminToken, StoreData, StoreLocation } from "@/types";
 
 // Test Admin API connection
@@ -5876,65 +5876,17 @@ export class ShopifyClient {
 		}
 	}
 
-	// Helper method to load section preset from public folder (Vercel-compatible)
-	private async loadSectionPreset(sectionType: string): Promise<any> {
+	// Helper method to load section preset using dynamic imports
+	private async loadSectionPreset(
+		sectionType: string,
+		theme: string = SECTION_PRESETS_CONFIG.DEFAULT_THEME
+	): Promise<any> {
 		try {
-			const fs = await import("fs/promises");
-			const path = await import("path");
-
-			// In Vercel, public files are accessible from the root directory
-			// Try different possible paths
-			const possiblePaths = [
-				// Vercel deployment path
-				path.join(
-					process.cwd(),
-					"public",
-					"section-presets",
-					`${sectionType}.json`
-				),
-				// Local development path
-				path.join(
-					process.cwd(),
-					"public",
-					"section-presets",
-					`${sectionType}.json`
-				),
-				// Alternative Vercel path
-				path.join(
-					"/var/task",
-					"public",
-					"section-presets",
-					`${sectionType}.json`
-				),
-			];
-
-			let fileContent: string | null = null;
-			let usedPath: string | null = null;
-
-			for (const filePath of possiblePaths) {
-				try {
-					fileContent = await fs.readFile(filePath, "utf-8");
-					usedPath = filePath;
-					break;
-				} catch (error) {
-					// Continue to next path
-					continue;
-				}
-			}
-
-			if (!fileContent) {
-				throw new Error(
-					`Section preset file not found for ${sectionType}`
-				);
-			}
-
-			console.log(
-				`Successfully loaded section preset for ${sectionType} from ${usedPath}`
-			);
-			return JSON.parse(fileContent);
+			const { loadSectionPreset } = await import("./section-presets");
+			return await loadSectionPreset(theme as any, sectionType);
 		} catch (error) {
 			console.error(
-				`Error loading section preset for ${sectionType}:`,
+				`Error loading section preset for ${theme}/${sectionType}:`,
 				error
 			);
 			// Return empty object if preset file doesn't exist

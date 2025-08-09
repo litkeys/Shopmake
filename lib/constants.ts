@@ -21,5 +21,10 @@ export const SHOPIFY_CONFIG = {
 		"https://cdn.example.com/genesis-theme.zip",
 } as const;
 
+// Section presets configuration
+export const SECTION_PRESETS_CONFIG = {
+	DEFAULT_THEME: "genesis",
+} as const;
+
 // Required environment variables for Shopify Custom App integration:
 // GENESIS_THEME_URL - URL to the Genesis theme ZIP file (in Supabase storage)
