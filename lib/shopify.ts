@@ -115,6 +115,63 @@ export class ShopifyClient {
 		this.accessToken = accessToken;
 	}
 
+	// Store product IDs in memory cache for persistence across API calls
+	private static productIdCache = new Map<
+		string,
+		{ ids: string[]; timestamp: number }
+	>();
+
+	// Store generated product IDs for later retrieval
+	private async storeGeneratedProductIds(
+		productIds: string[]
+	): Promise<void> {
+		try {
+			// Use shop domain as key and store with timestamp
+			const cacheKey = this.shop;
+			ShopifyClient.productIdCache.set(cacheKey, {
+				ids: productIds,
+				timestamp: Date.now(),
+			});
+
+			console.log(
+				`Stored ${productIds.length} product IDs for shop ${this.shop}`
+			);
+		} catch (error) {
+			console.error("Error storing product IDs:", error);
+		}
+	}
+
+	// Retrieve generated product IDs from storage
+	private async getStoredProductIds(): Promise<string[]> {
+		try {
+			const cacheKey = this.shop;
+			const cached = ShopifyClient.productIdCache.get(cacheKey);
+
+			if (!cached) {
+				console.log(
+					`No cached product IDs found for shop ${this.shop}`
+				);
+				return [];
+			}
+
+			// Check if cache is still valid (within last 30 minutes)
+			const thirtyMinutes = 30 * 60 * 1000;
+			if (Date.now() - cached.timestamp > thirtyMinutes) {
+				console.log(`Cached product IDs expired for shop ${this.shop}`);
+				ShopifyClient.productIdCache.delete(cacheKey);
+				return [];
+			}
+
+			console.log(
+				`Retrieved ${cached.ids.length} cached product IDs for shop ${this.shop}`
+			);
+			return cached.ids;
+		} catch (error) {
+			console.error("Error retrieving product IDs:", error);
+			return [];
+		}
+	}
+
 	private async makeRequest<T>(
 		endpoint: string,
 		options: RequestInit = {}
@@ -1512,7 +1569,7 @@ export class ShopifyClient {
 			const segments = categoryName.split(">").map((s) => s.trim());
 			const searchTerm = segments[segments.length - 1];
 
-			console.log(`Searching for taxonomy category: "${searchTerm}"`);
+			// console.log(`Searching for taxonomy category: "${searchTerm}"`);
 
 			const query = `
 				query($searchTerm: String!) {
@@ -1588,9 +1645,9 @@ export class ShopifyClient {
 			if (bestMatch) {
 				// Cache the result using the original category name as key
 				this.taxonomyCache.set(categoryName.toLowerCase(), bestMatch);
-				console.log(
-					`Found and cached category: "${categoryName}" -> "${bestMatch.fullName}" (${bestMatch.id})`
-				);
+				// console.log(
+				// 	`Found and cached category: "${categoryName}" -> "${bestMatch.fullName}" (${bestMatch.id})`
+				// );
 				return bestMatch;
 			}
 
@@ -1621,8 +1678,13 @@ export class ShopifyClient {
 		try {
 			console.log("Adding taxonomy categories to products...");
 
-			// Use provided product IDs or fall back to tracked ones
-			const idsToProcess = productIds || this.lastCreatedProductIds;
+			// Use provided product IDs or fall back to tracked ones, then cached ones
+			let idsToProcess = productIds || this.lastCreatedProductIds;
+
+			// If still no IDs, try to retrieve from cache
+			if (idsToProcess.length === 0) {
+				idsToProcess = await this.getStoredProductIds();
+			}
 
 			if (idsToProcess.length === 0) {
 				console.log("No product IDs provided for taxonomy updates");
@@ -1831,8 +1893,13 @@ export class ShopifyClient {
 		try {
 			console.log("Adding variants and pricing to products...");
 
-			// Use provided product IDs or fall back to tracked ones
-			const idsToProcess = productIds || this.lastCreatedProductIds;
+			// Use provided product IDs or fall back to tracked ones, then cached ones
+			let idsToProcess = productIds || this.lastCreatedProductIds;
+
+			// If still no IDs, try to retrieve from cache
+			if (idsToProcess.length === 0) {
+				idsToProcess = await this.getStoredProductIds();
+			}
 
 			if (idsToProcess.length === 0) {
 				console.log("No product IDs provided for variant updates");
@@ -2094,8 +2161,13 @@ export class ShopifyClient {
 		try {
 			console.log("Adding images to products...");
 
-			// Use provided product IDs or fall back to tracked ones
-			const idsToProcess = productIds || this.lastCreatedProductIds;
+			// Use provided product IDs or fall back to tracked ones, then cached ones
+			let idsToProcess = productIds || this.lastCreatedProductIds;
+
+			// If still no IDs, try to retrieve from cache
+			if (idsToProcess.length === 0) {
+				idsToProcess = await this.getStoredProductIds();
+			}
 
 			if (idsToProcess.length === 0) {
 				console.log("No product IDs provided for image updates");
@@ -2394,6 +2466,11 @@ export class ShopifyClient {
 			// Store the created product IDs in the instance for other methods to use
 			this.lastCreatedProductIds = newlyCreatedProducts.map((p) => p.id);
 
+			// Also store them in the database for persistence across API calls
+			if (this.lastCreatedProductIds.length > 0) {
+				await this.storeGeneratedProductIds(this.lastCreatedProductIds);
+			}
+
 			return actuallyCreated;
 		} catch (error) {
 			console.error(
@@ -2525,8 +2602,13 @@ export class ShopifyClient {
 		productIds?: string[]
 	): Promise<number> {
 		try {
-			// Use provided product IDs or fall back to tracked ones
-			const idsToPublish = productIds || this.lastCreatedProductIds;
+			// Use provided product IDs or fall back to tracked ones, then cached ones
+			let idsToPublish = productIds || this.lastCreatedProductIds;
+
+			// If still no IDs, try to retrieve from cache
+			if (idsToPublish.length === 0) {
+				idsToPublish = await this.getStoredProductIds();
+			}
 
 			if (idsToPublish.length === 0) {
 				console.log("No product IDs provided for publishing");
@@ -4438,8 +4520,14 @@ export class ShopifyClient {
 		try {
 			console.log("Starting product publishing...");
 
-			// Use the tracked product IDs from the previous generation step
-			const productIds = this.lastCreatedProductIds;
+			// Use the tracked product IDs from the previous generation step or retrieve from cache
+			let productIds = this.lastCreatedProductIds;
+
+			// If no product IDs are tracked in this instance, try to retrieve from cache
+			if (productIds.length === 0) {
+				productIds = await this.getStoredProductIds();
+				this.lastCreatedProductIds = productIds; // Update instance cache
+			}
 
 			// 1. Add variants with pricing
 			let variants_updated = 0;
