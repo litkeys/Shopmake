@@ -108,6 +108,7 @@ export async function testShopifyPermissions(
 export class ShopifyClient {
 	private shop: string;
 	private accessToken: string;
+	private lastCreatedProductIds: string[] = []; // Track recently created product IDs
 
 	constructor(shop: string, accessToken: string) {
 		this.shop = shop;
@@ -1614,9 +1615,23 @@ export class ShopifyClient {
 	}
 
 	// Add taxonomy categories to recently created products
-	private async addTaxonomyCategoriesToProducts(): Promise<number> {
+	private async addTaxonomyCategoriesToProducts(
+		productIds?: string[]
+	): Promise<number> {
 		try {
 			console.log("Adding taxonomy categories to products...");
+
+			// Use provided product IDs or fall back to tracked ones
+			const idsToProcess = productIds || this.lastCreatedProductIds;
+
+			if (idsToProcess.length === 0) {
+				console.log("No product IDs provided for taxonomy updates");
+				return 0;
+			}
+
+			console.log(
+				`Processing taxonomy for ${idsToProcess.length} products`
+			);
 
 			type ProductWithCategory = {
 				id: string;
@@ -1634,16 +1649,18 @@ export class ShopifyClient {
 				};
 			};
 
-			// Query recently created products with category metafields
+			// Query specific products by their IDs instead of time-based filtering
 			const allProducts: ProductWithCategory[] = [];
-			let hasNextPage = true;
-			let cursor: string | null = null;
 
-			while (hasNextPage) {
+			// Process products in batches
+			const batchSize = 250;
+			for (let i = 0; i < idsToProcess.length; i += batchSize) {
+				const idBatch = idsToProcess.slice(i, i + batchSize);
+
 				const productsQuery = `
-					query($cursor: String) {
-						products(first: 250, after: $cursor, sortKey: CREATED_AT, reverse: true) {
-							nodes {
+					query($ids: [ID!]!) {
+						nodes(ids: $ids) {
+							... on Product {
 								id
 								title
 								category {
@@ -1658,29 +1675,23 @@ export class ShopifyClient {
 									}
 								}
 							}
-							pageInfo {
-								hasNextPage
-								endCursor
-							}
 						}
 					}
 				`;
 
 				const result: {
-					products: {
-						nodes: ProductWithCategory[];
-						pageInfo: {
-							hasNextPage: boolean;
-							endCursor: string | null;
-						};
-					};
-				} = await this.makeGraphQLRequest(productsQuery, { cursor });
+					nodes: ProductWithCategory[];
+				} = await this.makeGraphQLRequest(productsQuery, {
+					ids: idBatch,
+				});
 
-				if (result.products?.nodes) {
-					allProducts.push(...result.products.nodes);
+				if (result.nodes) {
+					// Filter out null nodes and cast to ProductWithCategory
+					const products = result.nodes.filter(
+						(node) => node !== null
+					) as ProductWithCategory[];
+					allProducts.push(...products);
 				}
-				hasNextPage = result.products?.pageInfo?.hasNextPage ?? false;
-				cursor = result.products?.pageInfo?.endCursor ?? null;
 			}
 
 			// Filter products that need taxonomy category updates
@@ -1813,9 +1824,20 @@ export class ShopifyClient {
 	}
 
 	// Add variants with pricing to recently created products
-	private async addVariantsToProducts(storeId: string): Promise<number> {
+	private async addVariantsToProducts(
+		storeId: string,
+		productIds?: string[]
+	): Promise<number> {
 		try {
 			console.log("Adding variants and pricing to products...");
+
+			// Use provided product IDs or fall back to tracked ones
+			const idsToProcess = productIds || this.lastCreatedProductIds;
+
+			if (idsToProcess.length === 0) {
+				console.log("No product IDs provided for variant updates");
+				return 0;
+			}
 
 			// First, check if products CSV has been uploaded
 			const productsCsvUploads = await this.getStoreUploads(
@@ -1834,7 +1856,7 @@ export class ShopifyClient {
 			}
 
 			console.log(
-				`Found ${productsCsvUploads.length} products CSV file(s), proceeding with variant updates`
+				`Found ${productsCsvUploads.length} products CSV file(s), proceeding with variant updates for ${idsToProcess.length} products`
 			);
 
 			type ProductWithVariants = {
@@ -1852,16 +1874,18 @@ export class ShopifyClient {
 				};
 			};
 
-			// Query recently created products with metafields
+			// Query specific products by their IDs instead of time-based filtering
 			const allProducts: ProductWithVariants[] = [];
-			let hasNextPage = true;
-			let cursor: string | null = null;
 
-			while (hasNextPage) {
+			// Process products in batches
+			const batchSize = 250;
+			for (let i = 0; i < idsToProcess.length; i += batchSize) {
+				const idBatch = idsToProcess.slice(i, i + batchSize);
+
 				const productsQuery = `
-					query($cursor: String) {
-						products(first: 250, after: $cursor, sortKey: CREATED_AT, reverse: true) {
-							nodes {
+					query($ids: [ID!]!) {
+						nodes(ids: $ids) {
+							... on Product {
 								id
 								title
 								variants(first: 1) {
@@ -1877,29 +1901,23 @@ export class ShopifyClient {
 									}
 								}
 							}
-							pageInfo {
-								hasNextPage
-								endCursor
-							}
 						}
 					}
 				`;
 
 				const result: {
-					products: {
-						nodes: ProductWithVariants[];
-						pageInfo: {
-							hasNextPage: boolean;
-							endCursor: string | null;
-						};
-					};
-				} = await this.makeGraphQLRequest(productsQuery, { cursor });
+					nodes: ProductWithVariants[];
+				} = await this.makeGraphQLRequest(productsQuery, {
+					ids: idBatch,
+				});
 
-				if (result.products?.nodes) {
-					allProducts.push(...result.products.nodes);
+				if (result.nodes) {
+					// Filter out null nodes and cast to ProductWithVariants
+					const products = result.nodes.filter(
+						(node) => node !== null
+					) as ProductWithVariants[];
+					allProducts.push(...products);
 				}
-				hasNextPage = result.products?.pageInfo?.hasNextPage ?? false;
-				cursor = result.products?.pageInfo?.endCursor ?? null;
 			}
 
 			// Filter products that need variant updates (have pricing metafields)
@@ -2072,9 +2090,21 @@ export class ShopifyClient {
 	}
 
 	// Add images to recently created products
-	private async addImagesToProducts(): Promise<number> {
+	private async addImagesToProducts(productIds?: string[]): Promise<number> {
 		try {
 			console.log("Adding images to products...");
+
+			// Use provided product IDs or fall back to tracked ones
+			const idsToProcess = productIds || this.lastCreatedProductIds;
+
+			if (idsToProcess.length === 0) {
+				console.log("No product IDs provided for image updates");
+				return 0;
+			}
+
+			console.log(
+				`Processing images for ${idsToProcess.length} products`
+			);
 
 			type ProductWithMetafields = {
 				id: string;
@@ -2088,16 +2118,18 @@ export class ShopifyClient {
 				};
 			};
 
-			// Query recently created products with image metafields
+			// Query specific products by their IDs instead of time-based filtering
 			const allProducts: ProductWithMetafields[] = [];
-			let hasNextPage = true;
-			let cursor: string | null = null;
 
-			while (hasNextPage) {
+			// Process products in batches
+			const batchSize = 250;
+			for (let i = 0; i < idsToProcess.length; i += batchSize) {
+				const idBatch = idsToProcess.slice(i, i + batchSize);
+
 				const productsQuery = `
-					query($cursor: String) {
-						products(first: 250, after: $cursor, sortKey: CREATED_AT, reverse: true) {
-							nodes {
+					query($ids: [ID!]!) {
+						nodes(ids: $ids) {
+							... on Product {
 								id
 								title
 								metafields(first: 10) {
@@ -2108,29 +2140,23 @@ export class ShopifyClient {
 									}
 								}
 							}
-							pageInfo {
-								hasNextPage
-								endCursor
-							}
 						}
 					}
 				`;
 
 				const result: {
-					products: {
-						nodes: ProductWithMetafields[];
-						pageInfo: {
-							hasNextPage: boolean;
-							endCursor: string | null;
-						};
-					};
-				} = await this.makeGraphQLRequest(productsQuery, { cursor });
+					nodes: ProductWithMetafields[];
+				} = await this.makeGraphQLRequest(productsQuery, {
+					ids: idBatch,
+				});
 
-				if (result.products?.nodes) {
-					allProducts.push(...result.products.nodes);
+				if (result.nodes) {
+					// Filter out null nodes and cast to ProductWithMetafields
+					const products = result.nodes.filter(
+						(node) => node !== null
+					) as ProductWithMetafields[];
+					allProducts.push(...products);
 				}
-				hasNextPage = result.products?.pageInfo?.hasNextPage ?? false;
-				cursor = result.products?.pageInfo?.endCursor ?? null;
 			}
 
 			// Filter products with image URLs
@@ -2330,17 +2356,24 @@ export class ShopifyClient {
 				);
 			}
 
-			// Get product titles after import to find newly created ones
-			const finalTitles = await this.getExistingProductTitles(
+			// Get product IDs after import to find newly created ones
+			const finalProductsMap = await this.getExistingProductsMap(
 				Array.from(titlesToImport)
 			);
 
-			// Calculate how many new products were actually created
-			const newlyCreatedTitles = Array.from(titlesToImport).filter(
-				(title) => !existingTitles.has(title) && finalTitles.has(title)
-			);
+			// Calculate which products were actually created (get their IDs)
+			const newlyCreatedProducts: Array<{ id: string; title: string }> =
+				[];
+			for (const title of Array.from(titlesToImport)) {
+				if (!existingTitles.has(title) && finalProductsMap.has(title)) {
+					const productId = finalProductsMap.get(title);
+					if (productId) {
+						newlyCreatedProducts.push({ id: productId, title });
+					}
+				}
+			}
 
-			const actuallyCreated = newlyCreatedTitles.length;
+			const actuallyCreated = newlyCreatedProducts.length;
 			console.log(
 				`Successfully imported ${actuallyCreated} new products`
 			);
@@ -2348,9 +2381,18 @@ export class ShopifyClient {
 			if (actuallyCreated > 0) {
 				console.log(
 					`Newly created product titles:`,
-					newlyCreatedTitles.slice(0, 5)
+					newlyCreatedProducts.slice(0, 5).map((p) => p.title)
 				); // Log first 5 for debugging
+				console.log(
+					`Newly created product IDs:`,
+					newlyCreatedProducts
+						.slice(0, 5)
+						.map((p) => p.id.split("/").pop())
+				); // Log first 5 IDs for debugging
 			}
+
+			// Store the created product IDs in the instance for other methods to use
+			this.lastCreatedProductIds = newlyCreatedProducts.map((p) => p.id);
 
 			return actuallyCreated;
 		} catch (error) {
@@ -2366,8 +2408,16 @@ export class ShopifyClient {
 	private async getExistingProductTitles(
 		titlesToCheck: string[]
 	): Promise<Set<string>> {
+		const productsMap = await this.getExistingProductsMap(titlesToCheck);
+		return new Set(Array.from(productsMap.keys()));
+	}
+
+	// Get existing products as a map of title -> product ID
+	private async getExistingProductsMap(
+		titlesToCheck: string[]
+	): Promise<Map<string, string>> {
 		try {
-			const existingTitles = new Set<string>();
+			const productsMap = new Map<string, string>();
 
 			// Query products in batches to check which titles already exist
 			const batchSize = 250;
@@ -2387,6 +2437,7 @@ export class ShopifyClient {
 						query($cursor: String, $query: String!) {
 							products(first: 250, after: $cursor, query: $query) {
 								nodes {
+									id
 									title
 								}
 								pageInfo {
@@ -2399,7 +2450,7 @@ export class ShopifyClient {
 
 					const result: {
 						products: {
-							nodes: Array<{ title: string }>;
+							nodes: Array<{ id: string; title: string }>;
 							pageInfo: {
 								hasNextPage: boolean;
 								endCursor: string | null;
@@ -2412,10 +2463,11 @@ export class ShopifyClient {
 
 					if (result.products?.nodes) {
 						result.products.nodes.forEach(
-							(product: { title: string }) => {
-								if (product.title) {
-									existingTitles.add(
-										product.title.toLowerCase().trim()
+							(product: { id: string; title: string }) => {
+								if (product.title && product.id) {
+									productsMap.set(
+										product.title.toLowerCase().trim(),
+										product.id
 									);
 								}
 							}
@@ -2428,10 +2480,10 @@ export class ShopifyClient {
 				}
 			}
 
-			return existingTitles;
+			return productsMap;
 		} catch (error) {
-			console.error("Error checking existing product titles:", error);
-			return new Set<string>(); // Return empty set on error to be safe
+			console.error("Error checking existing products:", error);
+			return new Map<string, string>(); // Return empty map on error to be safe
 		}
 	}
 
@@ -2468,87 +2520,39 @@ export class ShopifyClient {
 		return onlineStorePublication.id;
 	}
 
-	// Publish recently imported products to Online Store sales channel
-	private async publishProductsToOnlineStore(): Promise<number> {
+	// Publish products to Online Store sales channel using tracked product IDs
+	private async publishProductsToOnlineStore(
+		productIds?: string[]
+	): Promise<number> {
 		try {
-			console.log("Publishing products to Online Store sales channel...");
+			// Use provided product IDs or fall back to tracked ones
+			const idsToPublish = productIds || this.lastCreatedProductIds;
 
-			// Get Online Store publication ID
-			const publicationId = await this.getOnlineStorePublicationId();
-
-			type ProductToPublish = {
-				id: string;
-				title: string;
-				createdAt: string;
-			};
-
-			// Query recently created products
-			const allProducts: ProductToPublish[] = [];
-			let hasNextPage = true;
-			let cursor: string | null = null;
-
-			while (hasNextPage) {
-				const productsQuery = `
-					query($cursor: String) {
-						products(first: 250, after: $cursor, sortKey: CREATED_AT, reverse: true) {
-							nodes {
-								id
-								title
-								createdAt
-							}
-							pageInfo {
-								hasNextPage
-								endCursor
-							}
-						}
-					}
-				`;
-
-				const result: {
-					products: {
-						nodes: ProductToPublish[];
-						pageInfo: {
-							hasNextPage: boolean;
-							endCursor: string | null;
-						};
-					};
-				} = await this.makeGraphQLRequest(productsQuery, { cursor });
-
-				if (result.products?.nodes) {
-					allProducts.push(...result.products.nodes);
-				}
-				hasNextPage = result.products?.pageInfo?.hasNextPage ?? false;
-				cursor = result.products?.pageInfo?.endCursor ?? null;
-			}
-
-			// Filter products created in the last 10 minutes (recently imported)
-			const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-			const recentProducts = allProducts.filter(
-				(product) => new Date(product.createdAt) > tenMinutesAgo
-			);
-
-			if (recentProducts.length === 0) {
-				console.log("No recent products found to publish");
+			if (idsToPublish.length === 0) {
+				console.log("No product IDs provided for publishing");
 				return 0;
 			}
 
 			console.log(
-				`Found ${recentProducts.length} products to publish to Online Store`
+				`Publishing ${idsToPublish.length} products to Online Store sales channel...`
 			);
+
+			// Get Online Store publication ID
+			const publicationId = await this.getOnlineStorePublicationId();
 
 			let publishedCount = 0;
 
 			// Publish each product to Online Store
-			for (const product of recentProducts) {
+			for (const productId of idsToPublish) {
 				try {
 					await this.publishProductToOnlineStore(
-						product.id,
+						productId,
 						publicationId
 					);
 					publishedCount++;
 				} catch (error) {
 					console.error(
-						`Failed to publish product ${product.title} to Online Store:`,
+						`Failed to publish product ${productId} to Online Store:`,
 						error
 					);
 				}
@@ -4394,9 +4398,12 @@ export class ShopifyClient {
 			let taxonomy_updated = 0;
 
 			if (products_created > 0) {
+				// Use the tracked product IDs from the import for subsequent operations
+				const productIds = this.lastCreatedProductIds;
+
 				// 2. Add images to products
 				try {
-					images_added = await this.addImagesToProducts();
+					images_added = await this.addImagesToProducts(productIds);
 				} catch (error) {
 					console.error("Failed to add images:", error);
 				}
@@ -4404,7 +4411,7 @@ export class ShopifyClient {
 				// 3. Add taxonomy categories to products
 				try {
 					taxonomy_updated =
-						await this.addTaxonomyCategoriesToProducts();
+						await this.addTaxonomyCategoriesToProducts(productIds);
 				} catch (error) {
 					console.error("Failed to add taxonomy categories:", error);
 				}
@@ -4431,10 +4438,16 @@ export class ShopifyClient {
 		try {
 			console.log("Starting product publishing...");
 
+			// Use the tracked product IDs from the previous generation step
+			const productIds = this.lastCreatedProductIds;
+
 			// 1. Add variants with pricing
 			let variants_updated = 0;
 			try {
-				variants_updated = await this.addVariantsToProducts(storeId);
+				variants_updated = await this.addVariantsToProducts(
+					storeId,
+					productIds
+				);
 			} catch (error) {
 				console.error("Failed to add variants:", error);
 			}
@@ -4442,7 +4455,9 @@ export class ShopifyClient {
 			// 2. Publish products to Online Store sales channel
 			let products_published = 0;
 			try {
-				products_published = await this.publishProductsToOnlineStore();
+				products_published = await this.publishProductsToOnlineStore(
+					productIds
+				);
 			} catch (error) {
 				console.error(
 					"Failed to publish products to Online Store:",

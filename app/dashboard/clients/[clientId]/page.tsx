@@ -4035,14 +4035,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 															.products
 															.products_created
 													}{" "}
-													products created, images
-													added for{" "}
-													{
-														generationResults
-															.products
-															.images_added
-													}{" "}
-													products
+													products created
 												</div>
 											)}
 											{generationResults.publish && (
