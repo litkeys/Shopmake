@@ -2921,69 +2921,10 @@ export class ShopifyClient {
 			const operation = result.node;
 
 			if (operation.status === "COMPLETED") {
-				// Download and parse bulk operation results to get actual customer IDs
-				let actualCustomerCount = 0;
-				const createdCustomerIds: string[] = [];
-
-				try {
-					if (operation.url) {
-						console.log("Downloading bulk operation results...");
-						const response = await fetch(operation.url);
-						const resultsText = await response.text();
-
-						// Parse JSONL results - each line contains a customer creation result
-						const lines = resultsText
-							.trim()
-							.split("\n")
-							.filter((line) => line.trim());
-
-						for (const line of lines) {
-							try {
-								const result = JSON.parse(line);
-								// Check if this is a successful customer creation
-								if (
-									result.__typename === "CustomerCreate" &&
-									result.customer &&
-									result.customer.id
-								) {
-									createdCustomerIds.push(result.customer.id);
-									actualCustomerCount++;
-								}
-							} catch (parseError) {
-								console.warn(
-									"Failed to parse bulk operation result line:",
-									parseError
-								);
-							}
-						}
-
-						console.log(
-							`Successfully imported ${actualCustomerCount} customers`
-						);
-						console.log(
-							`Created customer IDs:`,
-							createdCustomerIds
-								.slice(0, 5)
-								.map((id) => id.split("/").pop())
-						); // Log first 5 for debugging
-					} else {
-						console.warn(
-							"No bulk operation results URL available, using objectCount as fallback"
-						);
-						actualCustomerCount = operation.objectCount || 0;
-					}
-				} catch (downloadError) {
-					console.error(
-						"Failed to download bulk operation results:",
-						downloadError
-					);
-					console.log("Falling back to objectCount");
-					actualCustomerCount = operation.objectCount || 0;
-				}
-
+				// Return completion status - actual counting is handled by caller
 				return {
 					status: operation.status,
-					objectCount: actualCustomerCount,
+					objectCount: 0, // Will be set by the calling method
 				};
 			}
 
@@ -4964,6 +4905,39 @@ export class ShopifyClient {
 		try {
 			console.log("Starting customer bulk import...");
 
+			// Parse the JSONL content to extract emails we're trying to import
+			const emailsToImport = new Set<string>();
+			const lines = jsonlContent
+				.trim()
+				.split("\n")
+				.filter((line) => line.trim());
+
+			for (const line of lines) {
+				try {
+					const customerData = JSON.parse(line);
+					if (customerData.input && customerData.input.email) {
+						emailsToImport.add(
+							customerData.input.email.toLowerCase()
+						);
+					}
+				} catch (parseError) {
+					console.warn(
+						"Failed to parse customer email from JSONL line:",
+						parseError
+					);
+				}
+			}
+
+			console.log(
+				`Attempting to import ${emailsToImport.size} unique customer emails`
+			);
+
+			// Get existing customer emails before import
+			const existingEmails = await this.getExistingCustomerEmails(
+				Array.from(emailsToImport)
+			);
+			console.log(`Found ${existingEmails.size} customers already exist`);
+
 			// Create staged upload for customers
 			const stagedUpload = await this.createStagedUploadForCustomers();
 
@@ -4987,16 +4961,118 @@ export class ShopifyClient {
 				keyParameter.value
 			);
 
-			// Wait for completion and return count
+			// Wait for completion
 			const completedOperation =
 				await this.waitForBulkOperationCompletionCustomers(
 					bulkOperation.id
 				);
 
-			return completedOperation.objectCount || 0;
+			// Check if operation completed successfully
+			if (completedOperation.status !== "COMPLETED") {
+				throw new Error(
+					`Bulk operation failed with status: ${completedOperation.status}`
+				);
+			}
+
+			// Get customer emails after import to find newly created ones
+			const finalEmails = await this.getExistingCustomerEmails(
+				Array.from(emailsToImport)
+			);
+
+			// Calculate how many new customers were actually created
+			const newlyCreatedEmails = Array.from(emailsToImport).filter(
+				(email) => !existingEmails.has(email) && finalEmails.has(email)
+			);
+
+			const actuallyCreated = newlyCreatedEmails.length;
+			console.log(
+				`Successfully imported ${actuallyCreated} new customers`
+			);
+
+			if (actuallyCreated > 0) {
+				console.log(
+					`Newly created customer emails:`,
+					newlyCreatedEmails.slice(0, 5)
+				); // Log first 5 for debugging
+			}
+
+			return actuallyCreated;
 		} catch (error) {
 			console.error("Customer import failed:", error);
 			throw error;
+		}
+	}
+
+	// Get existing customer emails for comparison
+	private async getExistingCustomerEmails(
+		emailsToCheck: string[]
+	): Promise<Set<string>> {
+		try {
+			const existingEmails = new Set<string>();
+
+			// Query customers in batches to check which emails already exist
+			const batchSize = 250;
+			for (let i = 0; i < emailsToCheck.length; i += batchSize) {
+				const emailBatch = emailsToCheck.slice(i, i + batchSize);
+
+				// Create a query to search for customers by email
+				const emailQueries = emailBatch
+					.map((email) => `email:${email}`)
+					.join(" OR ");
+
+				let hasNextPage = true;
+				let cursor: string | null = null;
+
+				while (hasNextPage) {
+					const query = `
+						query($cursor: String, $query: String!) {
+							customers(first: 250, after: $cursor, query: $query) {
+								nodes {
+									email
+								}
+								pageInfo {
+									hasNextPage
+									endCursor
+								}
+							}
+						}
+					`;
+
+					const result: {
+						customers: {
+							nodes: Array<{ email: string }>;
+							pageInfo: {
+								hasNextPage: boolean;
+								endCursor: string | null;
+							};
+						};
+					} = await this.makeGraphQLRequest(query, {
+						cursor,
+						query: emailQueries,
+					});
+
+					if (result.customers?.nodes) {
+						result.customers.nodes.forEach(
+							(customer: { email: string }) => {
+								if (customer.email) {
+									existingEmails.add(
+										customer.email.toLowerCase()
+									);
+								}
+							}
+						);
+					}
+
+					hasNextPage =
+						result.customers?.pageInfo?.hasNextPage ?? false;
+					cursor = result.customers?.pageInfo?.endCursor ?? null;
+				}
+			}
+
+			return existingEmails;
+		} catch (error) {
+			console.error("Error checking existing customer emails:", error);
+			return new Set<string>(); // Return empty set on error to be safe
 		}
 	}
 
