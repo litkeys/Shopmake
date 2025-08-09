@@ -2921,11 +2921,65 @@ export class ShopifyClient {
 			const operation = result.node;
 
 			if (operation.status === "COMPLETED") {
-				// Use the bulk operation's objectCount directly - this is the actual number of customers created
-				const actualCustomerCount = operation.objectCount || 0;
-				console.log(
-					`Successfully imported ${actualCustomerCount} customers`
-				);
+				// Download and parse bulk operation results to get actual customer IDs
+				let actualCustomerCount = 0;
+				const createdCustomerIds: string[] = [];
+
+				try {
+					if (operation.url) {
+						console.log("Downloading bulk operation results...");
+						const response = await fetch(operation.url);
+						const resultsText = await response.text();
+
+						// Parse JSONL results - each line contains a customer creation result
+						const lines = resultsText
+							.trim()
+							.split("\n")
+							.filter((line) => line.trim());
+
+						for (const line of lines) {
+							try {
+								const result = JSON.parse(line);
+								// Check if this is a successful customer creation
+								if (
+									result.__typename === "CustomerCreate" &&
+									result.customer &&
+									result.customer.id
+								) {
+									createdCustomerIds.push(result.customer.id);
+									actualCustomerCount++;
+								}
+							} catch (parseError) {
+								console.warn(
+									"Failed to parse bulk operation result line:",
+									parseError
+								);
+							}
+						}
+
+						console.log(
+							`Successfully imported ${actualCustomerCount} customers`
+						);
+						console.log(
+							`Created customer IDs:`,
+							createdCustomerIds
+								.slice(0, 5)
+								.map((id) => id.split("/").pop())
+						); // Log first 5 for debugging
+					} else {
+						console.warn(
+							"No bulk operation results URL available, using objectCount as fallback"
+						);
+						actualCustomerCount = operation.objectCount || 0;
+					}
+				} catch (downloadError) {
+					console.error(
+						"Failed to download bulk operation results:",
+						downloadError
+					);
+					console.log("Falling back to objectCount");
+					actualCustomerCount = operation.objectCount || 0;
+				}
 
 				return {
 					status: operation.status,
