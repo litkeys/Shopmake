@@ -2921,77 +2921,11 @@ export class ShopifyClient {
 			const operation = result.node;
 
 			if (operation.status === "COMPLETED") {
-				// Query Shopify directly for accurate customer count
-				let actualCustomerCount = 0;
-
-				try {
-					type SimpleCustomer = {
-						id: string;
-						createdAt: string;
-					};
-					const allCustomers: SimpleCustomer[] = [];
-					let hasNextPage = true;
-					let cursor: string | null = null;
-
-					while (hasNextPage) {
-						const customersQuery = `
-							query($cursor: String) {
-								customers(first: 250, after: $cursor, sortKey: CREATED_AT, reverse: true) {
-									nodes {
-										id
-										createdAt
-									}
-									pageInfo {
-										hasNextPage
-										endCursor
-									}
-								}
-							}
-						`;
-
-						const customersResult: {
-							customers: {
-								nodes: SimpleCustomer[];
-								pageInfo: {
-									hasNextPage: boolean;
-									endCursor: string | null;
-								};
-							};
-						} = await this.makeGraphQLRequest(customersQuery, {
-							cursor,
-						});
-
-						if (customersResult.customers?.nodes) {
-							allCustomers.push(
-								...customersResult.customers.nodes
-							);
-						}
-						hasNextPage =
-							customersResult.customers?.pageInfo?.hasNextPage ??
-							false;
-						cursor =
-							customersResult.customers?.pageInfo?.endCursor ??
-							null;
-					}
-
-					// Count customers created in the last 10 minutes
-					const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
-					const recentCustomers = allCustomers.filter(
-						(customer) =>
-							new Date(customer.createdAt) > tenMinutesAgo
-					);
-
-					actualCustomerCount = recentCustomers.length;
-					console.log(
-						`Successfully imported ${actualCustomerCount} customers`
-					);
-				} catch (countError) {
-					console.error(
-						"Could not count imported customers:",
-						countError
-					);
-					actualCustomerCount = 0;
-				}
+				// Use the bulk operation's objectCount directly - this is the actual number of customers created
+				const actualCustomerCount = operation.objectCount || 0;
+				console.log(
+					`Successfully imported ${actualCustomerCount} customers`
+				);
 
 				return {
 					status: operation.status,
