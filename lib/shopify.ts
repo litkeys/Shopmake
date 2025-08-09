@@ -2361,8 +2361,8 @@ export class ShopifyClient {
 		try {
 			console.log("Starting product import...");
 
-			// Parse the JSONL content to extract product titles we're trying to import
-			const titlesToImport = new Set<string>();
+			// Parse the JSONL content to extract product handles we're trying to import
+			const handlesToImport = new Set<string>();
 			const lines = jsonlContent
 				.trim()
 				.split("\n")
@@ -2371,28 +2371,37 @@ export class ShopifyClient {
 			for (const line of lines) {
 				try {
 					const productData = JSON.parse(line);
-					if (productData.input && productData.input.title) {
-						titlesToImport.add(
-							productData.input.title.toLowerCase().trim()
-						);
+					if (productData.input) {
+						// Use handle if available, otherwise generate from title
+						let handle = productData.input.handle;
+						if (!handle && productData.input.title) {
+							// Generate handle from title if not provided (Shopify will do this anyway)
+							handle = productData.input.title
+								.toLowerCase()
+								.replace(/[^a-z0-9]+/g, "-")
+								.replace(/^-+|-+$/g, "");
+						}
+						if (handle) {
+							handlesToImport.add(handle.toLowerCase().trim());
+						}
 					}
 				} catch (parseError) {
 					console.warn(
-						"Failed to parse product title from JSONL line:",
+						"Failed to parse product handle from JSONL line:",
 						parseError
 					);
 				}
 			}
 
 			console.log(
-				`Attempting to import ${titlesToImport.size} unique product titles`
+				`Attempting to import ${handlesToImport.size} unique product handles`
 			);
 
-			// Get existing product titles before import
-			const existingTitles = await this.getExistingProductTitles(
-				Array.from(titlesToImport)
+			// Get existing product handles before import
+			const existingHandles = await this.getExistingProductHandles(
+				Array.from(handlesToImport)
 			);
-			console.log(`Found ${existingTitles.size} products already exist`);
+			console.log(`Found ${existingHandles.size} products already exist`);
 
 			// Create staged upload
 			const stagedUpload = await this.createStagedUpload();
@@ -2430,17 +2439,20 @@ export class ShopifyClient {
 
 			// Get product IDs after import to find newly created ones
 			const finalProductsMap = await this.getExistingProductsMap(
-				Array.from(titlesToImport)
+				Array.from(handlesToImport)
 			);
 
 			// Calculate which products were actually created (get their IDs)
-			const newlyCreatedProducts: Array<{ id: string; title: string }> =
+			const newlyCreatedProducts: Array<{ id: string; handle: string }> =
 				[];
-			for (const title of Array.from(titlesToImport)) {
-				if (!existingTitles.has(title) && finalProductsMap.has(title)) {
-					const productId = finalProductsMap.get(title);
+			for (const handle of Array.from(handlesToImport)) {
+				if (
+					!existingHandles.has(handle) &&
+					finalProductsMap.has(handle)
+				) {
+					const productId = finalProductsMap.get(handle);
 					if (productId) {
-						newlyCreatedProducts.push({ id: productId, title });
+						newlyCreatedProducts.push({ id: productId, handle });
 					}
 				}
 			}
@@ -2452,8 +2464,8 @@ export class ShopifyClient {
 
 			if (actuallyCreated > 0) {
 				console.log(
-					`Newly created product titles:`,
-					newlyCreatedProducts.slice(0, 5).map((p) => p.title)
+					`Newly created product handles:`,
+					newlyCreatedProducts.slice(0, 5).map((p) => p.handle)
 				); // Log first 5 for debugging
 				console.log(
 					`Newly created product IDs:`,
@@ -2481,29 +2493,29 @@ export class ShopifyClient {
 		}
 	}
 
-	// Get existing product titles for comparison
-	private async getExistingProductTitles(
-		titlesToCheck: string[]
+	// Get existing product handles for comparison
+	private async getExistingProductHandles(
+		handlesToCheck: string[]
 	): Promise<Set<string>> {
-		const productsMap = await this.getExistingProductsMap(titlesToCheck);
+		const productsMap = await this.getExistingProductsMap(handlesToCheck);
 		return new Set(Array.from(productsMap.keys()));
 	}
 
-	// Get existing products as a map of title -> product ID
+	// Get existing products as a map of handle -> product ID
 	private async getExistingProductsMap(
-		titlesToCheck: string[]
+		handlesToCheck: string[]
 	): Promise<Map<string, string>> {
 		try {
 			const productsMap = new Map<string, string>();
 
-			// Query products in batches to check which titles already exist
+			// Query products in batches to check which handles already exist
 			const batchSize = 250;
-			for (let i = 0; i < titlesToCheck.length; i += batchSize) {
-				const titleBatch = titlesToCheck.slice(i, i + batchSize);
+			for (let i = 0; i < handlesToCheck.length; i += batchSize) {
+				const handleBatch = handlesToCheck.slice(i, i + batchSize);
 
-				// Create a query to search for products by title
-				const titleQueries = titleBatch
-					.map((title) => `title:"${title.replace(/"/g, '\\"')}"`)
+				// Create a query to search for products by handle
+				const handleQueries = handleBatch
+					.map((handle) => `handle:"${handle.replace(/"/g, '\\"')}"`)
 					.join(" OR ");
 
 				let hasNextPage = true;
@@ -2515,7 +2527,7 @@ export class ShopifyClient {
 							products(first: 250, after: $cursor, query: $query) {
 								nodes {
 									id
-									title
+									handle
 								}
 								pageInfo {
 									hasNextPage
@@ -2527,7 +2539,7 @@ export class ShopifyClient {
 
 					const result: {
 						products: {
-							nodes: Array<{ id: string; title: string }>;
+							nodes: Array<{ id: string; handle: string }>;
 							pageInfo: {
 								hasNextPage: boolean;
 								endCursor: string | null;
@@ -2535,15 +2547,15 @@ export class ShopifyClient {
 						};
 					} = await this.makeGraphQLRequest(query, {
 						cursor,
-						query: titleQueries,
+						query: handleQueries,
 					});
 
 					if (result.products?.nodes) {
 						result.products.nodes.forEach(
-							(product: { id: string; title: string }) => {
-								if (product.title && product.id) {
+							(product: { id: string; handle: string }) => {
+								if (product.handle && product.id) {
 									productsMap.set(
-										product.title.toLowerCase().trim(),
+										product.handle.toLowerCase().trim(),
 										product.id
 									);
 								}
