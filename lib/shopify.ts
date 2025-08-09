@@ -5876,37 +5876,62 @@ export class ShopifyClient {
 		}
 	}
 
-	// Helper method to load section preset from file
+	// Helper method to load section preset from public folder (Vercel-compatible)
 	private async loadSectionPreset(sectionType: string): Promise<any> {
 		try {
-			// For serverless environments like Vercel, fetch from public folder via HTTP
-			// Construct the URL based on environment
-			let baseUrl: string;
+			const fs = await import("fs/promises");
+			const path = await import("path");
 
-			if (process.env.VERCEL_URL) {
-				// Vercel deployment
-				baseUrl = `https://${process.env.VERCEL_URL}`;
-			} else if (process.env.NODE_ENV === "development") {
-				// Local development
-				baseUrl = "http://localhost:3000";
-			} else {
-				// Production fallback - use relative URL
-				baseUrl = "";
+			// In Vercel, public files are accessible from the root directory
+			// Try different possible paths
+			const possiblePaths = [
+				// Vercel deployment path
+				path.join(
+					process.cwd(),
+					"public",
+					"section-presets",
+					`${sectionType}.json`
+				),
+				// Local development path
+				path.join(
+					process.cwd(),
+					"public",
+					"section-presets",
+					`${sectionType}.json`
+				),
+				// Alternative Vercel path
+				path.join(
+					"/var/task",
+					"public",
+					"section-presets",
+					`${sectionType}.json`
+				),
+			];
+
+			let fileContent: string | null = null;
+			let usedPath: string | null = null;
+
+			for (const filePath of possiblePaths) {
+				try {
+					fileContent = await fs.readFile(filePath, "utf-8");
+					usedPath = filePath;
+					break;
+				} catch (error) {
+					// Continue to next path
+					continue;
+				}
 			}
 
-			const url = baseUrl
-				? `${baseUrl}/section-presets/${sectionType}.json`
-				: `/section-presets/${sectionType}.json`;
-			const response = await fetch(url);
-
-			if (!response.ok) {
+			if (!fileContent) {
 				throw new Error(
-					`HTTP error! status: ${response.status} for ${url}`
+					`Section preset file not found for ${sectionType}`
 				);
 			}
 
-			const sectionPreset = await response.json();
-			return sectionPreset;
+			console.log(
+				`Successfully loaded section preset for ${sectionType} from ${usedPath}`
+			);
+			return JSON.parse(fileContent);
 		} catch (error) {
 			console.error(
 				`Error loading section preset for ${sectionType}:`,
