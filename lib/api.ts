@@ -184,6 +184,8 @@ export async function generateShopifyStoreAPI(
 	theme_id: number;
 	collection_id?: number;
 	products_created: number;
+	variants_updated: number;
+	products_published: number;
 	store_url: string;
 }> {
 	const response = await fetch(`${getBaseUrl()}/api/shopify/generate`, {
@@ -281,12 +283,12 @@ export async function generateStoreProductsAPI(storeId: string): Promise<{
 	return result.result;
 }
 
-export async function generateStorePublishAPI(storeId: string): Promise<{
+export async function generateStoreVariantsAPI(storeId: string): Promise<{
 	variants_updated: number;
 	products_published: number;
 }> {
 	const response = await fetch(
-		`${getBaseUrl()}/api/shopify/generate/publish`,
+		`${getBaseUrl()}/api/shopify/generate/variants`,
 		{
 			method: "POST",
 			headers: {
@@ -298,7 +300,7 @@ export async function generateStorePublishAPI(storeId: string): Promise<{
 
 	if (!response.ok) {
 		const error = await response.json();
-		throw new Error(error.error || "Failed to publish store products");
+		throw new Error(error.error || "Failed to process store variants");
 	}
 
 	const result = await response.json();

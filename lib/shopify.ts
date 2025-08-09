@@ -4524,13 +4524,13 @@ export class ShopifyClient {
 		}
 	}
 
-	// Publish products (variants and publishing)
-	async generateStorePublish(storeId: string): Promise<{
+	// Add variants and publish products
+	async generateStoreVariants(storeId: string): Promise<{
 		variants_updated: number;
 		products_published: number;
 	}> {
 		try {
-			console.log("Starting product publishing...");
+			console.log("Starting variants processing...");
 
 			// Use the tracked product IDs from the previous generation step or retrieve from cache
 			let productIds = this.lastCreatedProductIds;
@@ -4565,14 +4565,14 @@ export class ShopifyClient {
 				);
 			}
 
-			console.log("Product publishing completed");
+			console.log("Variants processing completed");
 
 			return {
 				variants_updated,
 				products_published,
 			};
 		} catch (error) {
-			console.error("Error publishing products:", error);
+			console.error("Error processing variants:", error);
 			throw error;
 		}
 	}
@@ -4650,6 +4650,8 @@ export class ShopifyClient {
 	): Promise<{
 		theme_id: number;
 		products_created: number;
+		variants_updated: number;
+		products_published: number;
 		logo_uploaded: boolean;
 		contact_email_set: boolean;
 		locations_created: number;
@@ -4674,8 +4676,8 @@ export class ShopifyClient {
 			// Step 3: Products
 			const productsResult = await this.generateStoreProducts(storeId);
 
-			// Step 4: Publish
-			const publishResult = await this.generateStorePublish(storeId);
+			// Step 4: Variants
+			const variantsResult = await this.generateStoreVariants(storeId);
 
 			// Step 5: Inventory Processing
 			const inventoryResult = await this.processStoreInventory(storeId);
@@ -4694,6 +4696,8 @@ export class ShopifyClient {
 			return {
 				theme_id: foundationResult.theme_id,
 				products_created: productsResult.products_created,
+				variants_updated: variantsResult.variants_updated,
+				products_published: variantsResult.products_published,
 				logo_uploaded: foundationResult.logo_uploaded,
 				contact_email_set: foundationResult.contact_email_set,
 				locations_created: foundationResult.locations_created,

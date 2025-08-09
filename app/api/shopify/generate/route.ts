@@ -129,6 +129,8 @@ export async function POST(request: NextRequest) {
 				store_domain: shopifyToken.shopify_store_domain,
 				theme_id: result.theme_id,
 				products_created: result.products_created,
+				variants_updated: result.variants_updated,
+				products_published: result.products_published,
 				logo_uploaded: result.logo_uploaded,
 				contact_email_set: result.contact_email_set,
 				locations_created: result.locations_created,

@@ -38,19 +38,19 @@ export async function POST(request: NextRequest) {
 			shopifyToken.admin_api_token
 		);
 
-		// Publish products
-		const result = await shopifyClient.generateStorePublish(storeId);
+		// Process variants
+		const result = await shopifyClient.generateStoreVariants(storeId);
 
 		return NextResponse.json({
 			success: true,
 			result,
-			message: "Products published successfully",
+			message: "Variants processed successfully",
 		});
 	} catch (error) {
-		console.error("Product publishing error:", error);
+		console.error("Variants processing error:", error);
 		return NextResponse.json(
 			{
-				error: "Failed to publish products",
+				error: "Failed to process variants",
 				details: error instanceof Error ? error.message : String(error),
 			},
 			{ status: 500 }

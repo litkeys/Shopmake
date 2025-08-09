@@ -40,7 +40,7 @@ import {
 	generateStoreFoundationAPI,
 	generateStoreVisualsAPI,
 	generateStoreProductsAPI,
-	generateStorePublishAPI,
+	generateStoreVariantsAPI,
 	processStoreInventoryAPI,
 	generateStoreCollectionsAPI,
 	generateStoreCustomersAPI,
@@ -127,7 +127,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 		foundation?: any;
 		visuals?: any;
 		products?: any;
-		publish?: any;
+		variants?: any;
 		inventory?: any;
 		collections?: any;
 		customers?: any;
@@ -1537,12 +1537,12 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				}
 			}
 
-			// Step 4: Publish (Variants and Publishing)
+			// Step 4: Variants (Adding variants and publishing)
 			if (startStep <= 3) {
 				setGenerationProgress({
 					currentStep: 4,
 					totalSteps: 8,
-					stepName: "Publish",
+					stepName: "Variants",
 					stepDescription:
 						"Adding variants and publishing products...",
 					percentage: 30,
@@ -1551,10 +1551,10 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 				});
 
 				try {
-					const publishResult = await generateStorePublishAPI(
+					const variantsResult = await generateStoreVariantsAPI(
 						store.id
 					);
-					currentResults.publish = publishResult;
+					currentResults.variants = variantsResult;
 					setGenerationResults(currentResults);
 
 					setGenerationProgress((prev) => ({
@@ -1563,16 +1563,16 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 						lastCompletedStep: 3,
 					}));
 
-					console.log("Publish completed:", publishResult);
+					console.log("Variants completed:", variantsResult);
 				} catch (err) {
-					console.error("Publish error:", err);
+					console.error("Variants error:", err);
 					setGenerationProgress((prev) => ({
 						...prev,
 						canResume: true,
 						lastCompletedStep: 2,
 					}));
 					throw new Error(
-						`Product publishing failed: ${
+						`Variants processing failed: ${
 							err instanceof Error ? err.message : "Unknown error"
 						}`
 					);
@@ -3963,7 +3963,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 								{/* Generation Results Summary */}
 								{(generationResults.foundation ||
 									generationResults.products ||
-									generationResults.publish ||
+									generationResults.variants ||
 									generationResults.inventory ||
 									generationResults.collections ||
 									generationResults.customers ||
@@ -4038,7 +4038,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 													products created
 												</div>
 											)}
-											{generationResults.publish && (
+											{generationResults.variants && (
 												<div className="flex items-center">
 													<svg
 														className="h-4 w-4 text-green-500 mr-2"
@@ -4051,17 +4051,17 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 															clipRule="evenodd"
 														/>
 													</svg>
-													Publish: variants published
+													Variants: variants published
 													for{" "}
 													{
 														generationResults
-															.publish
+															.variants
 															.variants_updated
 													}{" "}
 													products,{" "}
 													{
 														generationResults
-															.publish
+															.variants
 															.products_published
 													}{" "}
 													products published
