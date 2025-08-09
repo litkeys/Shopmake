@@ -2484,122 +2484,37 @@ export class ShopifyClient {
 		}
 	}
 
-	// Publish recently created collections to Online Store sales channel
-	private async publishCollectionsToOnlineStore(): Promise<number> {
+	// Publish collections to Online Store sales channel by collection IDs
+	private async publishCollectionsToOnlineStore(
+		collectionIds: string[]
+	): Promise<number> {
 		try {
+			if (collectionIds.length === 0) {
+				console.log("No collection IDs provided for publishing");
+				return 0;
+			}
+
 			console.log(
-				"Publishing collections to Online Store sales channel..."
+				`Publishing ${collectionIds.length} collections to Online Store sales channel...`
 			);
 
 			// Get Online Store publication ID
 			const publicationId = await this.getOnlineStorePublicationId();
 
-			type CollectionToPublish = {
-				id: string;
-				title: string;
-				createdAt: string;
-			};
-
-			// Query recently created collections (within last 5 minutes)
-			const fiveMinutesAgo = new Date(
-				Date.now() - 5 * 60 * 1000
-			).toISOString();
-			const allCollections: CollectionToPublish[] = [];
-			let hasNextPage = true;
-			let cursor: string | null = null;
 			let publishedCount = 0;
 
-			while (hasNextPage) {
-				const query = `
-					query getCollections($first: Int!, $after: String, $query: String!) {
-						collections(first: $first, after: $after, query: $query) {
-							edges {
-								node {
-									id
-									title
-									createdAt
-									publishedOnPublication(publicationId: "${publicationId}")
-								}
-								cursor
-							}
-							pageInfo {
-								hasNextPage
-							}
-						}
-					}
-				`;
-
-				const variables: {
-					first: number;
-					after: string | null;
-					query: string;
-				} = {
-					first: 50,
-					after: cursor,
-					query: `created_at:>=${fiveMinutesAgo}`,
-				};
-
-				const result = await this.makeGraphQLRequest<{
-					collections: {
-						edges: Array<{
-							node: {
-								id: string;
-								title: string;
-								createdAt: string;
-								publishedOnPublication: boolean;
-							};
-							cursor: string;
-						}>;
-						pageInfo: {
-							hasNextPage: boolean;
-						};
-					};
-				}>(query, variables);
-
-				const collections = result.collections.edges
-					.map(
-						(edge: {
-							node: CollectionToPublish & {
-								publishedOnPublication: boolean;
-							};
-							cursor: string;
-						}) => edge.node
-					)
-					.filter(
-						(
-							collection: CollectionToPublish & {
-								publishedOnPublication: boolean;
-							}
-						) => !collection.publishedOnPublication
-					); // Only unpublished collections
-
-				allCollections.push(...collections);
-
-				hasNextPage = result.collections.pageInfo.hasNextPage;
-				if (hasNextPage && result.collections.edges.length > 0) {
-					cursor =
-						result.collections.edges[
-							result.collections.edges.length - 1
-						].cursor;
-				}
-			}
-
-			console.log(
-				`Found ${allCollections.length} collections to publish`
-			);
-
 			// Publish each collection
-			for (const collection of allCollections) {
+			for (const collectionId of collectionIds) {
 				try {
 					await this.publishCollectionToOnlineStore(
-						collection.id,
+						collectionId,
 						publicationId
 					);
 					publishedCount++;
-					console.log(`Published collection: ${collection.title}`);
+					console.log(`Published collection: ${collectionId}`);
 				} catch (error) {
 					console.error(
-						`Failed to publish collection ${collection.title}:`,
+						`Failed to publish collection ${collectionId}:`,
 						error
 					);
 				}
@@ -4070,6 +3985,7 @@ export class ShopifyClient {
 
 			let collections_created = 0;
 			let collections_updated = 0;
+			const createdCollectionIds: string[] = [];
 
 			// Process each collection
 			for (const collection of collectionsWithMappings) {
@@ -4194,6 +4110,9 @@ export class ShopifyClient {
 						appliedDisjunctively: true, // Use ANY rule match for broader collections
 					});
 
+					// Track the created collection ID for publishing
+					createdCollectionIds.push(collection_id);
+
 					// Extract numeric ID from GraphQL ID
 					const numericId = collection_id.split("/").pop();
 					if (numericId) {
@@ -4218,12 +4137,14 @@ export class ShopifyClient {
 			}
 
 			// Publish newly created collections to Online Store sales channel
-			if (collections_created > 0) {
+			if (createdCollectionIds.length > 0) {
 				console.log(
 					"Publishing collections to Online Store sales channel..."
 				);
 				const publishedCount =
-					await this.publishCollectionsToOnlineStore();
+					await this.publishCollectionsToOnlineStore(
+						createdCollectionIds
+					);
 				console.log(
 					`Published ${publishedCount} collections to Online Store`
 				);
