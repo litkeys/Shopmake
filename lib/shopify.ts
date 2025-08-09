@@ -5879,18 +5879,34 @@ export class ShopifyClient {
 	// Helper method to load section preset from file
 	private async loadSectionPreset(sectionType: string): Promise<any> {
 		try {
-			const fs = await import("fs/promises");
-			const path = await import("path");
+			// For serverless environments like Vercel, fetch from public folder via HTTP
+			// Construct the URL based on environment
+			let baseUrl: string;
 
-			const filePath = path.join(
-				process.cwd(),
-				"private",
-				"section-presets",
-				`${sectionType}.json`
-			);
-			const fileContent = await fs.readFile(filePath, "utf-8");
+			if (process.env.VERCEL_URL) {
+				// Vercel deployment
+				baseUrl = `https://${process.env.VERCEL_URL}`;
+			} else if (process.env.NODE_ENV === "development") {
+				// Local development
+				baseUrl = "http://localhost:3000";
+			} else {
+				// Production fallback - use relative URL
+				baseUrl = "";
+			}
 
-			return JSON.parse(fileContent);
+			const url = baseUrl
+				? `${baseUrl}/section-presets/${sectionType}.json`
+				: `/section-presets/${sectionType}.json`;
+			const response = await fetch(url);
+
+			if (!response.ok) {
+				throw new Error(
+					`HTTP error! status: ${response.status} for ${url}`
+				);
+			}
+
+			const sectionPreset = await response.json();
+			return sectionPreset;
 		} catch (error) {
 			console.error(
 				`Error loading section preset for ${sectionType}:`,
