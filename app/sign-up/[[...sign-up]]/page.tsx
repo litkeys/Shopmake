@@ -9,29 +9,9 @@ export default function Page() {
 						Join Genesis Project
 					</h2>
 					<p className="mt-2 text-center text-sm text-gray-600">
-						Create your account to get started
+						Create your account to start building amazing Shopify
+						experiences
 					</p>
-
-					{/* Admin-only notice */}
-					<div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-md">
-						<div className="flex">
-							<div className="ml-3">
-								<h3 className="text-sm font-medium text-amber-800">
-									Admin Access Only
-								</h3>
-								<div className="mt-2 text-sm text-amber-700">
-									<p>
-										This application is restricted to
-										authorized administrators only. Only
-										pre-approved email addresses can create
-										accounts. If you believe you should have
-										access, please contact your system
-										administrator.
-									</p>
-								</div>
-							</div>
-						</div>
-					</div>
 				</div>
 				<SignUp
 					routing="path"

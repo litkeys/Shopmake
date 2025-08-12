@@ -1,6 +1,5 @@
 import { auth, currentUser } from "@clerk/nextjs";
 import { NextRequest, NextResponse } from "next/server";
-import { isAdminEmail } from "@/lib/admin";
 import { ShopifyClient } from "@/lib/shopify";
 import { getStore, getStoreData, getShopifyAdminToken } from "@/lib/supabase";
 import { ShopifyStoreGenerationRequest } from "@/types";
@@ -16,14 +15,14 @@ export async function POST(request: NextRequest) {
 			);
 		}
 
-		// Check if user is admin
+		// Get current user
 		const user = await currentUser();
 		const userEmail = user?.emailAddresses[0]?.emailAddress;
 
-		if (!userEmail || !isAdminEmail(userEmail)) {
+		if (!userEmail) {
 			return NextResponse.json(
-				{ error: "Admin access required" },
-				{ status: 403 }
+				{ error: "User email not found" },
+				{ status: 400 }
 			);
 		}
 

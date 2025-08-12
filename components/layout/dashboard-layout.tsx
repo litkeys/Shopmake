@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useClerk, useUser } from "@clerk/nextjs";
@@ -11,7 +11,6 @@ import {
 	Users,
 	Settings,
 	LogOut,
-	Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -21,8 +20,7 @@ interface DashboardLayoutProps {
 	children: React.ReactNode;
 }
 
-// Since we want maximum security, we'll check admin status server-side
-// The client-side will only show the admin link if the user has the admin role in their session
+// Navigation items for the dashboard
 
 const navigation = [
 	{ name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -32,50 +30,18 @@ const navigation = [
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
 	const [sidebarOpen, setSidebarOpen] = useState(false);
-	const [isAdminVerified, setIsAdminVerified] = useState(false);
-	const [isCheckingAdmin, setIsCheckingAdmin] = useState(true);
 	const pathname = usePathname();
 	const { signOut } = useClerk();
 	const { user, isLoaded, isSignedIn } = useUser();
 
-	// Check if user is admin when user data is loaded
-	useEffect(() => {
-		async function checkAdminStatus() {
-			if (isLoaded && isSignedIn && user) {
-				const userEmail = user.emailAddresses[0]?.emailAddress;
-				if (userEmail) {
-					// We'll make a server call to check admin status
-					try {
-						const response = await fetch("/api/check-admin", {
-							method: "POST",
-							headers: { "Content-Type": "application/json" },
-							body: JSON.stringify({ email: userEmail }),
-						});
-						const data = await response.json();
-						setIsAdminVerified(data.isAdmin);
-					} catch (error) {
-						console.error("Error checking admin status:", error);
-						setIsAdminVerified(false);
-					}
-				}
-			}
-			setIsCheckingAdmin(false);
-		}
-
-		checkAdminStatus();
-	}, [isLoaded, isSignedIn, user]);
-
-	// Show admin link for verified admins
-	const navigationItems = isAdminVerified
-		? [...navigation, { name: "Admin", href: "/admin", icon: Shield }]
-		: navigation;
+	const navigationItems = navigation;
 
 	const handleSignOut = () => {
 		signOut();
 	};
 
-	// Show loading state while Clerk is checking authentication or we're checking admin status
-	if (!isLoaded || isCheckingAdmin) {
+	// Show loading state while Clerk is checking authentication
+	if (!isLoaded) {
 		return (
 			<div className="min-h-screen flex items-center justify-center bg-gray-50">
 				<div className="text-center">
@@ -86,57 +52,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 		);
 	}
 
-	// If user is not signed in, don't render the dashboard UI at all
+	// If user is not signed in, redirect to sign-in
 	if (!isSignedIn) {
-		return (
-			<div className="min-h-screen flex items-center justify-center bg-gray-50">
-				<div className="text-center">
-					<h2 className="text-2xl font-bold text-gray-900 mb-4">
-						Access Denied
-					</h2>
-					<p className="text-gray-600 mb-4">
-						You must be signed in to view this page.
-					</p>
-					<Button onClick={() => (window.location.href = "/sign-in")}>
-						Sign In
-					</Button>
-				</div>
-			</div>
-		);
-	}
-
-	// If user is signed in but not an admin, deny access to entire application
-	if (!isAdminVerified) {
-		return (
-			<div className="min-h-screen flex items-center justify-center bg-gray-50">
-				<div className="text-center">
-					<h2 className="text-2xl font-bold text-red-600 mb-4">
-						Access Restricted
-					</h2>
-					<p className="text-gray-600 mb-4">
-						This application is restricted to authorized
-						administrators only.
-					</p>
-					<p className="text-sm text-gray-500 mb-6">
-						Your account ({user?.emailAddresses[0]?.emailAddress})
-						does not have admin privileges.
-					</p>
-					<div className="space-x-4">
-						<Button variant="outline" onClick={() => signOut()}>
-							Sign Out
-						</Button>
-						<Button
-							onClick={() =>
-								(window.location.href =
-									"mailto:admin@yourcompany.com")
-							}
-						>
-							Request Access
-						</Button>
-					</div>
-				</div>
-			</div>
-		);
+		window.location.href = "/sign-in";
+		return null;
 	}
 
 	return (

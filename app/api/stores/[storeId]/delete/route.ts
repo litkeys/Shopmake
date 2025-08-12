@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { isAdminEmail } from "@/lib/admin";
 import { getStore, deleteShopifyAdminToken } from "@/lib/supabase";
 import { createClient } from "@supabase/supabase-js";
 
@@ -28,18 +27,14 @@ export async function DELETE(
 			);
 		}
 
-		// Check if user is admin
+		// Get current user
 		const user = await currentUser();
 		const userEmail = user?.emailAddresses[0]?.emailAddress;
 		console.log("Delete - User email:", userEmail);
-		console.log(
-			"Delete - Is admin:",
-			userEmail ? isAdminEmail(userEmail) : false
-		);
-		if (!userEmail || !isAdminEmail(userEmail)) {
+		if (!userEmail) {
 			return NextResponse.json(
-				{ error: "Admin access required" },
-				{ status: 403 }
+				{ error: "User email not found" },
+				{ status: 400 }
 			);
 		}
 
