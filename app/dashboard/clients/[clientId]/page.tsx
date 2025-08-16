@@ -2220,7 +2220,19 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 								Used in the footer and contact forms
 							</p>
 						</div>
+					</CardContent>
+				</Card>
 
+				{/* Store Visuals Section */}
+				<Card>
+					<CardHeader>
+						<CardTitle>Store Visuals</CardTitle>
+						<CardDescription>
+							Visual styling settings used during store generation
+							visuals step
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="space-y-6">
 						<div className="space-y-4">
 							<Label className="text-base font-medium">
 								Store Colors
