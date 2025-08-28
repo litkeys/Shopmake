@@ -1,7 +1,7 @@
 # Agentic Architecture Migration Strategy
 ## Complete Migration Guide for Genesis Project
 
-This document provides a comprehensive 7-phase strategy to migrate the Genesis Project from a form-based Shopify store generator into a production-ready agentic SaaS platform powered by conversational AI.
+This document provides a comprehensive 6-phase strategy to migrate the Genesis Project from a form-based Shopify store generator into a production-ready agentic SaaS platform powered by conversational AI.
 
 ## Migration Overview
 
@@ -21,9 +21,9 @@ This document provides a comprehensive 7-phase strategy to migrate the Genesis P
 
 ---
 
-## Phase 1: Database Foundation & Tool Infrastructure
+## Phase 1A: Database & Audit Foundation
 
-This phase establishes the database foundation and tool layer for AI agent operations.
+Establish the database foundation and audit logging system for agent operations.
 
 ### Context
 - Current system: Form-based store configuration with Supabase backend
@@ -41,26 +41,7 @@ This phase establishes the database foundation and tool layer for AI agent opera
    - **No overall operation_status** - users can approve/reject individual tool calls
    - Keep pending changes in local browser state/session storage (no database persistence needed)
 
-2. **Create comprehensive tool layer endpoints:**
-   - `/api/tools/store-data` - CRUD operations on store configuration
-   - `/api/tools/collections` - Collection management tools
-   - `/api/tools/uploads` - File upload and management tools
-   - `/api/tools/layout` - Store layout section management
-   
-3. **Add read-only tools for agent context gathering:**
-   - `/api/tools/read-store-layout` - Get current store layout
-   - `/api/tools/read-store-collections` - Get collections and mappings
-   - `/api/tools/read-store-uploads` - Get uploaded files info
-   - `/api/tools/read-store-visuals` - Get brand colors/fonts
-   - `/api/tools/read-store-policies` - Get store policies
-
-4. **Each tool endpoint must:**
-   - Accept structured parameters with validation
-   - Generate before/after diffs for changes (only changed fields, not full records)
-   - Log all operations for audit trail
-   - Return standardized response format with operation metadata
-
-5. **Before/after state logging guidelines:**
+2. **Before/after state logging guidelines:**
    - **DO include**: Only fields that actually changed, table/record IDs
    - **DO NOT include**: Full database snapshots, unchanged fields, sensitive data (API tokens), large binary data
    - **Modification tool format**: `{"tool_call_id": 1, "tool_name": "updateStoreData", "operation_status": "pending", "before": {...}, "after": {...}}`
@@ -69,54 +50,187 @@ This phase establishes the database foundation and tool layer for AI agent opera
 
 ### Implementation Tasks
 1. Update `SUPABASE_SETUP.md` with single `agent_logs` table schema (include example JSON structure for multi-tool arrays with individual operation_status)
-2. Create base tool infrastructure in `/lib/tools/` with efficient diff generation utilities
-3. **Set up MCP (Model Context Protocol) server** - `/lib/mcp/` for dynamic tool calling during agent reasoning
-   - **Building MCP Tutorial**: https://modelcontextprotocol.io/tutorials/building-mcp-with-llms
-   - **MCP Full Documentation**: https://modelcontextprotocol.io/llms-full.txt (comprehensive reference)
-   - **MCP TypeScript SDK**: https://github.com/modelcontextprotocol/typescript-sdk
-   - **MCP Server Quickstart**: https://modelcontextprotocol.io/quickstart/server
-4. Implement tool endpoints with proper error handling and audit logging
-5. Add TypeScript interfaces for all tool operations, multi-tool sequences, and pending changes state
-6. Create tool response formatting utilities and local state management for pending changes
-7. Implement diff utilities that capture only changed fields (not full record snapshots)
-8. Design logging utilities to group multiple tool calls from single conversation turn into ordered arrays with `tool_call_id`
-9. **Build individual tool call approval/rejection functionality** - `/api/agent/approve-individual` and `/api/agent/reject-individual` endpoints using composite reference `{log_entry_id, tool_call_id}`
-10. **Configure MCP tool definitions** for read-only context gathering (read-store-layout, read-store-visuals, etc.)
+2. Create base infrastructure in `/lib/audit/` for logging utilities
+3. Design logging utilities to group multiple tool calls from single conversation turn into ordered arrays with `tool_call_id`
+4. Add TypeScript interfaces for audit logging, tool call structures, and pending changes state
+5. Create local state management utilities for pending changes (React state/session storage)
 
 ### Success Criteria
-- All existing functionality preserved through new tool endpoints
-- Complete audit trail for every operation with clear status tracking:
+- `agent_logs` table schema defined and documented
+- Complete audit trail design with clear status tracking:
   - **Modification tools**: pending/approved/rejected status with before/after diffs
   - **Read-only tools**: "read" status with result data
-- Individual tool call approve/reject functionality for modification tools only
-- **MCP server operational** with tool definitions for read-only context gathering
-- Foundation ready for OpenAI + MCP integration
+- Local pending changes state management utilities created
+- TypeScript interfaces defined for all logging structures
+- Foundation ready for tool layer implementation
 
 ### Design Rationale
 - **Single audit table**: Simpler to implement and maintain initially; can be split into specialized tables later if needed
 - **Local pending changes**: Faster UX (no database round-trips), simpler cleanup (auto-cleared on page refresh), and reduced database complexity
 - **Individual tool call status**: Users can approve some changes and reject others from the same conversation - no overall status makes sense
 - **UI-driven references**: Each approve/reject button carries `{log_entry_id, tool_call_id}` - direct, efficient, no searching needed
-- **MCP Integration**: Enables true mid-response tool calling for natural agent reasoning
 
-### ⚠️ PHASE 1 BOUNDARIES - DO NOT IMPLEMENT:
-- **No OpenAI integration** (even though tools should be "ready" for it)
+### ⚠️ PHASE 1A BOUNDARIES - DO NOT IMPLEMENT:
+- **No tool endpoints** (Phase 1B)
+- **No MCP server setup** (Phase 2A)
+- **No OpenAI integration** (Phase 2B)
+- **No UI components or changes**
 - **No agent orchestration or chat functionality**
-- **No UI changes** to existing forms or layouts
-- **No pending changes UI** (only the local state management utilities)
-- **No diff visualization components** (only diff generation utilities)
-- **No conversation interfaces**
 
-**Focus ONLY on:** Tool endpoints, audit logging, and basic infrastructure.
+**Focus ONLY on:** Database schema, audit logging design, and basic infrastructure.
 
 ---
 
-## Phase 2: OpenAI Integration & Agent Orchestration
+## Phase 1B: Core Tool Infrastructure
 
-Building on Phase 1's tool foundation, implement the core AI agent using OpenAI's latest capabilities including the Responses API and function calling.
+Implement the comprehensive tool layer with 20 endpoints covering all form sections.
 
 ### Context
-- Tool layer is now established with audit logging
+- Database foundation and audit logging are established
+- Need to create the tool layer that agents will use to read and modify store data
+- Must cover all 10 sections of the client form with read and modification tools
+
+### Key Requirements
+1. **Create comprehensive tool layer endpoints:**
+   - **20 comprehensive tool endpoints** (10 read + 10 modification) covering all form sections
+   - **Granular section-specific tools** instead of generic store-data operations
+   - **File upload tools** for logo and CSV data handling
+   - **Preserved existing features** like magic generate
+   
+2. **Add read-only tools for agent context gathering (10 tools covering all form sections):**
+   - `/api/tools/read-store-info` - Get store name, description, contact email
+   - `/api/tools/read-store-visuals` - Get brand colors, fonts
+   - `/api/tools/read-store-logo` - Get logo upload info and current logo
+   - `/api/tools/read-data-files` - Get CSV uploads info (products, customers, inventory)
+   - `/api/tools/read-store-collections` - Get collections and mapping rules
+   - `/api/tools/read-store-locations` - Get store location details
+   - `/api/tools/read-shipping-logistics` - Get processing times and shipping options
+   - `/api/tools/read-legal-info` - Get trading name, business details, VAT, registration numbers
+   - `/api/tools/read-store-policies` - Get return policy, privacy policy, terms of service, shipping policy
+   - `/api/tools/read-store-layout` - Get store page configurations
+
+3. **Add modification tools for agent changes (10 tools covering all form sections):**
+   - `/api/tools/update-store-info` - Update store name, description, contact email
+   - `/api/tools/update-store-visuals` - Update brand colors, fonts
+   - `/api/tools/upload-store-logo` - Handle logo upload/replacement
+   - `/api/tools/upload-data-files` - Handle CSV uploads (products, customers, inventory)
+   - `/api/tools/update-store-collections` - Manage product collections (preserve magic generate feature)
+   - `/api/tools/update-store-locations` - Manage store location details
+   - `/api/tools/update-shipping-logistics` - Update processing times and shipping options
+   - `/api/tools/update-legal-info` - Update trading name, business details, VAT, registration numbers
+   - `/api/tools/update-store-policies` - Update return policy, privacy policy, terms of service, shipping policy
+   - `/api/tools/update-store-layout` - Update store page configurations
+
+4. **Each tool endpoint must:**
+   - Accept structured parameters with validation
+   - Generate before/after diffs for changes (only changed fields, not full records)
+   - Log all operations for audit trail
+   - Return standardized response format with **UI-ready metadata**:
+     - Human-readable tool descriptions and parameter names
+     - Execution results formatted for display
+     - Tool category (read vs modification) for proper UI handling
+     - Parameter values with display formatting
+
+### Implementation Tasks
+1. Create base tool infrastructure in `/lib/tools/` with efficient diff generation utilities
+2. **Implement comprehensive tool endpoints (20 total)** with proper error handling and audit logging:
+   - **10 Read tools**: read-store-info, read-store-visuals, read-store-logo, read-data-files, read-store-collections, read-store-locations, read-shipping-logistics, read-legal-info, read-store-policies, read-store-layout
+   - **10 Modification tools**: update-store-info, update-store-visuals, upload-store-logo, upload-data-files, update-store-collections, update-store-locations, update-shipping-logistics, update-legal-info, update-store-policies, update-store-layout
+   - **Preserve magic generate feature** for collections section and policies section
+   - **Section-specific validation** and error handling for each tool
+3. Add TypeScript interfaces for all tool operations and responses
+4. Create tool response formatting utilities
+5. Implement diff utilities that capture only changed fields (not full record snapshots)
+6. **Design tool interfaces with MCP compatibility in mind:**
+   - Standardized parameter schemas (JSON Schema format)
+   - Consistent return value structures
+   - Standardized error response formats
+   - Tool metadata (descriptions, parameter types) that can be easily mapped to MCP tool definitions
+7. **Build individual tool call approval/rejection functionality** - `/api/agent/approve-individual` and `/api/agent/reject-individual` endpoints using composite reference `{log_entry_id, tool_call_id}`:
+   - **Return updated log entry data** after status changes for UI refresh
+   - Include tool call metadata for proper UI display
+   - Provide batch status update information for "Approve/Reject ALL" operations
+
+### Success Criteria
+- **All 10 form sections covered** by dedicated read and modification tools (20 endpoints total)
+- All existing functionality preserved (including magic generate)
+- Individual tool call approve/reject functionality for modification tools only
+- Comprehensive error handling and validation for all tools
+- Efficient diff generation utilities working
+- Foundation ready for MCP integration
+
+### ⚠️ PHASE 1B BOUNDARIES - DO NOT IMPLEMENT:
+- **No MCP server setup** (Phase 2A)
+- **No OpenAI integration** (Phase 2B)
+- **No UI components or changes**
+- **No agent orchestration or chat functionality**
+- **No diff visualization components** (only diff generation utilities)
+
+**Focus ONLY on:** Tool endpoints, validation, and approval/rejection APIs.
+
+---
+
+## Phase 2A: MCP Server Setup
+
+Establish the Model Context Protocol server for dynamic tool calling during agent reasoning.
+
+### Context
+- Tool infrastructure is established with 20 endpoints
+- Need to set up MCP server for mid-response tool calling capabilities
+- This foundation will enable natural agent reasoning with dynamic context gathering
+
+### Key Requirements
+1. **Set up MCP (Model Context Protocol) server:**
+   - `/lib/mcp/` for dynamic tool calling during agent reasoning
+   - **Building MCP Tutorial**: https://modelcontextprotocol.io/tutorials/building-mcp-with-llms
+   - **MCP Full Documentation**: https://modelcontextprotocol.io/llms-full.txt (comprehensive reference)
+   - **MCP TypeScript SDK**: https://github.com/modelcontextprotocol/typescript-sdk
+   - **MCP Server Quickstart**: https://modelcontextprotocol.io/quickstart/server
+
+2. **Configure MCP tool definitions for all 20 tools:**
+   - **Read tools for MCP**: 10 tools for dynamic context gathering during agent reasoning
+   - **Modification tools for OpenAI**: 10 tools for structured changes requiring approval
+   - Proper parameter validation and descriptions for all tools
+   - Tool categorization (read vs. modification) for proper handling
+
+### Implementation Tasks
+1. Install and configure MCP TypeScript SDK
+2. Create MCP server configuration with tool definitions
+3. **Create MCP adapter layer** that wraps existing Phase 1B REST endpoints:
+   - MCP tools call internal REST APIs (no endpoint changes needed)
+   - Transform REST API responses to MCP-compatible formats
+   - Map existing parameter schemas to MCP tool definitions
+4. Map all 20 tools to appropriate MCP/OpenAI interfaces:
+   - **10 Read tools**: Available through MCP for mid-response context gathering
+   - **10 Modification tools**: Available through OpenAI function calling for approval workflow
+5. Set up MCP server connection and communication protocols
+6. Create tool validation and error handling for MCP integration
+7. Test MCP server functionality with basic tool calling
+
+### Success Criteria
+- **MCP server operational** with tool definitions for all 20 tools
+- Read tools properly configured for dynamic context gathering
+- Modification tools properly configured for approval workflow
+- MCP server can handle tool calls and return structured responses
+- Foundation ready for OpenAI integration
+- Complete documentation of MCP setup and tool mappings
+
+### ⚠️ PHASE 2A BOUNDARIES - DO NOT IMPLEMENT:
+- **No OpenAI integration** (Phase 2B)
+- **No agent orchestration logic** (Phase 2B)
+- **No chat functionality** (Phase 3A)
+- **No UI components**
+
+**Focus ONLY on:** MCP server setup, tool definitions, and basic connectivity.
+
+---
+
+## Phase 2B: OpenAI Integration & Agent Core
+
+Integrate OpenAI's latest capabilities with the MCP server to create the core AI agent.
+
+### Context
+- MCP server is operational with tool definitions
 - Need to integrate OpenAI's "gpt-5-mini-2025-08-07" model
 - Must support natural language conversation and structured tool calling
 
@@ -125,23 +239,17 @@ Building on Phase 1's tool foundation, implement the core AI agent using OpenAI'
    - Research and implement OpenAI Responses API (https://platform.openai.com/docs/api-reference/responses/create)
    - Research OpenAI Agents SDK (https://openai.github.io/openai-agents-js/)
    - **Reference**: Official OpenAI JavaScript/TypeScript SDK: https://github.com/openai/openai-node
-   - **Integrate MCP (Model Context Protocol)** for mid-response tool calling during agent reasoning
-   - **MCP Integration Resources**:
-     - **Building MCP Guide**: https://modelcontextprotocol.io/tutorials/building-mcp-with-llms
-     - **MCP Full Documentation**: https://modelcontextprotocol.io/llms-full.txt
+   - **Integrate MCP server** for mid-response tool calling during agent reasoning
    - Configure function calling with MCP tool definitions for dynamic context gathering
 
 2. **Agent Core (`/lib/agent/`):**
-   - `MCPEnabledOrchestrator` class for conversation management with mid-response tool calling
+   - `MCPOrchestrator` class for conversation management with mid-response tool calling
    - Tool calling interface that integrates OpenAI streaming with MCP server
    - Context management for multi-turn conversations with dynamic data reading
-   - Local state management for pending changes (React state/session storage)
    - **MCP streaming handler** for true mid-response tool execution and continued reasoning
 
 3. **Agent API endpoints:**
    - `/api/agent/chat` - Main conversation endpoint with streaming support (https://platform.openai.com/docs/guides/streaming-responses?api-mode=responses&lang=javascript)
-   - `/api/agent/approve-individual` - Approve individual tool call using `{log_entry_id, tool_call_id}` reference
-   - `/api/agent/reject-individual` - Reject individual tool call using `{log_entry_id, tool_call_id}` reference
    - `/api/agent/approve-all` - Approve ALL pending tool calls from a conversation turn
    - `/api/agent/reject-all` - Reject ALL pending tool calls from a conversation turn  
    - `/api/agent/history` - Conversation history (from agent_logs table)
@@ -154,11 +262,15 @@ Building on Phase 1's tool foundation, implement the core AI agent using OpenAI'
    - Maintains context across conversation turns
 
 2. **MCP + OpenAI Function calling structure:**
-   - Map read-only tools to MCP tool definitions for mid-response context gathering
+   - Integrate MCP server for read tool dynamic context gathering
    - Map modification tools to OpenAI function definitions for structured changes
-   - Include parameter validation and descriptions for all tools
    - Handle complex multi-step operations with MCP tool chaining
    - **Use OpenAI streaming responses** with MCP integration for mid-response reasoning
+   - **Structure streaming events for UI parsing:**
+     - Tool call start events with metadata (tool name, parameters)
+     - Tool call completion events with results  
+     - Clear separation between read and modification tool events
+     - Progress indicators for multi-tool operations
 
 3. **MCP-Enhanced Conversation flow:**
    - Accept natural language input with minimal context
@@ -174,82 +286,138 @@ Building on Phase 1's tool foundation, implement the core AI agent using OpenAI'
 - **MCP integration functional** - agent can call read tools mid-response and continue reasoning
 - Proper function calling to tool endpoints (single and multi-tool sequences)
 - OpenAI streaming responses with MCP tool calling implemented (complete responses logged after streaming)
+- **Streaming responses structured for UI consumption** - tool call events properly formatted for real-time display
 - Conversation history persistence with grouped tool call logging (including MCP read calls)
+- **Conversation API endpoints return UI-ready data** - log entries with complete tool call metadata for display
 - Change proposal and approval workflow functional
 - Test via API endpoints or simple command-line interface showing mid-response tool calling
 
-### ⚠️ PHASE 2 BOUNDARIES - DO NOT IMPLEMENT:
-- **No chat UI components** (no React components for conversation)
-- **No modifications to existing form pages**
-- **No visual diff components** (only diff data generation)
-- **No real-time UI streaming** (use OpenAI streaming for agent responses, but don't display streaming to users yet)
-- **No rainbow outline effects or visual feedback**
-- **No form integration or sync**
+### ⚠️ PHASE 2B BOUNDARIES - DO NOT IMPLEMENT:
+- **No chat UI components** (Phase 3A)
+- **No modifications to existing form pages** (Phase 3B)
+- **No visual diff components** (Phase 3A)
+- **No real-time UI streaming** (Phase 3B)
+- **No rainbow outline effects or visual feedback** (Phase 3B)
 
-**Focus ONLY on:** Agent logic, OpenAI integration, and API endpoints.
+**Focus ONLY on:** Agent logic, OpenAI + MCP integration, and API endpoints.
 
 ---
 
-## Phase 3: Chat Interface & User Experience
+## Phase 3A: Basic Chat Interface
 
-With the agent core functional, create the conversational UI that integrates alongside the existing store configuration form.
+Create the core conversational UI components without real-time streaming features.
 
 ### Context
 - Agent API is working with tool calling and approval workflows
-- Existing store form UI must remain functional
-- Need to add conversational interface without disrupting current UX
+- Need to create basic chat interface components
+- Focus on core functionality before adding advanced features
 
 ### Key Requirements
-1. **MCP-Enhanced Chat Interface Components (`/components/chat/`):**
-   - `ChatPanel` - Main conversation interface with MCP streaming support
-   - `MessageList` - Conversation history display with MCP tool call indicators
+1. **Core Chat Interface Components (`/components/chat/`) - Streaming-Ready Architecture:**
+   - `ChatPanel` - Main conversation interface (with streaming state management foundation)
+   - `MessageList` - Conversation history display (supports progressive updates)
    - `MessageInput` - Natural language input
-   - `MCPStreamingDisplay` - Real-time display of agent reasoning and MCP tool calls
    - `PendingChanges` - Visual diff preview for modification tools only (each carrying `{log_entry_id, tool_call_id}` reference)  
    - `ApprovalControls` - Individual and "Approve/Reject ALL" controls (modification tools only)
-   - `ToolCallIndicator` - Visual indicators for ALL tool calls:
-     - **Read operations**: "🔍 Reading store layout..." (informational only, no approval needed)
-     - **Modification operations**: "✏️ Updating store data..." (shows what's being proposed)
-   - `AgentTyping` - Loading states and typing indicators
+   - `ToolCallIndicator` - **Streaming-compatible** visual indicators for tool calls:
+     - **Read operations**: Support both states - "🔍 Checking layout..." and "🔍 Checked layout..."
+     - **Modification operations**: Support both states - "✏️ Updating data..." and "✏️ Updated data..."
+     - **Built with streaming state transitions in mind**
+   - `AgentTyping` - Loading states and typing indicators (extensible for streaming)
 
 2. **Layout Integration:**
    - Modify `/app/dashboard/clients/[clientId]/page.tsx` to include chat panel
    - Responsive design: chat panel alongside form on desktop, tabbed on mobile
    - Maintain existing form functionality completely
 
-3. **MCP-Enhanced Real-time Features:**
-   - **Build on Phase 2's OpenAI + MCP streaming** - display agent reasoning and mid-response tool calls to users in real-time (https://platform.openai.com/docs/guides/streaming-responses?api-mode=responses&lang=javascript)
-   - Progressive display of agent reasoning: "Let me check your current layout..." → [calls read-store-layout] → "I can see you have..."
-   - **Visual indicators for MCP tool calls** - show when agent is gathering context vs. proposing changes
-   - Optimistic UI updates for smooth experience
-
 ### Implementation Details
-1. **MCP-Enhanced Chat UI Features:**
-   - Message threading with conversation context
-   - **Real-time streaming display** of agent reasoning with tool call indicators for ALL operations
-   - Rich diff visualization for proposed changes (modification tools only)
-   - **Tool call visualization** - show ALL operations as they happen:
-     - Read operations: "🔍 Checking current layout..."
-     - Modification operations: "✏️ Updating store colors..."
+1. **Streaming-Ready Chat UI Foundation:**
+   - Message threading with conversation context (supports progressive updates)
+   - Basic diff visualization for proposed changes (modification tools only)
+   - **Tool call visualization architecture** - components designed to handle state transitions:
+     - **Phase 3A Implementation**: Use completed state only ("🔍 Checked current layout...")
+     - **Phase 3A Architecture**: Built to support streaming states for Phase 3B enhancement
+     - **State management**: Foundation supports both static display (3A) and streaming transitions (3B)
    - Inline previews of store configuration changes
    - **Individual approve/reject controls per modification tool call** - each button carries `{log_entry_id, tool_call_id}` for direct `/api/agent/approve-individual` or `/api/agent/reject-individual` API calls
    - **Read-only tool call display** - show MCP read operations as informational only (no approval controls)
    - "Approve ALL" and "Reject ALL" buttons for batch operations on modification tools only
    - Quick actions for common operations
 
-2. **Form Integration:**
-   - Visual indicators when agent has modified specific fields
-   - Rainbow outline effect for AI-modified fields (as specified)
-   - Sync between agent changes and form state
-   - Maintain auto-save functionality
-
-3. **User Experience:**
+2. **User Experience:**
    - Onboarding flow for new users
    - Example prompts and suggestions
    - Error handling and graceful fallbacks
    - Conversation persistence across sessions
 
-4. **Tool Call UX Flow Examplle (similar to Cursor IDE):**
+### Success Criteria
+- Chat panel appears alongside existing form
+- Users can make store configuration requests in natural language
+- **Clear display of completed tool operations** with tool call indicators for ALL operations:
+  - Read operations: "🔍 Checked current layout..." → "I can see you have..."
+  - Modification operations: "✏️ Updated store colors..." → "I've proposed the following changes..."
+- Clear distinction between tool types:
+  - **Read operations**: Visible as informational, "read" status, no approval needed
+  - **Modification operations**: Show diffs with pending status, require approval
+- All existing form functionality preserved
+- Responsive design on all screen sizes
+- Individual and batch approval/rejection working
+
+### ⚠️ PHASE 3A BOUNDARIES - DO NOT IMPLEMENT:
+- **No real-time streaming display** (Phase 3B) - *Build streaming-ready architecture, but only display completed states*
+- **No streaming event handling** (Phase 3B) - *Components support streaming states, but don't connect streaming events yet*
+- **No advanced diff visualization** (basic diff preview only)
+- **No rainbow outline effects** (Phase 3B)
+- **No form-agent deep integration** (Phase 3B)
+- **No advanced tool operations** (stick to basic store configuration)
+
+**Focus ONLY on:** 
+- Streaming-compatible chat UI architecture (ready for 3B enhancement)
+- Completed tool call display using streaming-ready components
+- Simple diff previews and conversation interface
+- **Foundation that Phase 3B can enhance without rebuilding**
+
+---
+
+## Phase 3B: Advanced Chat Features & Integration
+
+**Enhance** the streaming-ready architecture from Phase 3A with real-time streaming, form integration, and visual feedback.
+
+### Context
+- Streaming-ready chat interface is functional with completed-state display
+- Components are architected to support streaming transitions
+- Need to **activate streaming features** and add form integration
+- Final phase of the agentic architecture implementation
+
+### Key Requirements
+1. **MCP-Enhanced Real-time Features:**
+   - **Build on Phase 2B's OpenAI + MCP streaming** - display agent reasoning and mid-response tool calls to users in real-time (https://platform.openai.com/docs/guides/streaming-responses?api-mode=responses&lang=javascript)
+   - Progressive display of agent reasoning: "Let me check your current layout..." → [calls read-store-layout] → "I can see you have..."
+   - **Visual indicators for MCP tool calls** - show when agent is gathering context vs. proposing changes
+   - Optimistic UI updates for smooth experience
+
+2. **Enhanced Chat Components (Build on Phase 3A Foundation):**
+   - `MCPStreamingDisplay` - Real-time display of agent reasoning and MCP tool calls
+   - **Enhance existing `ChatPanel`** - Activate streaming state management built in 3A
+   - **Enhance existing `MessageList`** - Activate progressive update capabilities built in 3A
+   - **Enhance existing `ToolCallIndicator`** - Activate streaming state transitions (in-progress → completed)
+   - **Activate real-time streaming display** of agent reasoning using streaming-ready components from 3A
+
+3. **Form Integration:**
+   - Visual indicators when agent has modified specific fields
+   - Rainbow outline effect for AI-modified fields
+   - Sync between agent changes and form state
+   - Maintain auto-save functionality
+
+### Implementation Details
+1. **Activate Streaming Features in Existing Components:**
+   - **Connect streaming events** to the streaming-ready components built in Phase 3A
+   - **Activate real-time tool call state transitions** in existing `ToolCallIndicator` components:
+     - Read operations: "🔍 Checking current layout..." (during execution) → "🔍 Checked current layout..." (completed)
+     - Modification operations: "✏️ Updating store colors..." (during execution) → shows diff with approval buttons (completed)
+   - **Enable progressive display** in existing `MessageList` component for agent reasoning
+
+2. **Tool Call UX Flow (similar to Cursor IDE):**
    - **Agent starts reasoning**: "Let me check your current store setup..."
    - **Read tool indicator appears**: "🔍 Reading store layout..."
    - **Read tool completes**: "I can see your store has a slideshow hero section..."
@@ -257,354 +425,62 @@ With the agent core functional, create the conversational UI that integrates alo
    - **Modification results**: "I've proposed the following changes:" → shows diff with approval buttons
    - **All operations tracked and visible** throughout the conversation
 
+3. **Form Integration:**
+   - Visual indicators when agent has modified specific fields
+   - Rainbow outline effect for AI-modified fields
+   - Sync between agent changes and form state
+   - Maintain auto-save functionality
+
 ### Success Criteria
-- Chat panel appears alongside existing form with MCP streaming support
-- Users can make store configuration requests in natural language
 - **Real-time display of agent reasoning** with tool call indicators for ALL operations:
   - Read operations: "🔍 Checking current layout..." → "I can see you have..."
   - Modification operations: "✏️ Updating store colors..." → "I've proposed the following changes..."
-- Clear distinction between tool types:
-  - **Read operations**: Visible as informational, "read" status, no approval needed
-  - **Modification operations**: Show diffs with pending status, require approval
-- All existing form functionality preserved
-- Visual indicators for AI-modified fields working
-- Responsive design on all screen sizes
-
-### ⚠️ PHASE 3 BOUNDARIES - DO NOT IMPLEMENT:
-- **No advanced diff visualization** (basic diff preview only)
-- **No rainbow outline effects** (save for Phase 6)
-- **No form-agent deep integration** (chat panel is separate)
-- **No advanced tool operations** (stick to basic store configuration)
-- **No analytics or monitoring dashboards**
-
-**Focus ONLY on:** MCP-enhanced chat UI with real-time tool call display, simple diff previews, and conversation interface.
-
----
-
-## Phase 4: Advanced Tool System & Store Operations
-
-Expand the tool system to support comprehensive store management operations and advanced store layout management.
-
-### Context
-- Basic chat interface is functional
-- Need to expand tool capabilities for production use
-- Must support complex store operations through natural language
-- **Note:** Agent will NOT have direct Shopify API access - existing Shopify integration via form workflow is preserved
-
-### Key Requirements
-1. **Advanced Store Tools:**
-   - Section preset management (hero banners, product grids, etc.)
-   - Page layout orchestration (home, product, collection pages)
-   - Bulk operations (import/export, batch updates)
-   - Template and theme customization
-
-2. **Enhanced Data Management:**
-   - Advanced collection creation and management
-   - Bulk data operations and imports
-   - Template and preset management
-
-3. **Intelligent Operation Planning:**
-   - Multi-step operation breakdown with streaming feedback
-   - Dependency resolution for complex changes  
-   - Rollback capabilities for failed operations
-   - Real-time progress display via streaming LLM responses
-
-### Implementation Details
-1. **Tool Categories:**
-   - `store-config-tools` - Basic store information management
-   - `layout-tools` - Page layout and section management
-   - `content-tools` - Content generation and management
-   - `bulk-tools` - Mass operations and imports
-
-2. **Advanced Features:**
-   - Smart defaults based on store type/category
-   - Content generation integration (existing OpenAI features)
-   - Version control for store configurations
-
-3. **MCP-Enhanced Operation Management:**
-   - Streaming LLM responses for complex operations with MCP tool chaining (https://platform.openai.com/docs/guides/streaming-responses?api-mode=responses&lang=javascript)
-   - Real-time progress display via agent streaming and MCP read operations
-   - **Dynamic context gathering** - agent reads relevant data as needed during complex operations
-   - Error recovery and retry mechanisms
-   - Detailed operation logging including MCP tool calls
-
-### Success Criteria
-- Agent can handle complex store setup requests with dynamic context gathering via MCP
-- Multi-step operations work reliably with streaming feedback and MCP tool chaining
-- Store layout management completely functional with real-time context reading
-- Real-time operation progress via streaming LLM responses and MCP tool calls
-- **Agent reads only relevant data** as needed during operations (efficient context usage)
-- All existing features enhanced, not replaced
-
-**Ensure extensibility for future tool additions while maintaining performance.**
-
----
-
-## Phase 5: Structured Diff System & Change Management
-
-Implement a sophisticated diff and approval system that provides clear visibility into all proposed changes with granular control.
-
-### Context
-- Agent can propose and execute changes via MCP-enhanced workflows
-- Need production-ready change management system
-- Must provide clear visibility and control over all modifications
-- **Distinguish between MCP read operations** (context gathering, no approval needed) **and modification tools** (require approval)
-
-### Key Requirements
-1. **Advanced Diff System (`/lib/diff/`):**
-   - Structured diff generation for all data types
-   - Visual diff representation for complex objects
-   - Field-level change tracking with metadata
-   - Clear before/after state visualization
-
-2. **Approval Workflow:**
-   - Granular approval (approve/reject individual changes)
-   - "Approve ALL" and "Reject ALL" batch operations
-   - Change review with explanation and reasoning
-   - Rollback capabilities for applied changes
-
-3. **Change Visualization:**
-   - Interactive diff viewer component
-   - Side-by-side comparison for complex changes
-   - Clear highlighting of changed vs. unchanged fields
-   - User-friendly change summaries
-
-### Implementation Details
-1. **Diff Engine:**
-   - Deep object comparison with type-aware diffing
-   - JSON patch format for programmatic changes
-   - Human-readable change descriptions
-
-2. **UI Components:**
-   - `DiffViewer` - Main change visualization (modification tools only)
-   - `ModificationToolCallCard` - Individual modification tool call with `{log_entry_id, tool_call_id}` reference and approval controls (pending/approved/rejected status)
-   - `ReadToolCallDisplay` - Display MCP read operations in chat (always "read" status, informational only, no approval needed)
-   - `ModificationToolCallDisplay` - Display MCP modification operations in chat (shows tool call indicator, then results in pending changes)
-   - `ApprovalControls` - Individual and "Approve/Reject ALL" interface for modification tools only
-   - `ChangeHistory` - Historical change log with clear distinction:
-     - **Read operations**: "read" status, show result data
-     - **Modification operations**: pending/approved/rejected status, show diffs
-
-3. **Workflow Management:**
-   - Change queuing and dependency resolution
-   - Atomic operations (all-or-nothing changes)
-   - Change scheduling and delayed execution
-   - Notification system for pending approvals
-
-### Advanced Features
-1. **Smart Grouping:**
-   - Related changes grouped logically
-   - Suggested approval flows
-
-2. **Change Analytics:**
-   - Track most common change types
-   - Success/failure rates for different operations
-   - User preference learning
-
-### Success Criteria
-- Clear visualization with distinct handling for tool types:
-  - **Modification tools**: Show diffs with pending/approved/rejected status and approval controls
-  - **Read-only tools**: Show results with static "read" status (informational only)
-- Granular control over modification tool approval/rejection using explicit endpoints with `{log_entry_id, tool_call_id}` references
-- Batch (Approve/Reject ALL) control for modification tools only
-- Reliable rollback capabilities for approved modifications
-- Complete change history and audit trail with clear tool type distinction
-- Intuitive user experience - users understand which actions need approval vs. informational reads
-- Production-ready error handling and validation
-
-**Focus on building trust through transparency and control.**
-
----
-
-## Phase 6: Seamless Agent-Form Integration & Visual Feedback
-
-Create deep integration between the AI agent and form interface with sophisticated visual feedback and state synchronization.
-
-### Context
-- All core systems are functional
-- Need seamless integration between conversational and form interfaces
-- Must provide clear visual feedback for AI modifications
-
-### Key Requirements
-1. **Bidirectional Sync:**
-   - Form changes reflected in agent context
-   - Agent changes immediately visible in form
-   - Conflict resolution for simultaneous edits
-   - Real-time state synchronization
-
-2. **Visual Enhancement System:**
-   - Rainbow outline effect for AI-modified fields
-   - Smooth animations for field updates
-   - Change indicators with timing information
-   - Hover effects showing change source and reasoning
-
-3. **Smart Form Features:**
-   - Contextual suggestions based on agent knowledge
-   - Auto-completion powered by agent understanding
-   - Validation assistance through agent
-   - Smart defaults based on conversation context
-
-### Implementation Details
-1. **Form Enhancement (`/components/form-enhanced/`):**
-   - `SmartField` - Enhanced form fields with AI integration
-   - `FieldChangeIndicator` - Visual change indicators
-   - `ContextMenu` - Right-click options for AI assistance
-   - `SuggestionTooltip` - Contextual help and suggestions
-
-2. **State Management:**
-   - Unified state store for form and agent data
-   - Change event system for real-time sync
-   - Optimistic updates with rollback capability
-   - Conflict detection and resolution
-
-3. **Visual Feedback:**
-   - CSS animations for field changes
-   - Color-coded change types (agent vs. user vs. system)
-   - Subtle indicators for field validation status
-   - Progress indicators for background operations
-
-### Advanced Integration
-1. **Contextual AI Features:**
-   - Field-specific AI assistance ("Help me write this")
-   - Smart validation with AI-powered suggestions
-   - Content enhancement (improve descriptions, etc.)
-   - Template and preset recommendations
-
-2. **Workflow Shortcuts:**
-   - Quick actions for common operations
-   - Keyboard shortcuts for power users
-   - Contextual menu actions
-
-### Success Criteria
+- Rainbow outline effect working as specified for AI-modified fields
 - Perfect sync between agent and form interfaces
-- Beautiful, intuitive visual feedback system
-- Rainbow outline effect working as specified
-- No loss of existing form functionality
-- Enhanced UX through AI assistance
-- Production-ready performance
-- Accessibility compliance maintained
+- Enhanced UX through real-time feedback
+- All existing form functionality preserved
+- Production-ready performance and error handling
 
-### ⚠️ PHASE 6 BOUNDARIES - DO NOT IMPLEMENT:
-- **No production monitoring or analytics**
+### Final Success Criteria for Complete Migration
+- **Complete agentic architecture functional**: Users can configure stores through natural language
+- **MCP integration working**: Mid-response tool calling and dynamic context gathering
+- **Approval workflow complete**: Individual and batch approve/reject for all modification tools
+- **Visual feedback system**: Rainbow outlines and real-time tool call indicators
+- **Form-agent integration**: Seamless sync between conversational and form interfaces
+- **Production-ready**: Error handling, validation, and user experience polished
+
+### ⚠️ PHASE 3B BOUNDARIES - DO NOT IMPLEMENT:
+- **No advanced analytics or monitoring dashboards**
 - **No performance optimization** (focus on functionality)
-- **No security hardening** (basic validation only)
-- **No deployment automation**
-- **No load testing or scaling features**
-- **No admin interfaces**
+- **No additional tool operations** beyond the 20 core tools
 
-**Focus ONLY on:** Form-agent integration, visual feedback, and rainbow outline effects.
-
----
-
-## Phase 7: Production Polish, Performance & Launch Preparation
-
-Final phase focusing on production readiness, performance optimization, comprehensive testing, and deployment preparation.
-
-### Context
-- All core agentic features are implemented and functional
-- Need to ensure production-grade quality and performance
-- Prepare for real user deployment with proper monitoring
-
-### Key Requirements
-1. **Performance Optimization:**
-   - OpenAI request optimization and caching
-   - Database query optimization for large stores
-   - Frontend bundle optimization and lazy loading
-   - Real-time features performance tuning
-
-2. **Production Infrastructure:**
-   - Comprehensive error handling and recovery
-   - Rate limiting and abuse prevention
-   - Monitoring and observability setup
-   - Backup and disaster recovery procedures
-
-3. **Testing & Quality Assurance:**
-   - End-to-end test suite for agent workflows
-   - Load testing for concurrent users
-   - Security audit and penetration testing
-   - User acceptance testing with real scenarios
-
-### Implementation Details
-1. **Monitoring & Observability (`/lib/monitoring/`):**
-   - OpenAI usage tracking and cost monitoring
-   - Agent performance metrics and analytics
-   - User behavior tracking and insights
-   - Error reporting and alerting system
-
-2. **Security & Compliance:**
-   - Input sanitization for agent interactions
-   - Rate limiting for OpenAI API calls
-   - User permission and access control
-   - Data privacy and GDPR compliance
-
-3. **Documentation & Support:**
-   - User documentation and onboarding materials
-   - Agent capability documentation
-   - Troubleshooting guides and FAQs
-   - Developer documentation for future enhancements
-
-### Advanced Features
-1. **Analytics Dashboard:**
-   - Agent usage statistics
-   - Most common user requests
-   - Success rates for different operations
-   - Performance benchmarks and trends
-
-2. **Admin Interface:**
-   - Agent configuration and tuning
-   - User management and permissions
-   - System health monitoring
-   - Emergency controls and overrides
-
-### Migration & Deployment
-1. **Data Migration:**
-   - Preserve all existing store configurations
-   - Migrate conversation history if applicable
-   - Validate data integrity post-migration
-   - Rollback procedures if needed
-
-2. **Feature Rollout:**
-   - Gradual feature enablement
-   - User feedback collection and integration
-   - Performance monitoring during rollout
-
-### Success Criteria
-- Production-ready performance under load
-- Comprehensive monitoring and alerting
-- Complete test coverage for all workflows
-- Security audit passed
-- User documentation complete
-- Deployment automation functional
-- Rollback procedures tested
-- Cost monitoring and optimization in place
-
-**Remember to maintain backward compatibility and provide smooth migration path for existing users.**
-
-### Post-Launch Considerations
-- User feedback collection and iteration
-- Continuous performance optimization
-- Regular security updates
-- Feature enhancement based on usage patterns
-- Scaling infrastructure as needed
-
----
+**Focus ONLY on:** Real-time streaming, form integration, and visual feedback to complete the agentic migration.
 
 ## Implementation Strategy
 
-**Execute these phases sequentially,** with each phase building on the previous one. Each prompt includes:
+**Execute these 6 phases sequentially,** with each phase building on the previous one. Each phase includes:
 
 1. **Clear context** about what has been accomplished
 2. **Specific requirements** for the current phase
 3. **Implementation details** with file structure guidance
 4. **Success criteria** for validation
-5. **Production considerations** throughout
+5. **Clear boundaries** to prevent overengineering
+
+**Phase Overview:**
+- **Phase 1A**: Database & Audit Foundation (audit table, logging design)
+- **Phase 1B**: Core Tool Infrastructure (20 tool endpoints, approval APIs)
+- **Phase 2A**: MCP Server Setup (tool definitions, MCP configuration)
+- **Phase 2B**: OpenAI Integration & Agent Core (agent logic, streaming)
+- **Phase 3A**: Basic Chat Interface (core UI components, basic functionality)
+- **Phase 3B**: Advanced Features & Integration (real-time streaming, form integration, rainbow outlines)
 
 **Key Principles:**
 - Preserve all existing functionality while adding agentic capabilities
-- Production-grade implementation with proper error handling and monitoring
-- Extensible architecture ready for multiple data domains (products, inventory, etc.)
+- Production-grade implementation with proper error handling
+- Extensible architecture ready for future enhancements
 - Complete audit trail and approval workflows as specified
 - Modern OpenAI integration using "gpt-5-mini-2025-08-07" and latest APIs
+- **MCP-first approach** for true mid-response tool calling and reasoning
 
 **Expected Outcome:** A fully functional agentic SaaS platform where users can configure Shopify stores through natural language conversations, with every change requiring explicit approval and providing clear visual feedback for AI modifications.
 
@@ -624,10 +500,10 @@ The migration maintains backward compatibility while building the foundation for
 ✅ **Documentation:** Implementation documented for next phase context
 
 **Red Flags (Stop and Refactor):**
-🚨 Implementing OpenAI integration in Phase 1  
-🚨 Building chat UI components in Phase 2  
-🚨 Adding rainbow outline effects before Phase 6  
-🚨 Performance optimization before Phase 7  
-🚨 Complex diff visualization in Phase 3
+🚨 Implementing OpenAI integration in Phase 1A or 1B  
+🚨 Building MCP server in Phase 1A or 1B  
+🚨 Building chat UI components in Phase 2A or 2B  
+🚨 Adding rainbow outline effects before Phase 3B  
+🚨 Real-time streaming display before Phase 3B  
 🚨 Background job processing instead of streaming responses
 🚨 Automatic approval features (user must always approve/reject)
