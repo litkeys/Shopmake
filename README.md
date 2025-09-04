@@ -2,6 +2,8 @@
 
 A private internal SaaS tool built with Next.js 14, Tailwind CSS, shadcn/ui, Clerk authentication, and Supabase.
 
+Langgraph will be used to implement agents (instead of MCP)
+
 ## Tech Stack
 
 -   **Frontend**: Next.js 14 with App Router
