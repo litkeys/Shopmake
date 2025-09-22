@@ -60,7 +60,7 @@ export default async function ClientsPage() {
 				</div>
 			)}
 
-			<div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mb-8">
+			<div className="grid gap-6 md:grid-cols-2 mb-8">
 				<Card>
 					<CardHeader>
 						<CardTitle className="flex items-center">
@@ -97,26 +97,6 @@ export default async function ClientsPage() {
 								</p>
 							)}
 						</div>
-					</CardContent>
-				</Card>
-
-				<Card>
-					<CardHeader>
-						<CardTitle>Quick Actions</CardTitle>
-						<CardDescription>Common tasks</CardDescription>
-					</CardHeader>
-					<CardContent className="space-y-2">
-						<Button variant="outline" className="w-full" asChild>
-							<Link href="/dashboard/clients/new">
-								Add New Client
-							</Link>
-						</Button>
-						<Button variant="outline" className="w-full">
-							Export Data
-						</Button>
-						<Button variant="outline" className="w-full">
-							View Analytics
-						</Button>
 					</CardContent>
 				</Card>
 			</div>
