@@ -542,6 +542,16 @@ export default function NewClientPage() {
 				<p className="text-gray-600">
 					Add a new client store and configure their data. You will be
 					able to upload logo and data files after store creation.
+					<br />
+					<a
+						href="https://docs.google.com/document/d/1aCesTXfBp-vC-nuzT3g6zWgxlrPv_1aA7S-sl6rh8qg/edit?usp=sharing"
+						target="_blank"
+						rel="noopener noreferrer"
+						className="text-blue-600 hover:text-blue-800 underline"
+					>
+						View tutorial
+					</a>{" "}
+					for step-by-step instructions.
 				</p>
 			</div>
 

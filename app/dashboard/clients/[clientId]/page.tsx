@@ -2071,6 +2071,16 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 					</h1>
 					<p className="text-gray-600 mb-4">
 						Update client store information and files.
+						<br />
+						<a
+							href="https://docs.google.com/document/d/1aCesTXfBp-vC-nuzT3g6zWgxlrPv_1aA7S-sl6rh8qg/edit?usp=sharing"
+							target="_blank"
+							rel="noopener noreferrer"
+							className="text-blue-600 hover:text-blue-800 underline"
+						>
+							View tutorial
+						</a>{" "}
+						for step-by-step instructions.
 					</p>
 					<div className="flex items-center space-x-2">
 						{store?.shopify_store_domain && (
