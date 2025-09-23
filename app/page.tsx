@@ -6,7 +6,7 @@ export default async function HomePage() {
 
 	if (userId) {
 		// User is signed in, redirect to dashboard
-		redirect("/dashboard");
+		redirect("/dashboard/clients");
 	} else {
 		// User is not signed in, redirect to sign-in
 		redirect("/sign-in");

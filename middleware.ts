@@ -10,7 +10,7 @@ export default authMiddleware({
 			(req.nextUrl.pathname === "/sign-in" ||
 				req.nextUrl.pathname === "/sign-up")
 		) {
-			return Response.redirect(new URL("/dashboard", req.url));
+			return Response.redirect(new URL("/dashboard/clients", req.url));
 		}
 	},
 });
