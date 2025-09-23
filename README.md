@@ -3,7 +3,7 @@
 A private internal SaaS tool built with Next.js 14, Tailwind CSS, shadcn/ui, Clerk authentication, and Supabase.
 
 Langgraph will be used to implement agents (instead of MCP)
-Child got cancer
+Gotta fix this
 
 ## Tech Stack
 
