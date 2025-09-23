@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useClerk, useUser } from "@clerk/nextjs";
 import {
 	Menu,
@@ -29,6 +29,7 @@ const navigation = [
 export function DashboardLayout({ children }: DashboardLayoutProps) {
 	const [sidebarOpen, setSidebarOpen] = useState(false);
 	const pathname = usePathname();
+	const router = useRouter();
 	const { signOut } = useClerk();
 	const { user, isLoaded, isSignedIn } = useUser();
 
@@ -37,6 +38,13 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 	const handleSignOut = () => {
 		signOut();
 	};
+
+	// Handle redirect in useEffect to avoid render cycle issues
+	useEffect(() => {
+		if (isLoaded && !isSignedIn) {
+			router.push("/sign-in");
+		}
+	}, [isLoaded, isSignedIn, router]);
 
 	// Show loading state while Clerk is checking authentication
 	if (!isLoaded) {
@@ -50,10 +58,16 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 		);
 	}
 
-	// If user is not signed in, redirect to sign-in
+	// If user is not signed in, show loading while redirect happens
 	if (!isSignedIn) {
-		window.location.href = "/sign-in";
-		return null;
+		return (
+			<div className="min-h-screen flex items-center justify-center bg-gray-50">
+				<div className="text-center">
+					<div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+					<p className="mt-4 text-gray-600">Redirecting...</p>
+				</div>
+			</div>
+		);
 	}
 
 	return (

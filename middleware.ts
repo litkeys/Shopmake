@@ -1,7 +1,7 @@
 import { authMiddleware } from "@clerk/nextjs";
 
 export default authMiddleware({
-	publicRoutes: ["/", "/sign-in"],
+	publicRoutes: ["/", "/sign-in", "/api/webhooks(.*)", "/favicon.ico"],
 	signInUrl: "/sign-in",
 	afterAuth: (auth, req) => {
 		// If user is signed in and trying to access auth pages, redirect to dashboard
