@@ -11,6 +11,7 @@ import {
 	Users,
 	Settings,
 	LogOut,
+	FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ interface DashboardLayoutProps {
 
 const navigation = [
 	{ name: "Clients", href: "/dashboard/clients", icon: Users },
+	{ name: "Terms & Conditions", href: "/dashboard/terms", icon: FileText },
 ];
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
