@@ -3720,9 +3720,24 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 							Generate Shopify Store
 						</CardTitle>
 						<CardDescription>
-							{store?.shopify_store_domain
-								? `Connected to ${store.shopify_store_domain}.myshopify.com`
-								: "Connect your Shopify Custom App and generate your store with the Genesis theme"}
+							{store?.shopify_store_domain ? (
+								`Connected to ${store.shopify_store_domain}.myshopify.com`
+							) : (
+								<span>
+									Connect your Shopify Custom App and generate
+									your store with the Genesis theme.
+									<br />
+									<a
+										href="https://docs.google.com/document/d/1aCesTXfBp-vC-nuzT3g6zWgxlrPv_1aA7S-sl6rh8qg/edit?usp=sharing"
+										target="_blank"
+										rel="noopener noreferrer"
+										className="text-blue-600 hover:text-blue-800 underline"
+									>
+										View tutorial
+									</a>{" "}
+									for step-by-step instructions.
+								</span>
+							)}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
