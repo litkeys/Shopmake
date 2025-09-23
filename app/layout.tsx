@@ -6,8 +6,11 @@ import { ClerkProvider } from "@clerk/nextjs";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-	title: "Genesis Project",
-	description: "Internal SaaS Tool",
+	title: "Shopmake",
+	description: "Shopify Store Generator",
+	icons: {
+		icon: "/favicon.ico",
+	},
 };
 
 export default function RootLayout({

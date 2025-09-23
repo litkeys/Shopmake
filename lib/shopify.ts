@@ -3184,8 +3184,7 @@ export class ShopifyClient {
 								key: "brand_name",
 								value: storeData.brand_name,
 								type: "single_line_text_field",
-								description:
-									"Brand name set by Genesis Project",
+								description: "Brand name set by Shopmake",
 							},
 						}),
 					});
@@ -3208,7 +3207,7 @@ export class ShopifyClient {
 								value: storeData.description,
 								type: "multi_line_text_field",
 								description:
-									"Brand description set by Genesis Project",
+									"Brand description set by Shopmake",
 							},
 						}),
 					});

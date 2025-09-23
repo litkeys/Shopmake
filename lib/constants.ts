@@ -1,5 +1,5 @@
-export const APP_NAME = "Genesis Project";
-export const APP_DESCRIPTION = "Internal SaaS Tool";
+export const APP_NAME = "Shopmake";
+export const APP_DESCRIPTION = "Shopify Store Generator";
 
 export const ROUTES = {
 	HOME: "/",

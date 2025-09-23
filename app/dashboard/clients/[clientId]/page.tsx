@@ -1358,8 +1358,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 			const result = await connectShopifyStoreAPI(store.id, {
 				store_domain: shopifyFormData.store_domain,
 				admin_api_token: shopifyFormData.admin_api_token,
-				token_name:
-					shopifyFormData.token_name || "Genesis Project Token",
+				token_name: shopifyFormData.token_name || "Shopmake Token",
 			});
 
 			setSuccess(
@@ -3837,7 +3836,7 @@ export default function EditClientPage({ params }: EditClientPageProps) {
 													token_name: e.target.value,
 												}))
 											}
-											placeholder="Genesis Project Token"
+											placeholder="Shopmake Token"
 										/>
 									</div>
 
