@@ -25,6 +25,9 @@ export default function Page() {
 						},
 					}}
 				/>
+				<p className="mt-4 text-center text-xs text-gray-500">
+					Created by James to power a web agency 💻
+				</p>
 			</div>
 		</div>
 	);
